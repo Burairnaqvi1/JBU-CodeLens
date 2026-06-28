@@ -1,0 +1,28 @@
+## .NET / Visual Studio
+bin/
+obj/
+*.user
+.vs/
+
+## Rider / VS Code
+.idea/
+*.suo
+
+## NuGet
+packages/
+*.nupkg
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+
+## OS junk
+.DS_Store
+Thumbs.db
+
+## LLamaSharp model files (large binaries, don't commit to Git)
+*.gguf
+*.bin
+models/
