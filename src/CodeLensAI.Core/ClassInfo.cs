@@ -12,6 +12,12 @@ public class ClassInfo
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
+    /// The role this class plays in the codebase, assigned by <see cref="CategoryClassifier"/>.
+    /// Defaults to <see cref="CodeCategory.BusinessLogic"/>.
+    /// </summary>
+    public CodeCategory Category { get; set; } = CodeCategory.BusinessLogic;
+
+    /// <summary>
     /// The text of the class's <c>/// &lt;summary&gt;</c> XML documentation comment, or
     /// <c>null</c> when the class has no such comment.
     /// </summary>

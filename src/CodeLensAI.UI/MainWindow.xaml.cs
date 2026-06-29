@@ -140,7 +140,7 @@ public partial class MainWindow : Window
 
         foreach (var classInfo in result.Classes)
         {
-            yield return $"class {classInfo.Name}";
+            yield return $"class {classInfo.Name} [{DescribeCategory(classInfo.Category)}]";
 
             if (!string.IsNullOrEmpty(classInfo.BaseClassName))
             {
@@ -169,6 +169,16 @@ public partial class MainWindow : Window
             }
         }
     }
+
+    /// <summary>
+    /// Maps a <see cref="CodeCategory"/> to its human-readable label for display.
+    /// </summary>
+    private static string DescribeCategory(CodeCategory category) => category switch
+    {
+        CodeCategory.GuiLogic => "GUI Logic",
+        CodeCategory.Utility => "Utility",
+        _ => "Business Logic",
+    };
 
     /// <summary>
     /// Succeeds only when the dragged payload is exactly one existing directory.

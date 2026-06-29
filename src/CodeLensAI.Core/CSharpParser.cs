@@ -110,6 +110,7 @@ public class CSharpParser : ILanguageParser
             }
         }
 
+        classInfo.Category = CategoryClassifier.Classify(classInfo);
         return classInfo;
     }
 
