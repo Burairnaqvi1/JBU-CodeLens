@@ -5,8 +5,85 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:CodeLensAI.UI"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
-        <TextBlock Text="Test" Margin="20" />
+        AllowDrop="True"
+        Title="CodeLens AI" Height="600" Width="800">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" MinHeight="120" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border x:Name="DropZone"
+                Grid.Row="0"
+                Height="140"
+                Background="{StaticResource SurfaceBrush}"
+                CornerRadius="8"
+                AllowDrop="True"
+                DragEnter="DropZone_DragEnter"
+                DragOver="DropZone_DragEnter"
+                DragLeave="DropZone_DragLeave"
+                Drop="DropZone_Drop">
+            <Grid>
+                <Rectangle x:Name="DropBorder"
+                           RadiusX="8"
+                           RadiusY="8"
+                           Stroke="{StaticResource BorderBrush}"
+                           StrokeThickness="2"
+                           StrokeDashArray="4 3"
+                           Fill="Transparent"
+                           IsHitTestVisible="False" />
+                <TextBlock Text="Drag a project folder here, or click Browse"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           FontSize="15"
+                           IsHitTestVisible="False"
+                           Foreground="{StaticResource TextBrush}" />
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    Margin="0,16,0,0">
+            <Button x:Name="BrowseButton"
+                    Content="Browse..."
+                    Click="BrowseButton_Click" />
+            <Button x:Name="ScanButton"
+                    Content="Scan"
+                    Margin="12,0,0,0"
+                    IsEnabled="False"
+                    Click="ScanButton_Click" />
+        </StackPanel>
+
+        <TextBlock x:Name="SelectedPathText"
+                   Grid.Row="2"
+                   Margin="0,12,0,0"
+                   TextTrimming="CharacterEllipsis"
+                   Foreground="{StaticResource TextBrush}"
+                   Text="No folder selected" />
+
+        <Border Grid.Row="3"
+                Margin="0,16,0,0"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="4">
+            <ListBox x:Name="ResultsList"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Foreground="{StaticResource TextBrush}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="{x:Type ListBoxItem}">
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                        <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, monospace" />
+                        <Setter Property="Padding" Value="6,2" />
+                    </Style>
+                </ListBox.ItemContainerStyle>
+            </ListBox>
+        </Border>
     </Grid>
 </Window>
