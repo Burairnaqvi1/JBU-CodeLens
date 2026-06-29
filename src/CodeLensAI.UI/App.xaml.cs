@@ -1,6 +1,4 @@
-﻿using System.Configuration;
-using System.Data;
-using System.Windows;
+﻿using System.Windows;
 
 namespace CodeLensAI.UI;
 
@@ -9,5 +7,22 @@ namespace CodeLensAI.UI;
 /// </summary>
 public partial class App : Application
 {
-}
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+        Dispatcher.BeginInvoke(ApplyImplicitWindowStyle, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
 
+    private void ApplyImplicitWindowStyle()
+    {
+        if (Resources[typeof(Window)] is not Style windowStyle)
+        {
+            return;
+        }
+
+        foreach (Window window in Windows)
+        {
+            window.Style = windowStyle;
+        }
+    }
+}
