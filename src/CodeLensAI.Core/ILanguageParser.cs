@@ -19,8 +19,8 @@ public interface ILanguageParser
 }
 
 /// <summary>
-/// The outcome of parsing a single source file: which file was parsed, the top-level class
-/// names that were found, and any errors encountered while reading or parsing it.
+/// The outcome of parsing a single source file: which file was parsed, the top-level classes
+/// that were found (with their members), and any errors encountered while reading or parsing it.
 /// </summary>
 public class ParseResult
 {
@@ -30,10 +30,10 @@ public class ParseResult
     public string FilePath { get; set; } = string.Empty;
 
     /// <summary>
-    /// Names of the top-level classes discovered in the file. Empty when the file has no
-    /// classes or could not be parsed.
+    /// The top-level classes discovered in the file, each including its methods and properties.
+    /// Empty when the file has no classes or could not be parsed.
     /// </summary>
-    public List<string> ClassNames { get; set; } = new();
+    public List<ClassInfo> Classes { get; set; } = new();
 
     /// <summary>
     /// Human-readable messages describing any failures (for example, I/O errors). Empty

@@ -100,37 +100,74 @@ public partial class MainWindow : Window
 
         foreach (var filePath in sourceFiles)
         {
-            ResultsList.Items.Add(DescribeFile(filePath));
+            foreach (var line in DescribeFile(filePath))
+            {
+                ResultsList.Items.Add(line);
+            }
         }
     }
 
     /// <summary>
-    /// Produces a single display line for a source file: C# files are parsed for their
-    /// top-level class names, while C++ files are listed with a not-yet-implemented note.
+    /// Produces the display lines for a source file. C# files yield a class name line followed by
+    /// indented method and property lines; C++ files yield a single not-yet-implemented note.
     /// </summary>
-    private string DescribeFile(string filePath)
+    private IEnumerable<string> DescribeFile(string filePath)
     {
         var fileName = Path.GetFileName(filePath);
         var extension = Path.GetExtension(filePath);
 
         if (string.Equals(extension, ".cpp", StringComparison.OrdinalIgnoreCase))
         {
-            return $"{fileName}: (C++ parsing not yet implemented)";
+            yield return $"{fileName}: (C++ parsing not yet implemented)";
+            yield break;
         }
 
         var result = _cSharpParser.Parse(filePath);
 
         if (result.Errors.Count > 0)
         {
-            return $"{fileName}: error - {string.Join("; ", result.Errors)}";
+            yield return $"{fileName}: error - {string.Join("; ", result.Errors)}";
+            yield break;
         }
 
-        if (result.ClassNames.Count == 0)
+        if (result.Classes.Count == 0)
         {
-            return $"{fileName}: (no top-level classes)";
+            yield return $"{fileName}: (no top-level classes)";
+            yield break;
         }
 
-        return $"{fileName}: {string.Join(", ", result.ClassNames)}";
+        yield return $"{fileName}:";
+
+        foreach (var classInfo in result.Classes)
+        {
+            yield return $"class {classInfo.Name}";
+
+            if (!string.IsNullOrEmpty(classInfo.BaseClassName))
+            {
+                yield return $"  extends: {classInfo.BaseClassName}";
+            }
+
+            if (classInfo.ImplementedInterfaces.Count > 0)
+            {
+                yield return $"  implements: {string.Join(", ", classInfo.ImplementedInterfaces)}";
+            }
+
+            if (classInfo.Dependencies.Count > 0)
+            {
+                yield return $"  depends on: {string.Join(", ", classInfo.Dependencies)}";
+            }
+
+            foreach (var method in classInfo.Methods)
+            {
+                var parameters = string.Join(", ", method.Parameters);
+                yield return $"  + {method.Name}({parameters}): {method.ReturnType}";
+            }
+
+            foreach (var property in classInfo.Properties)
+            {
+                yield return $"  - {property.Name}: {property.Type}";
+            }
+        }
     }
 
     /// <summary>
