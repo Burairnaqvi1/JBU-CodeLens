@@ -12,4 +12,15 @@
     <ProjectReference Include="..\CodeLensAI.Core\CodeLensAI.Core.csproj" />
   </ItemGroup>
 
+  <!--
+    The LLamaSharp CPU backend ships its native-library copy logic in a plain build/ props file,
+    which only runs for the project that references it directly. The Core project reference does not
+    propagate it, so without this the native llama/ggml DLLs never reach the WPF executable's output
+    and inference fails at runtime with a DllNotFoundException. Referencing the backend here makes
+    those props run during the UI build and copy the natives into this app's output.
+  -->
+  <ItemGroup>
+    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
+  </ItemGroup>
+
 </Project>

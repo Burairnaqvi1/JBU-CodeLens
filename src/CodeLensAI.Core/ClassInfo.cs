@@ -50,6 +50,11 @@ public class ClassInfo
     /// The properties declared directly within this class.
     /// </summary>
     public List<PropertyInfo> Properties { get; set; } = new();
+
+    /// <summary>
+    /// The source file path this class was parsed from.
+    /// </summary>
+    public string SourceFilePath { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -86,6 +91,22 @@ public class MethodInfo
     /// C# member defaults.
     /// </summary>
     public string AccessModifier { get; set; } = "private";
+
+    /// <summary>
+    /// Parsed XML documentation tags keyed by tag name (for example <c>summary</c>,
+    /// <c>returns</c>, <c>param:name</c>, <c>exception:TypeName</c>).
+    /// </summary>
+    public Dictionary<string, string> XmlDocTags { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Exception type names detected in <c>throw</c> statements within the method body.
+    /// </summary>
+    public List<string> ThrownExceptions { get; set; } = new();
+
+    /// <summary>
+    /// The class that declares this method. Set during parsing for relationship context in the UI.
+    /// </summary>
+    public ClassInfo? ParentClass { get; set; }
 }
 
 /// <summary>

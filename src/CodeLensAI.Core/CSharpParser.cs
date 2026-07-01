@@ -37,7 +37,7 @@ public class CSharpParser : ILanguageParser
 
             foreach (var classDeclaration in GetTopLevelClasses(root))
             {
-                result.Classes.Add(BuildClassInfo(classDeclaration));
+                result.Classes.Add(BuildClassInfo(classDeclaration, filePath));
             }
         }
         catch (Exception ex)
@@ -81,12 +81,14 @@ public class CSharpParser : ILanguageParser
     /// Maps a <see cref="ClassDeclarationSyntax"/> to a <see cref="ClassInfo"/>, collecting the
     /// class summary and the methods and properties declared directly within it.
     /// </summary>
-    private static ClassInfo BuildClassInfo(ClassDeclarationSyntax classDeclaration)
+    private static ClassInfo BuildClassInfo(ClassDeclarationSyntax classDeclaration, string filePath)
     {
+        var xmlDoc = ExtractXmlDocumentation(classDeclaration);
         var classInfo = new ClassInfo
         {
             Name = classDeclaration.Identifier.Text,
-            XmlSummary = ExtractXmlSummary(classDeclaration),
+            XmlSummary = xmlDoc.GetValueOrDefault("summary"),
+            SourceFilePath = filePath,
         };
 
         ApplyBaseList(classDeclaration, classInfo);
@@ -96,7 +98,7 @@ public class CSharpParser : ILanguageParser
             switch (member)
             {
                 case MethodDeclarationSyntax method:
-                    classInfo.Methods.Add(BuildMethodInfo(method));
+                    classInfo.Methods.Add(BuildMethodInfo(method, classInfo));
                     break;
 
                 case PropertyDeclarationSyntax property:
@@ -164,14 +166,18 @@ public class CSharpParser : ILanguageParser
     /// Maps a <see cref="MethodDeclarationSyntax"/> to a <see cref="MethodInfo"/>, formatting each
     /// parameter as <c>"Type name"</c>.
     /// </summary>
-    private static MethodInfo BuildMethodInfo(MethodDeclarationSyntax method)
+    private static MethodInfo BuildMethodInfo(MethodDeclarationSyntax method, ClassInfo parentClass)
     {
+        var xmlDoc = ExtractXmlDocumentation(method);
         var methodInfo = new MethodInfo
         {
             Name = method.Identifier.Text,
             ReturnType = method.ReturnType.ToString(),
-            XmlSummary = ExtractXmlSummary(method),
+            XmlSummary = xmlDoc.GetValueOrDefault("summary"),
+            XmlDocTags = xmlDoc,
             AccessModifier = GetAccessModifier(method.Modifiers),
+            ParentClass = parentClass,
+            ThrownExceptions = ExtractThrownExceptions(method),
         };
 
         foreach (var parameter in method.ParameterList.Parameters)
@@ -188,12 +194,61 @@ public class CSharpParser : ILanguageParser
     /// </summary>
     private static PropertyInfo BuildPropertyInfo(PropertyDeclarationSyntax property)
     {
+        var xmlDoc = ExtractXmlDocumentation(property);
         return new PropertyInfo
         {
             Name = property.Identifier.Text,
             Type = property.Type.ToString(),
-            XmlSummary = ExtractXmlSummary(property),
+            XmlSummary = xmlDoc.GetValueOrDefault("summary"),
             AccessModifier = GetAccessModifier(property.Modifiers),
+        };
+    }
+
+    /// <summary>
+    /// Walks a method declaration for <c>throw</c> statements and records the exception type
+    /// names that are thrown.
+    /// </summary>
+    private static List<string> ExtractThrownExceptions(MethodDeclarationSyntax method)
+    {
+        var exceptions = new List<string>();
+
+        foreach (var throwStatement in method.DescendantNodes().OfType<ThrowStatementSyntax>())
+        {
+            AddThrownType(exceptions, GetThrownExceptionType(throwStatement.Expression));
+        }
+
+        foreach (var throwExpression in method.DescendantNodes().OfType<ThrowExpressionSyntax>())
+        {
+            AddThrownType(exceptions, GetThrownExceptionType(throwExpression.Expression));
+        }
+
+        return exceptions;
+    }
+
+    private static void AddThrownType(List<string> exceptions, string? typeName)
+    {
+        if (string.IsNullOrWhiteSpace(typeName))
+        {
+            return;
+        }
+
+        if (!exceptions.Contains(typeName, StringComparer.Ordinal))
+        {
+            exceptions.Add(typeName);
+        }
+    }
+
+    /// <summary>
+    /// Resolves the exception type name from a throw expression (for example
+    /// <c>new IOException()</c> or a re-thrown identifier).
+    /// </summary>
+    private static string? GetThrownExceptionType(ExpressionSyntax? expression)
+    {
+        return expression switch
+        {
+            ObjectCreationExpressionSyntax objectCreation => GetSimpleTypeName(objectCreation.Type),
+            IdentifierNameSyntax identifier => identifier.Identifier.Text,
+            _ => null,
         };
     }
 
@@ -330,18 +385,14 @@ public class CSharpParser : ILanguageParser
     }
 
     /// <summary>
-    /// Extracts the text of a <c>&lt;summary&gt;</c> element from the XML documentation comment
-    /// (<c>///</c>) that precedes <paramref name="node"/>, or <c>null</c> when the node has no
-    /// documentation comment or no summary element.
+    /// Extracts XML documentation elements from the <c>///</c> comment preceding
+    /// <paramref name="node"/>, returning a dictionary keyed by tag name. Parameter tags use
+    /// keys like <c>param:name</c>; exception tags use <c>exception:TypeName</c>.
     /// </summary>
-    /// <remarks>
-    /// Documentation comments are attached to a node as <em>leading trivia</em>. This method finds
-    /// the <see cref="DocumentationCommentTriviaSyntax"/> structure of that trivia, locates the
-    /// <c>&lt;summary&gt;</c> <see cref="XmlElementSyntax"/>, and joins its text content into a
-    /// single normalized line.
-    /// </remarks>
-    private static string? ExtractXmlSummary(SyntaxNode node)
+    private static Dictionary<string, string> ExtractXmlDocumentation(SyntaxNode node)
     {
+        var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         var documentationComment = node
             .GetLeadingTrivia()
             .Select(trivia => trivia.GetStructure())
@@ -350,20 +401,57 @@ public class CSharpParser : ILanguageParser
 
         if (documentationComment is null)
         {
-            return null;
+            return tags;
         }
 
-        var summaryElement = documentationComment.Content
-            .OfType<XmlElementSyntax>()
-            .FirstOrDefault(element => element.StartTag.Name.LocalName.Text == "summary");
-
-        if (summaryElement is null)
+        foreach (var element in documentationComment.Content.OfType<XmlElementSyntax>())
         {
-            return null;
+            var tagName = element.StartTag.Name.LocalName.Text;
+            var content = GetXmlElementText(element);
+            if (string.IsNullOrEmpty(content))
+            {
+                continue;
+            }
+
+            switch (tagName)
+            {
+                case "param":
+                    var paramName = element.StartTag.Attributes
+                        .OfType<XmlNameAttributeSyntax>()
+                        .FirstOrDefault()
+                        ?.Identifier.Identifier.ValueText;
+                    if (!string.IsNullOrEmpty(paramName))
+                    {
+                        tags[$"param:{paramName}"] = content;
+                    }
+
+                    break;
+
+                case "exception":
+                    var cref = element.StartTag.Attributes
+                        .OfType<XmlCrefAttributeSyntax>()
+                        .FirstOrDefault()
+                        ?.Cref.ToString();
+                    if (!string.IsNullOrEmpty(cref))
+                    {
+                        tags[$"exception:{cref}"] = content;
+                    }
+
+                    break;
+
+                default:
+                    tags[tagName] = content;
+                    break;
+            }
         }
 
+        return tags;
+    }
+
+    private static string GetXmlElementText(XmlElementSyntax element)
+    {
         var builder = new StringBuilder();
-        foreach (var textNode in summaryElement.Content.OfType<XmlTextSyntax>())
+        foreach (var textNode in element.Content.OfType<XmlTextSyntax>())
         {
             foreach (var token in textNode.TextTokens)
             {
@@ -371,8 +459,18 @@ public class CSharpParser : ILanguageParser
             }
         }
 
-        var normalized = NormalizeWhitespace(builder.ToString());
-        return string.IsNullOrEmpty(normalized) ? null : normalized;
+        return NormalizeWhitespace(builder.ToString());
+    }
+
+    /// <summary>
+    /// Extracts the text of a <c>&lt;summary&gt;</c> element from the XML documentation comment
+    /// (<c>///</c>) that precedes <paramref name="node"/>, or <c>null</c> when the node has no
+    /// documentation comment or no summary element.
+    /// </summary>
+    private static string? ExtractXmlSummary(SyntaxNode node)
+    {
+        var tags = ExtractXmlDocumentation(node);
+        return tags.TryGetValue("summary", out var summary) ? summary : null;
     }
 
     /// <summary>
