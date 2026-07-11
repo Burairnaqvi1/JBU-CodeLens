@@ -238,12 +238,18 @@ public sealed class ExplanationService : IDisposable
     internal string RunInstruction(string instruction, int maxTokens) =>
         RunInstruction(instruction, maxTokens, DefaultSystemPrompt);
 
+    // TEMP-PERF: observer used by the perf harness to capture exact prompt text for token
+    // counting. Fires as (systemPrompt, instruction). Removed after the perf audit.
+    internal static event Action<string, string>? PromptIssued;
+
     internal string RunInstruction(string instruction, int maxTokens, string systemPrompt)
     {
         if (!IsReady || _weights is null || _modelParams is null)
         {
             return LoadError ?? "The explanation model is not available.";
         }
+
+        PromptIssued?.Invoke(systemPrompt, instruction);
 
         try
         {
