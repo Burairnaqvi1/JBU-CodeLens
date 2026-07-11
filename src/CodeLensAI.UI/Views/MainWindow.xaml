@@ -11,25 +11,12 @@
         Drop="Window_Drop">
 
     <Window.Resources>
-        <SolidColorBrush x:Key="MutedBrush" Color="#888888"/>
-        <SolidColorBrush x:Key="HeaderBrush" Color="#1A1A1A"/>
-        <SolidColorBrush x:Key="StatusBarBrush" Color="#1A1A1A"/>
-        <SolidColorBrush x:Key="SidebarBrush" Color="#252526"/>
-        <SolidColorBrush x:Key="ButtonBgBrush" Color="#2D2D30"/>
-        <SolidColorBrush x:Key="ButtonFgBrush" Color="#E0E0E0"/>
-        <SolidColorBrush x:Key="HoverOverlayBrush" Color="#1FFFFFFF"/>
-        <SolidColorBrush x:Key="PressedOverlayBrush" Color="#38FFFFFF"/>
-        <SolidColorBrush x:Key="ScrollThumbBrush" Color="#4D4D55"/>
-        <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#6A6A75"/>
-        <SolidColorBrush x:Key="TreeSelectionBrush" Color="#094771"/>
-
-        <!-- Themed button: keeps each button's own Background (set locally in XAML/code) and adds
-             hover/pressed feedback via a translucent overlay, so it works on any base color in
-             both themes. Replaces the stock WPF chrome, which ignores custom backgrounds on hover. -->
+        <!-- Flat themed button: keeps each button's own Background and adds hover/pressed
+             feedback via a translucent overlay so it works on any base color in both themes. -->
         <Style TargetType="Button">
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Background" Value="{DynamicResource ButtonBgBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource ButtonFgBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="12,6"/>
@@ -63,7 +50,7 @@
                                 <Setter TargetName="Overlay" Property="Opacity" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
                                 <Setter TargetName="Chrome" Property="BorderThickness" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
@@ -75,11 +62,28 @@
             </Setter>
         </Style>
 
-        <!-- Themed text input with rounded corners and an accent border when focused. -->
+        <!-- 36px flat toolbar icon button (Segoe MDL2 glyph content). -->
+        <Style x:Key="ToolbarIconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="MinWidth" Value="36"/>
+            <Setter Property="Padding" Value="8,0"/>
+            <Setter Property="FontFamily" Value="{DynamicResource IconFont}"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+
+        <!-- 36px flat toolbar text button (export formats). -->
+        <Style x:Key="ToolbarTextButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <!-- Themed text input with accent border when focused. -->
         <Style TargetType="TextBox">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,6"/>
@@ -97,7 +101,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -105,7 +109,7 @@
             </Setter>
         </Style>
 
-        <!-- Slim themed scrollbars (replaces the chunky system chrome that clashes with dark mode). -->
+        <!-- Slim themed scrollbars. -->
         <Style x:Key="ScrollThumbStyle" TargetType="Thumb">
             <Setter Property="IsTabStop" Value="False"/>
             <Setter Property="Template">
@@ -185,9 +189,12 @@
             </Style.Triggers>
         </Style>
 
+        <!-- Tree items: themed hover + selection, MDL2 chevron, 150ms ease-in-out expand
+             animation (LayoutTransform.ScaleY affects layout, so this reads as a height
+             animation without hardcoding pixel heights). -->
         <Style TargetType="TreeViewItem">
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Setter Property="Padding" Value="6,5"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TreeViewItem">
@@ -218,18 +225,20 @@
                                                     <Setter.Value>
                                                         <ControlTemplate TargetType="ToggleButton">
                                                             <Border Background="Transparent">
-                                                                <Path x:Name="Arrow"
-                                                                      Data="M 0 0 L 4 4 L 8 0"
-                                                                      Stroke="{DynamicResource MutedBrush}"
-                                                                      StrokeThickness="1.5"
-                                                                      HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"/>
+                                                                <TextBlock x:Name="Chevron"
+                                                                           Text="&#xE70D;"
+                                                                           FontFamily="{DynamicResource IconFont}"
+                                                                           FontSize="10"
+                                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                           HorizontalAlignment="Center"
+                                                                           VerticalAlignment="Center"/>
                                                             </Border>
                                                             <ControlTemplate.Triggers>
                                                                 <Trigger Property="IsChecked" Value="False">
-                                                                    <Setter TargetName="Arrow" Property="RenderTransform">
+                                                                    <Setter TargetName="Chevron" Property="Text" Value="&#xE70E;"/>
+                                                                    <Setter TargetName="Chevron" Property="RenderTransform">
                                                                         <Setter.Value>
-                                                                            <RotateTransform Angle="-90" CenterX="4" CenterY="2"/>
+                                                                            <RotateTransform Angle="-90" CenterX="5" CenterY="5"/>
                                                                         </Setter.Value>
                                                                     </Setter>
                                                                 </Trigger>
@@ -247,27 +256,46 @@
                                                       TextElement.Foreground="{TemplateBinding Foreground}"/>
                                 </Grid>
                             </Border>
-                            <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Margin="16,0,0,0"/>
+                            <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Margin="16,0,0,0">
+                                <ItemsPresenter.LayoutTransform>
+                                    <ScaleTransform ScaleY="1"/>
+                                </ItemsPresenter.LayoutTransform>
+                            </ItemsPresenter>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsExpanded" Value="False">
                                 <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed"/>
                             </Trigger>
+                            <Trigger Property="IsExpanded" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ItemsHost"
+                                                             Storyboard.TargetProperty="LayoutTransform.ScaleY"
+                                                             From="0" To="1" Duration="0:0:0.150">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                            </Trigger>
                             <Trigger Property="HasItems" Value="False">
                                 <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
                             </Trigger>
-                            <!-- Selection uses a theme-tinted highlight instead of the full accent
-                                 with forced-white text: accent-colored badges in the header (e.g.
-                                 the [C#]/[C++] tags) would vanish on an accent background. -->
+                            <!-- Selection uses a theme-tinted highlight with TextPrimary text
+                                 (per palette spec); badges keep their contrast on the tint. -->
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TreeSelectionBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                             </Trigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
                                     <Condition Property="IsSelected" Value="False"/>
                                     <Condition Property="IsMouseOver" Value="True"/>
                                 </MultiTrigger.Conditions>
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BorderBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverOverlayBrush}"/>
                             </MultiTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -278,12 +306,12 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="64"/>
+            <RowDefinition Height="56"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="30"/>
         </Grid.RowDefinitions>
 
-        <!-- HEADER -->
+        <!-- HEADER / TOOLBAR -->
         <Border Grid.Row="0"
                 Background="{DynamicResource HeaderBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
@@ -297,117 +325,97 @@
 
                 <!-- Logo + Title -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Width="38" Height="38"
-                            Background="{DynamicResource AccentBrush}"
-                            CornerRadius="10"
+                    <Border Width="34" Height="34"
+                            Background="{DynamicResource PrimaryBrush}"
+                            CornerRadius="8"
                             Margin="0,0,12,0">
                         <TextBlock Text="CL"
-                                   FontSize="15" FontWeight="Bold"
-                                   Foreground="#FFFFFF"
+                                   FontSize="14" FontWeight="Bold"
+                                   Foreground="{DynamicResource SurfaceBrush}"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
                     </Border>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="CodeLens AI"
-                                   FontSize="18" FontWeight="Bold"
-                                   Foreground="{DynamicResource TextBrush}"/>
+                                   FontSize="16" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
                         <TextBlock Text="Explore, document, and explain your codebase"
                                    FontSize="11"
-                                   Foreground="{DynamicResource MutedBrush}"
-                                   Margin="0,2,0,0"/>
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Margin="0,1,0,0"/>
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Buttons -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal"
-                            VerticalAlignment="Center">
+                <!-- Toolbar -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
 
-                    <!-- Light/Dark Toggle -->
+                    <!-- Light/Dark toggle -->
                     <Border CornerRadius="8"
-                            Background="{DynamicResource ButtonBgBrush}"
+                            Background="{DynamicResource SurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             Padding="2"
-                            Margin="0,0,8,0">
+                            Margin="0,0,10,0"
+                            VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="LightThemeButton"
                                     Content="Light"
                                     Click="LightThemeButton_Click"
-                                    Padding="14,6"
-                                    Background="Transparent"
-                                    Foreground="{DynamicResource MutedBrush}"
-                                    BorderThickness="0"/>
+                                    Padding="12,5"
+                                    ToolTip="Switch to the light theme"
+                                    Foreground="{DynamicResource TextSecondaryBrush}"/>
                             <Button x:Name="DarkThemeButton"
                                     Content="Dark"
                                     Click="DarkThemeButton_Click"
-                                    Padding="14,6"
-                                    Background="{DynamicResource AccentBrush}"
-                                    Foreground="#FFFFFF"
-                                    BorderThickness="0"/>
+                                    Padding="12,5"
+                                    ToolTip="Switch to the dark theme"
+                                    Background="{DynamicResource PrimaryBrush}"
+                                    Foreground="{DynamicResource SurfaceBrush}"/>
                         </StackPanel>
                     </Border>
 
-                    <!-- Open Project -->
                     <Button x:Name="BrowseButton"
-                            Content="Open Project"
+                            Style="{StaticResource ToolbarIconButton}"
                             Click="BrowseButton_Click"
-                            Padding="18,8"
-                            FontWeight="SemiBold"
-                            Background="{DynamicResource AccentBrush}"
-                            Foreground="#FFFFFF"
-                            BorderThickness="0"
-                            Margin="0,0,8,0"/>
+                            Background="{DynamicResource PrimaryBrush}"
+                            Foreground="{DynamicResource SurfaceBrush}"
+                            ToolTip="Open a project folder"
+                            Margin="0,0,6,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8B7;" FontFamily="{DynamicResource IconFont}" FontSize="15" VerticalAlignment="Center"/>
+                            <TextBlock Text="Open" FontFamily="{DynamicResource UiFont}" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
 
-                    <!-- Rescan -->
                     <Button x:Name="ScanButton"
-                            Content="Rescan"
+                            Style="{StaticResource ToolbarIconButton}"
+                            Content="&#xE72C;"
                             Click="ScanButton_Click"
                             IsEnabled="False"
-                            Padding="18,8"
-                            FontWeight="SemiBold"
-                            Background="{DynamicResource ButtonBgBrush}"
-                            Foreground="{DynamicResource ButtonFgBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            Margin="0,0,8,0"/>
+                            ToolTip="Rescan the current project"
+                            Margin="0,0,10,0"/>
 
-                    <!-- Export -->
+                    <Border Width="1" Height="24" Background="{DynamicResource BorderBrush}" Margin="0,0,10,0"/>
+
                     <Button x:Name="ExportWordButton"
+                            Style="{StaticResource ToolbarTextButton}"
                             Content="Word"
                             Click="ExportWordButton_Click"
                             IsEnabled="False"
-                            Padding="14,8"
-                            FontWeight="SemiBold"
-                            Background="{DynamicResource ButtonBgBrush}"
-                            Foreground="{DynamicResource ButtonFgBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
                             Margin="0,0,4,0"
                             ToolTip="Export documentation to Word (.docx)"/>
-
                     <Button x:Name="ExportMarkdownButton"
+                            Style="{StaticResource ToolbarTextButton}"
                             Content="MD"
                             Click="ExportMarkdownButton_Click"
                             IsEnabled="False"
-                            Padding="14,8"
-                            FontWeight="SemiBold"
-                            Background="{DynamicResource ButtonBgBrush}"
-                            Foreground="{DynamicResource ButtonFgBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
                             Margin="0,0,4,0"
                             ToolTip="Export project analysis to Markdown (.md)"/>
-
                     <Button x:Name="ExportJsonButton"
+                            Style="{StaticResource ToolbarTextButton}"
                             Content="JSON"
                             Click="ExportJsonButton_Click"
                             IsEnabled="False"
-                            Padding="14,8"
-                            FontWeight="SemiBold"
-                            Background="{DynamicResource ButtonBgBrush}"
-                            Foreground="{DynamicResource ButtonFgBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
                             ToolTip="Export project analysis to JSON (.json)"/>
                 </StackPanel>
             </Grid>
@@ -416,13 +424,15 @@
         <!-- MAIN CONTENT -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="300" MinWidth="200" MaxWidth="420"/>
-                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Sidebar -->
+            <!-- Sidebar: fixed 280px, collapsible (animated in code-behind) -->
             <Border Grid.Column="0"
+                    x:Name="SidebarPanel"
+                    Width="280"
                     Background="{DynamicResource SidebarBrush}"
                     BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="0,0,1,0">
@@ -432,17 +442,17 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <Border Grid.Row="0" Padding="16,14,16,12"
+                    <Border Grid.Row="0" Padding="16,12,12,12"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="0,0,0,1">
                         <StackPanel>
                             <TextBlock Text="Project Explorer"
-                                       FontSize="13" FontWeight="Bold"
-                                       Foreground="{DynamicResource TextBrush}"/>
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
                             <TextBlock x:Name="ProjectPathText"
                                        Text="No project loaded"
                                        FontSize="11"
-                                       Foreground="{DynamicResource MutedBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        TextTrimming="CharacterEllipsis"
                                        Margin="0,3,0,0"/>
                         </StackPanel>
@@ -451,7 +461,7 @@
                     <ScrollViewer Grid.Row="1"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
-                                  Padding="8">
+                                  Padding="8,8,8,8">
                         <TreeView x:Name="ProjectTree"
                                   Background="Transparent"
                                   BorderThickness="0"
@@ -473,11 +483,24 @@
                 </Grid>
             </Border>
 
-            <!-- Resize grip -->
-            <GridSplitter Grid.Column="1" Width="4"
-                          HorizontalAlignment="Stretch"
-                          Background="{DynamicResource BorderBrush}"
-                          Cursor="SizeWE"/>
+            <!-- Sidebar collapse toggle -->
+            <Border Grid.Column="1"
+                    Background="{DynamicResource SidebarBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="0,0,1,0">
+                <Button x:Name="SidebarToggleButton"
+                        Click="SidebarToggleButton_Click"
+                        Width="18"
+                        VerticalAlignment="Stretch"
+                        Padding="0"
+                        ToolTip="Collapse or expand the project explorer">
+                    <TextBlock x:Name="SidebarToggleIcon"
+                               Text="&#xE76B;"
+                               FontFamily="{DynamicResource IconFont}"
+                               FontSize="10"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                </Button>
+            </Border>
 
             <!-- Detail panel -->
             <Border Grid.Column="2" Background="{DynamicResource BackgroundBrush}">
@@ -493,17 +516,17 @@
                                     HorizontalAlignment="Center"
                                     Margin="0,0,0,16">
                                 <TextBlock Text="CL" FontSize="22" FontWeight="Bold"
-                                           Foreground="{DynamicResource AccentBrush}"
+                                           Foreground="{DynamicResource PrimaryBrush}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
                             </Border>
                             <TextBlock Text="Select a file, class, or function"
                                        FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextBrush}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
                                        HorizontalAlignment="Center"/>
                             <TextBlock Text="Drag &amp; drop a folder anywhere"
                                        FontSize="13"
-                                       Foreground="{DynamicResource MutedBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        HorizontalAlignment="Center"
                                        Margin="0,8,0,0"/>
                         </StackPanel>
@@ -514,9 +537,61 @@
                                   Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
-                                  Padding="28,24,28,24">
+                                  Padding="24,20,24,20">
                         <StackPanel x:Name="DetailContentHost"/>
                     </ScrollViewer>
+
+                    <!-- Inline notification banner: slides in from the top, auto-dismisses. -->
+                    <Border x:Name="NotificationBanner"
+                            VerticalAlignment="Top"
+                            HorizontalAlignment="Stretch"
+                            Margin="24,12,24,0"
+                            Padding="12,10"
+                            CornerRadius="6"
+                            Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            Visibility="Collapsed"
+                            Panel.ZIndex="10">
+                        <Border.RenderTransform>
+                            <TranslateTransform x:Name="NotificationTransform" Y="-40"/>
+                        </Border.RenderTransform>
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="8" Opacity="0.15" ShadowDepth="2"/>
+                        </Border.Effect>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="NotificationAccent" Width="4" CornerRadius="2"
+                                    Background="{DynamicResource PrimaryBrush}" Margin="0,0,10,0"/>
+                            <TextBlock x:Name="NotificationText"
+                                       Grid.Column="1"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <Button x:Name="NotificationActionButton"
+                                    Click="NotificationAction_Click"
+                                    Grid.Column="2"
+                                    Visibility="Collapsed"
+                                    Margin="10,0,0,0"
+                                    Padding="10,4"
+                                    FontWeight="SemiBold"
+                                    Background="{DynamicResource PrimaryBrush}"
+                                    Foreground="{DynamicResource SurfaceBrush}"/>
+                            <Button Grid.Column="3"
+                                    Content="&#xE711;"
+                                    FontFamily="{DynamicResource IconFont}"
+                                    FontSize="11"
+                                    Padding="8,4"
+                                    Margin="6,0,0,0"
+                                    ToolTip="Dismiss"
+                                    Click="NotificationClose_Click"/>
+                        </Grid>
+                    </Border>
                 </Grid>
             </Border>
         </Grid>
@@ -527,16 +602,33 @@
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="0,1,0,0">
             <Grid Margin="16,0,16,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
                 <TextBlock x:Name="StatusBarText"
                            Text="AI model ready"
                            FontSize="11"
-                           Foreground="{DynamicResource MutedBrush}"
-                           VerticalAlignment="Center"/>
-                <TextBlock Text="Drag &amp; drop a folder anywhere"
-                           FontSize="11"
-                           Foreground="{DynamicResource MutedBrush}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
                            VerticalAlignment="Center"
-                           HorizontalAlignment="Right"/>
+                           TextTrimming="CharacterEllipsis"/>
+                <!-- Progress bar appears only during a scan; updates are immediate (no animation). -->
+                <ProgressBar x:Name="ScanProgressBar"
+                             Grid.Column="1"
+                             Width="140" Height="6"
+                             IsIndeterminate="True"
+                             Visibility="Collapsed"
+                             Margin="12,0,12,0"
+                             VerticalAlignment="Center"
+                             Background="{DynamicResource BorderBrush}"
+                             Foreground="{DynamicResource PrimaryBrush}"
+                             BorderThickness="0"/>
+                <TextBlock Grid.Column="2"
+                           Text="Drag &amp; drop a folder anywhere"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center"/>
             </Grid>
         </Border>
     </Grid>

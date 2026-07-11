@@ -63,7 +63,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         WindowStyle = WindowStyle.SingleBorderWindow;
         ResizeMode = ResizeMode.CanResize;
-        ApplyDarkTheme();
+        ApplyTheme(AppTheme.Dark);
 
         StatusBarText.Text = "Loading AI model…";
         Loaded += MainWindow_Loaded;
@@ -119,94 +119,127 @@ public partial class MainWindow : Window
     }
 
     // ── Theme ────────────────────────────────────────────────────────────────
+    // Palette values live exclusively in Theme/DarkTheme.xaml and Theme/LightTheme.xaml;
+    // ThemeManager retargets the app-level brushes. No color literals appear in code-behind.
 
     private void LightThemeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_isDarkTheme) ApplyLightTheme();
+        if (_isDarkTheme) ApplyTheme(AppTheme.Light);
     }
 
     private void DarkThemeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!_isDarkTheme) ApplyDarkTheme();
+        if (!_isDarkTheme) ApplyTheme(AppTheme.Dark);
     }
 
-    private void ApplyDarkTheme()
+    private void ApplyTheme(AppTheme theme)
     {
-        _isDarkTheme = true;
-        SetBrush("BackgroundBrush",  "#1E1E1E");
-        SetBrush("SurfaceBrush",     "#2D2D30");
-        SetBrush("BorderBrush",      "#3F3F46");
-        SetBrush("AccentBrush",      "#007ACC");
-        SetBrush("AccentHoverBrush", "#1C97EA");
-        SetBrush("TextBrush",        "#E0E0E0");
-        SetBrush("MutedBrush",       "#888888");
-        SetBrush("HeaderBrush",      "#1A1A1A");
-        SetBrush("StatusBarBrush",   "#1A1A1A");
-        SetBrush("SidebarBrush",     "#252526");
-        SetBrush("ButtonBgBrush",    "#2D2D30");
-        SetBrush("ButtonFgBrush",    "#E0E0E0");
-        SetBrush("HoverOverlayBrush",     "#1FFFFFFF");
-        SetBrush("PressedOverlayBrush",   "#38FFFFFF");
-        SetBrush("ScrollThumbBrush",      "#4D4D55");
-        SetBrush("ScrollThumbHoverBrush", "#6A6A75");
-        SetBrush("TreeSelectionBrush",    "#094771");
+        _isDarkTheme = theme == AppTheme.Dark;
+        ThemeManager.Apply(theme);
 
-        DarkThemeButton.Background  = (Brush)FindResource("AccentBrush");
-        DarkThemeButton.Foreground  = Brushes.White;
-        LightThemeButton.Background = Brushes.Transparent;
-        LightThemeButton.Foreground = (Brush)FindResource("MutedBrush");
+        var active = _isDarkTheme ? DarkThemeButton : LightThemeButton;
+        var inactive = _isDarkTheme ? LightThemeButton : DarkThemeButton;
+        active.SetResourceReference(BackgroundProperty, "PrimaryBrush");
+        active.SetResourceReference(ForegroundProperty, "SurfaceBrush");
+        inactive.Background = Brushes.Transparent;
+        inactive.SetResourceReference(ForegroundProperty, "TextSecondaryBrush");
 
         RefreshCurrentDetailView();
     }
 
-    private void ApplyLightTheme()
+    // ── Sidebar collapse ─────────────────────────────────────────────────────
+
+    private bool _sidebarCollapsed;
+
+    private void SidebarToggleButton_Click(object sender, RoutedEventArgs e)
     {
-        _isDarkTheme = false;
-        SetBrush("BackgroundBrush",  "#F5F5F5");
-        SetBrush("SurfaceBrush",     "#FFFFFF");
-        SetBrush("BorderBrush",      "#CCCCCC");
-        SetBrush("AccentBrush",      "#007ACC");
-        SetBrush("AccentHoverBrush", "#1C97EA");
-        SetBrush("TextBrush",        "#1E1E1E");
-        SetBrush("MutedBrush",       "#666666");
-        SetBrush("HeaderBrush",      "#E8E8E8");
-        SetBrush("StatusBarBrush",   "#E8E8E8");
-        SetBrush("SidebarBrush",     "#F0F0F0");
-        SetBrush("ButtonBgBrush",    "#E0E0E0");
-        SetBrush("ButtonFgBrush",    "#1E1E1E");
-        SetBrush("HoverOverlayBrush",     "#14000000");
-        SetBrush("PressedOverlayBrush",   "#26000000");
-        SetBrush("ScrollThumbBrush",      "#C4C4C4");
-        SetBrush("ScrollThumbHoverBrush", "#A8A8A8");
-        SetBrush("TreeSelectionBrush",    "#CCE4F7");
-
-        LightThemeButton.Background = (Brush)FindResource("AccentBrush");
-        LightThemeButton.Foreground = Brushes.White;
-        DarkThemeButton.Background  = Brushes.Transparent;
-        DarkThemeButton.Foreground  = (Brush)FindResource("MutedBrush");
-
-        RefreshCurrentDetailView();
-    }
-
-    private void SetBrush(string key, string hex)
-    {
-        var color = (Color)ColorConverter.ConvertFromString(hex);
-
-        // Mutate the existing brush instead of replacing it: elements built in code resolve
-        // these brushes once at creation (FindResource) and hold the instance, so swapping in
-        // a new brush would leave every already-rendered panel stuck in the old theme.
-        // Look in window resources first, then application resources — the base brushes
-        // (BackgroundBrush, TextBrush, …) live in App.xaml, and creating window-level copies
-        // instead would leave every app-scope StaticResource reference stuck in the old theme.
-        var existing = (Resources[key] ?? Application.Current.Resources[key]) as SolidColorBrush;
-        if (existing is { IsFrozen: false })
+        _sidebarCollapsed = !_sidebarCollapsed;
+        var animation = new System.Windows.Media.Animation.DoubleAnimation
         {
-            existing.Color = color;
+            To = _sidebarCollapsed ? 0 : 280,
+            Duration = TimeSpan.FromMilliseconds(200),
+            EasingFunction = new System.Windows.Media.Animation.CubicEase
+            {
+                EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut,
+            },
+        };
+        SidebarPanel.BeginAnimation(WidthProperty, animation);
+        SidebarToggleIcon.Text = _sidebarCollapsed ? "" : "";
+    }
+
+    // ── Inline notification banner ───────────────────────────────────────────
+
+    private System.Windows.Threading.DispatcherTimer? _notificationTimer;
+    private Action? _notificationAction;
+
+    private enum NotificationKind { Info, Success, Error }
+
+    /// <summary>
+    /// Shows the inline banner (slides in from the top, auto-dismisses after 4 s). Replaces
+    /// modal dialogs for non-critical messages; genuine decisions still use dialogs.
+    /// </summary>
+    private void ShowNotification(
+        string message,
+        NotificationKind kind = NotificationKind.Info,
+        string? actionLabel = null,
+        Action? action = null)
+    {
+        NotificationText.Text = message;
+        NotificationAccent.SetResourceReference(BackgroundProperty, kind switch
+        {
+            NotificationKind.Success => "SecondaryBrush",
+            NotificationKind.Error => "ErrorBrush",
+            _ => "PrimaryBrush",
+        });
+
+        _notificationAction = action;
+        if (actionLabel is not null && action is not null)
+        {
+            NotificationActionButton.Content = actionLabel;
+            NotificationActionButton.Visibility = Visibility.Visible;
         }
         else
         {
-            Resources[key] = new SolidColorBrush(color);
+            NotificationActionButton.Visibility = Visibility.Collapsed;
         }
+
+        NotificationBanner.Visibility = Visibility.Visible;
+        var slide = new System.Windows.Media.Animation.DoubleAnimation
+        {
+            From = -40,
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(200),
+            EasingFunction = new System.Windows.Media.Animation.CubicEase
+            {
+                EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut,
+            },
+        };
+        NotificationTransform.BeginAnimation(
+            System.Windows.Media.TranslateTransform.YProperty, slide);
+
+        _notificationTimer?.Stop();
+        _notificationTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(4),
+        };
+        _notificationTimer.Tick += (_, _) => DismissNotification();
+        _notificationTimer.Start();
+    }
+
+    private void DismissNotification()
+    {
+        _notificationTimer?.Stop();
+        _notificationTimer = null;
+        NotificationBanner.Visibility = Visibility.Collapsed;
+    }
+
+    private void NotificationClose_Click(object sender, RoutedEventArgs e) => DismissNotification();
+
+    private void NotificationAction_Click(object sender, RoutedEventArgs e)
+    {
+        var action = _notificationAction;
+        DismissNotification();
+        action?.Invoke();
     }
 
     // ── Drag & drop ──────────────────────────────────────────────────────────
@@ -401,8 +434,7 @@ public partial class MainWindow : Window
             return true;
         }
 
-        MessageBox.Show(this, "Please scan a project first.", title,
-            MessageBoxButton.OK, MessageBoxImage.Information);
+        ShowNotification($"{title}: scan a project first.");
         return false;
     }
 
@@ -613,20 +645,15 @@ public partial class MainWindow : Window
                 msg => Dispatcher.BeginInvoke(() => StatusBarText.Text = msg),
                 metrics));
 
-            var openResult = MessageBox.Show(this,
-                "Documentation exported successfully. Open the file?",
-                "Export to Word", MessageBoxButton.YesNo, MessageBoxImage.Information);
-
-            if (openResult == MessageBoxResult.Yes)
-                Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
-
-            StatusBarText.Text = $"Documentation exported to {dialog.FileName}";
+            var exportedPath = dialog.FileName;
+            ShowNotification("Documentation exported successfully.", NotificationKind.Success,
+                "Open", () => Process.Start(new ProcessStartInfo(exportedPath) { UseShellExecute = true }));
+            StatusBarText.Text = $"Documentation exported to {exportedPath}";
         }
         catch (Exception ex)
         {
             StatusBarText.Text = previousStatus;
-            MessageBox.Show(this, $"Export failed: {ex.Message}", "Export to Word",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowNotification($"Export failed: {ex.Message}", NotificationKind.Error);
         }
         finally
         {
@@ -665,22 +692,15 @@ public partial class MainWindow : Window
             var results = _lastScanResults;
             await Task.Run(() => _exportService.ExportMarkdown(ir, results, dialog.FileName));
 
-            var openResult = MessageBox.Show(this,
-                "Markdown exported successfully. Open the file?",
-                "Export to Markdown", MessageBoxButton.YesNo, MessageBoxImage.Information);
-
-            if (openResult == MessageBoxResult.Yes)
-            {
-                Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
-            }
-
-            StatusBarText.Text = $"Markdown exported to {dialog.FileName}";
+            var exportedPath = dialog.FileName;
+            ShowNotification("Markdown exported successfully.", NotificationKind.Success,
+                "Open", () => Process.Start(new ProcessStartInfo(exportedPath) { UseShellExecute = true }));
+            StatusBarText.Text = $"Markdown exported to {exportedPath}";
         }
         catch (Exception ex)
         {
             StatusBarText.Text = previousStatus;
-            MessageBox.Show(this, $"Export failed: {ex.Message}", "Export to Markdown",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowNotification($"Export failed: {ex.Message}", NotificationKind.Error);
         }
         finally
         {
@@ -719,22 +739,15 @@ public partial class MainWindow : Window
             var results = _lastScanResults;
             await Task.Run(() => _exportService.ExportJson(ir, results, dialog.FileName));
 
-            var openResult = MessageBox.Show(this,
-                "JSON exported successfully. Open the file?",
-                "Export to JSON", MessageBoxButton.YesNo, MessageBoxImage.Information);
-
-            if (openResult == MessageBoxResult.Yes)
-            {
-                Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
-            }
-
-            StatusBarText.Text = $"JSON exported to {dialog.FileName}";
+            var exportedPath = dialog.FileName;
+            ShowNotification("JSON exported successfully.", NotificationKind.Success,
+                "Open", () => Process.Start(new ProcessStartInfo(exportedPath) { UseShellExecute = true }));
+            StatusBarText.Text = $"JSON exported to {exportedPath}";
         }
         catch (Exception ex)
         {
             StatusBarText.Text = previousStatus;
-            MessageBox.Show(this, $"Export failed: {ex.Message}", "Export to JSON",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowNotification($"Export failed: {ex.Message}", NotificationKind.Error);
         }
         finally
         {
@@ -804,7 +817,7 @@ public partial class MainWindow : Window
             Text = _lastProjectIr?.ProjectName ?? "Project",
             FontSize = 22,
             FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)FindResource("TextBrush"),
+            Foreground = (Brush)FindResource("TextPrimaryBrush"),
             Margin = new Thickness(0, 0, 0, 12),
         };
         DetailContentHost.Children.Add(title);
@@ -814,7 +827,7 @@ public partial class MainWindow : Window
             DetailContentHost.Children.Add(new TextBlock
             {
                 Text = $"{m.TotalClasses} classes · {m.TotalMethods} methods · {m.TotalNamespaces} namespaces · MI {m.MaintainabilityIndex:F0}",
-                Foreground = (Brush)FindResource("MutedBrush"),
+                Foreground = (Brush)FindResource("TextSecondaryBrush"),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8),
             });
@@ -825,7 +838,7 @@ public partial class MainWindow : Window
             DetailContentHost.Children.Add(new TextBlock
             {
                 Text = $"{_lastProjectIr.Relationships.Count} relationships · {_lastProjectIr.FilesAnalyzed} files analyzed",
-                Foreground = (Brush)FindResource("MutedBrush"),
+                Foreground = (Brush)FindResource("TextSecondaryBrush"),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 16),
             });
@@ -837,13 +850,13 @@ public partial class MainWindow : Window
             Text = "AI Project Summary",
             FontSize = 14,
             FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)FindResource("TextBrush"),
+            Foreground = (Brush)FindResource("TextPrimaryBrush"),
             Margin = new Thickness(0, 0, 0, 8),
         };
         var summaryText = new TextBlock
         {
             Text = "Click Generate Summary to produce an architecture overview (Ollama or local GGUF).",
-            Foreground = (Brush)FindResource("MutedBrush"),
+            Foreground = (Brush)FindResource("TextSecondaryBrush"),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 8),
         };
@@ -852,8 +865,8 @@ public partial class MainWindow : Window
             Content = "Generate Summary",
             Padding = new Thickness(16, 8, 16, 8),
             HorizontalAlignment = HorizontalAlignment.Left,
-            Background = (Brush)FindResource("AccentBrush"),
-            Foreground = Brushes.White,
+            Background = (Brush)FindResource("PrimaryBrush"),
+            Foreground = (Brush)FindResource("SurfaceBrush"),
             BorderThickness = new Thickness(0),
         };
 
@@ -867,7 +880,7 @@ public partial class MainWindow : Window
             generateSummaryBtn.IsEnabled = false;
             generateSummaryBtn.Content = "Generating…";
             summaryText.Text = "Generating project summary…";
-            summaryText.Foreground = (Brush)FindResource("MutedBrush");
+            summaryText.Foreground = (Brush)FindResource("TextSecondaryBrush");
 
             var ir = _lastProjectIr;
             try
@@ -884,7 +897,7 @@ public partial class MainWindow : Window
                 }
 
                 summaryText.Text = summary;
-                summaryText.Foreground = (Brush)FindResource("TextBrush");
+                summaryText.Foreground = (Brush)FindResource("TextPrimaryBrush");
             }
             catch (Exception ex)
             {
@@ -951,7 +964,7 @@ public partial class MainWindow : Window
             DetailContentHost.Children.Add(new TextBlock
             {
                 Text = "No metrics available.",
-                Foreground = (Brush)FindResource("MutedBrush"),
+                Foreground = (Brush)FindResource("TextSecondaryBrush"),
             });
             return;
         }
@@ -961,7 +974,7 @@ public partial class MainWindow : Window
             Text = "Project Metrics",
             FontSize = 22,
             FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)FindResource("TextBrush"),
+            Foreground = (Brush)FindResource("TextPrimaryBrush"),
             Margin = new Thickness(0, 0, 0, 12),
         });
 
@@ -983,7 +996,7 @@ public partial class MainWindow : Window
             DetailContentHost.Children.Add(new TextBlock
             {
                 Text = line,
-                Foreground = (Brush)FindResource("TextBrush"),
+                Foreground = (Brush)FindResource("TextPrimaryBrush"),
                 Margin = new Thickness(0, 0, 0, 4),
             });
         }
@@ -1068,15 +1081,22 @@ public partial class MainWindow : Window
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(new TextBlock { Text = fileName, VerticalAlignment = VerticalAlignment.Center });
-        var badge = new TextBlock
+        var badgeText = new TextBlock
         {
-            Text = isCpp ? " [C++]" : " [C#]",
-            Margin = new Thickness(6, 0, 0, 0),
+            Text = isCpp ? "C++" : "C#",
             FontSize = 11,
             FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
         };
-        badge.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
+        badgeText.SetResourceReference(TextBlock.ForegroundProperty, "SurfaceBrush");
+        var badge = new Border
+        {
+            Margin = new Thickness(6, 0, 0, 0),
+            Padding = new Thickness(8, 1, 8, 1),
+            CornerRadius = new CornerRadius(10),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = badgeText,
+        };
+        badge.SetResourceReference(Border.BackgroundProperty, isCpp ? "PrimaryBrush" : "SecondaryBrush");
         panel.Children.Add(badge);
         return panel;
     }
@@ -1091,7 +1111,7 @@ public partial class MainWindow : Window
             FontSize = 10,
             FontWeight = FontWeights.SemiBold,
         };
-        tag.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
+        tag.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryBrush");
         var pill = new Border
         {
             Margin = new Thickness(8, 0, 0, 0),
@@ -1112,7 +1132,7 @@ public partial class MainWindow : Window
         panel.Children.Add(new TextBlock
         {
             Text = $"{method.Name}({parameters})",
-            FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+            FontFamily = (FontFamily)FindResource("CodeFont"),
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
         });

@@ -110,8 +110,8 @@ internal static class DetailPanelRenderer
         var summaryGrid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
         summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var mc = new TextBlock { Text = $"{classInfo.Methods.Count} Method{(classInfo.Methods.Count == 1 ? "" : "s")}", FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextBrush") };
-        var pc = new TextBlock { Text = $"{classInfo.Properties.Count} Propert{(classInfo.Properties.Count == 1 ? "y" : "ies")}", FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextBrush") };
+        var mc = new TextBlock { Text = $"{classInfo.Methods.Count} Method{(classInfo.Methods.Count == 1 ? "" : "s")}", FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextPrimaryBrush") };
+        var pc = new TextBlock { Text = $"{classInfo.Properties.Count} Propert{(classInfo.Properties.Count == 1 ? "y" : "ies")}", FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextPrimaryBrush") };
         Grid.SetColumn(pc, 1);
         summaryGrid.Children.Add(mc);
         summaryGrid.Children.Add(pc);
@@ -308,11 +308,11 @@ internal static class DetailPanelRenderer
                 var paramText = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 13, Margin = new Thickness(0, 6, 0, 0) };
                 paramText.Inlines.Add(new Run(type)
                 {
-                    FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+                    FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont"),
                     FontWeight = FontWeights.Bold,
-                    Foreground = Brush(resourceRoot, "AccentBrush"),
+                    Foreground = Brush(resourceRoot, "PrimaryBrush"),
                 });
-                paramText.Inlines.Add(new Run($"  {name}") { Foreground = Brush(resourceRoot, "TextBrush") });
+                paramText.Inlines.Add(new Run($"  {name}") { Foreground = Brush(resourceRoot, "TextPrimaryBrush") });
                 stack.Children.Add(paramText);
 
                 if (method.XmlDocTags.TryGetValue($"param:{name}", out var paramDoc))
@@ -335,7 +335,7 @@ internal static class DetailPanelRenderer
         {
             stack.Children.Add(new Border
             {
-                Background = Brush(resourceRoot, "AccentBrush"),
+                Background = Brush(resourceRoot, "PrimaryBrush"),
                 CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(10, 5, 10, 5),
                 Margin = new Thickness(0, 8, 0, 0),
@@ -343,9 +343,9 @@ internal static class DetailPanelRenderer
                 Child = new TextBlock
                 {
                     Text = returnType,
-                    FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+                    FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont"),
                     FontWeight = FontWeights.Bold,
-                    Foreground = Brushes.White,
+                    Foreground = Brush(resourceRoot, "SurfaceBrush"),
                     FontSize = 13,
                 },
             });
@@ -387,7 +387,10 @@ internal static class DetailPanelRenderer
             }
 
             stack.Children.Add(new Border { Height = 1, Background = Brush(resourceRoot, "BorderBrush"), Margin = new Thickness(0, 10, 0, 10) });
-            stack.Children.Add(CreateCapsLabel("AI DESCRIPTION", resourceRoot));
+            var aiLabelRow = new StackPanel { Orientation = Orientation.Horizontal };
+            aiLabelRow.Children.Add(CreateCapsLabel("AI DESCRIPTION", resourceRoot));
+            aiLabelRow.Children.Add(CreateBadge("AI", "WarningBrush", resourceRoot, marginLeft: 6));
+            stack.Children.Add(aiLabelRow);
 
             if (!string.IsNullOrEmpty(method.CachedAiBriefDescription))
             {
@@ -587,7 +590,7 @@ internal static class DetailPanelRenderer
             {
                 Text = $"{step.StepNumber}.",
                 FontWeight = FontWeights.Bold,
-                Foreground = Brush(resourceRoot, "AccentBrush"),
+                Foreground = Brush(resourceRoot, "PrimaryBrush"),
                 Margin = new Thickness(0, 0, 8, 0),
                 VerticalAlignment = VerticalAlignment.Top,
             };
@@ -597,7 +600,7 @@ internal static class DetailPanelRenderer
             row.Children.Add(new TextBlock
             {
                 Text = step.Description,
-                Foreground = Brush(resourceRoot, "TextBrush"),
+                Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 13,
                 VerticalAlignment = VerticalAlignment.Top,
@@ -828,12 +831,13 @@ internal static class DetailPanelRenderer
         TextBlock? aiBriefText)
     {
         var stack = new StackPanel();
-        AddCardHeader(stack, "AI Explanation", resourceRoot);
+        AddCardHeader(stack, "AI Explanation", resourceRoot)
+            .Children.Add(CreateBadge("AI", "WarningBrush", resourceRoot, marginLeft: 8));
 
         var explanationText = new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
-            Foreground = Brush(resourceRoot, "TextBrush"),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
             FontSize = 13,
             LineHeight = 22,
             Visibility = Visibility.Collapsed,
@@ -846,7 +850,7 @@ internal static class DetailPanelRenderer
             Text = "Follow-up Questions",
             FontSize = 13,
             FontWeight = FontWeights.SemiBold,
-            Foreground = Brush(resourceRoot, "TextBrush"),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
             Margin = new Thickness(0, 16, 0, 8),
         };
         stack.Children.Add(followUpHeader);
@@ -859,7 +863,7 @@ internal static class DetailPanelRenderer
             Text = "Add your own question",
             FontSize = 11,
             Opacity = 0.55,
-            Foreground = Brush(resourceRoot, "TextBrush"),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
             Margin = new Thickness(0, 10, 0, 4),
         });
 
@@ -869,7 +873,7 @@ internal static class DetailPanelRenderer
             FontSize = 12,
             Padding = new Thickness(8, 6, 8, 6),
             Background = Brush(resourceRoot, "SurfaceBrush"),
-            Foreground = Brush(resourceRoot, "TextBrush"),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
             BorderBrush = Brush(resourceRoot, "BorderBrush"),
             BorderThickness = new Thickness(1),
         };
@@ -878,8 +882,8 @@ internal static class DetailPanelRenderer
             Content = "Add",
             Padding = new Thickness(12, 6, 12, 6),
             Margin = new Thickness(8, 0, 0, 0),
-            Background = Brush(resourceRoot, "AccentBrush"),
-            Foreground = Brushes.White,
+            Background = Brush(resourceRoot, "PrimaryBrush"),
+            Foreground = Brush(resourceRoot, "SurfaceBrush"),
             BorderThickness = new Thickness(0),
             Cursor = System.Windows.Input.Cursors.Hand,
         };
@@ -938,7 +942,7 @@ internal static class DetailPanelRenderer
             var originalContent = clickedButton.Content;
             clickedButton.Content = "Thinking…";
             explanationText.Text = "Generating answer…";
-            explanationText.Foreground = Brush(resourceRoot, "MutedBrush");
+            explanationText.Foreground = Brush(resourceRoot, "TextSecondaryBrush");
             explanationText.Visibility = Visibility.Visible;
 
             var activeSession = session;
@@ -957,7 +961,7 @@ internal static class DetailPanelRenderer
                 Application.Current.Dispatcher.BeginInvoke(() =>
                 {
                     explanationText.Text = answer;
-                    explanationText.Foreground = Brush(resourceRoot, "TextBrush");
+                    explanationText.Foreground = Brush(resourceRoot, "TextPrimaryBrush");
                     clickedButton.Content = originalContent;
                     generateBtn.IsEnabled = true;
                     isAsking = false;
@@ -979,7 +983,7 @@ internal static class DetailPanelRenderer
                     Padding = new Thickness(14, 8, 14, 8),
                     Margin = new Thickness(0, 4, 0, 0),
                     Background = Brush(resourceRoot, "SurfaceBrush"),
-                    Foreground = Brush(resourceRoot, "AccentBrush"),
+                    Foreground = Brush(resourceRoot, "PrimaryBrush"),
                     BorderBrush = Brush(resourceRoot, "BorderBrush"),
                     BorderThickness = new Thickness(1),
                     HorizontalAlignment = HorizontalAlignment.Left,
@@ -1036,7 +1040,7 @@ internal static class DetailPanelRenderer
                 Application.Current.Dispatcher.BeginInvoke(() =>
                 {
                     explanationText.Text = text;
-                    explanationText.Foreground = Brush(resourceRoot, "TextBrush");
+                    explanationText.Foreground = Brush(resourceRoot, "TextPrimaryBrush");
                     explanationText.Visibility = Visibility.Visible;
                     generateBtn.Content = "Regenerate";
                     generateBtn.IsEnabled = true;
@@ -1079,7 +1083,7 @@ internal static class DetailPanelRenderer
         host.Children.Add(new TextBlock
         {
             Text = message,
-            Foreground = host.TryFindResource("MutedBrush") as Brush ?? Brushes.Gray,
+            Foreground = host.TryFindResource("TextSecondaryBrush") as Brush ?? SystemColors.GrayTextBrush,
             FontStyle = FontStyles.Italic,
             TextWrapping = TextWrapping.Wrap,
             FontSize = 13,
@@ -1113,7 +1117,7 @@ internal static class DetailPanelRenderer
         var bullet = new TextBlock
         {
             Text = "•",
-            Foreground = Brush(resourceRoot, "AccentBrush"),
+            Foreground = Brush(resourceRoot, "PrimaryBrush"),
             Margin = new Thickness(0, 0, 8, 0),
             FontWeight = FontWeights.Bold,
             VerticalAlignment = VerticalAlignment.Top,
@@ -1124,7 +1128,7 @@ internal static class DetailPanelRenderer
         var body = new TextBlock
         {
             Text = text,
-            Foreground = Brush(resourceRoot, "TextBrush"),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
             TextWrapping = TextWrapping.Wrap,
             FontSize = 13,
         };
@@ -1152,22 +1156,28 @@ internal static class DetailPanelRenderer
         return new Border
         {
             Background = Brush(resourceRoot, "SurfaceBrush"),
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(18),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12),
             BorderBrush = Brush(resourceRoot, "BorderBrush"),
             BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Stretch,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                BlurRadius = 8,
+                Opacity = 0.15,
+                ShadowDepth = 2,
+            },
             Child = content,
         };
     }
 
-    private static void AddCardHeader(StackPanel stack, string title, FrameworkElement resourceRoot)
+    private static StackPanel AddCardHeader(StackPanel stack, string title, FrameworkElement resourceRoot)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
         row.Children.Add(new Ellipse
         {
             Width = 8, Height = 8,
-            Fill = Brush(resourceRoot, "AccentBrush"),
+            Fill = Brush(resourceRoot, "PrimaryBrush"),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 10, 0),
         });
@@ -1175,10 +1185,12 @@ internal static class DetailPanelRenderer
         {
             Text = title,
             FontSize = 14,
-            FontWeight = FontWeights.Bold,
-            Foreground = Brush(resourceRoot, "TextBrush"),
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
         });
         stack.Children.Add(row);
+        return row;
     }
 
     private static void AddSection(StackPanel host, string title, FrameworkElement resourceRoot)
@@ -1188,7 +1200,7 @@ internal static class DetailPanelRenderer
             Text = title,
             FontSize = 14,
             FontWeight = FontWeights.Bold,
-            Foreground = Brush(resourceRoot, "TextBrush"),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
             Margin = new Thickness(0, 20, 0, 0),
         });
         host.Children.Add(new Border
@@ -1206,7 +1218,7 @@ internal static class DetailPanelRenderer
             Text = text,
             FontSize = 10,
             FontWeight = FontWeights.SemiBold,
-            Foreground = Brush(resourceRoot, "MutedBrush"),
+            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
             Margin = new Thickness(0, marginTop, 0, 0),
         };
     }
@@ -1219,8 +1231,8 @@ internal static class DetailPanelRenderer
             Padding = new Thickness(16, 8, 16, 8),
             FontSize = 13,
             FontWeight = FontWeights.SemiBold,
-            Background = Brush(resourceRoot, "AccentBrush"),
-            Foreground = Brushes.White,
+            Background = Brush(resourceRoot, "PrimaryBrush"),
+            Foreground = Brush(resourceRoot, "SurfaceBrush"),
             BorderThickness = new Thickness(0),
             HorizontalAlignment = HorizontalAlignment.Left,
             Margin = new Thickness(0, marginTop, 0, 0),
@@ -1241,12 +1253,12 @@ internal static class DetailPanelRenderer
         var inner = new DockPanel { LastChildFill = true };
         var tagPill = new Border
         {
-            Background = Brush(resourceRoot, "AccentBrush"),
+            Background = Brush(resourceRoot, "PrimaryBrush"),
             CornerRadius = new CornerRadius(4),
             Padding = new Thickness(6, 2, 6, 2),
             Margin = new Thickness(10, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock { Text = tag, FontSize = 10, FontWeight = FontWeights.Bold, Foreground = Brushes.White },
+            Child = new TextBlock { Text = tag, FontSize = 10, FontWeight = FontWeights.Bold, Foreground = Brush(resourceRoot, "SurfaceBrush") },
         };
         DockPanel.SetDock(tagPill, Dock.Right);
         inner.Children.Add(tagPill);
@@ -1270,7 +1282,7 @@ internal static class DetailPanelRenderer
         {
             Text = $"Initial value: {initial}",
             FontSize = 11,
-            Foreground = Brush(resourceRoot, "MutedBrush"),
+            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
             Margin = new Thickness(0, 3, 0, 0),
             TextWrapping = TextWrapping.Wrap,
         });
@@ -1288,13 +1300,13 @@ internal static class DetailPanelRenderer
         var text = new TextBlock { TextWrapping = TextWrapping.Wrap };
         text.Inlines.Add(new Run(name)
         {
-            FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+            FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont"),
             FontWeight = FontWeights.SemiBold,
-            Foreground = Brush(resourceRoot, "TextBrush"),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
         });
         text.Inlines.Add(new Run($" ({type})")
         {
-            Foreground = Brush(resourceRoot, "MutedBrush"),
+            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
             FontSize = 12,
         });
         return text;
@@ -1321,8 +1333,8 @@ internal static class DetailPanelRenderer
         Grid.SetColumn(dot, 0);
 
         var namePanel = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-        namePanel.Inlines.Add(new Run(method.Name) { FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextBrush") });
-        namePanel.Inlines.Add(new Run($"  {method.ReturnType}") { Foreground = Brush(resourceRoot, "MutedBrush") });
+        namePanel.Inlines.Add(new Run(method.Name) { FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextPrimaryBrush") });
+        namePanel.Inlines.Add(new Run($"  {method.ReturnType}") { Foreground = Brush(resourceRoot, "TextSecondaryBrush") });
         Grid.SetColumn(namePanel, 1);
 
         var paramCount = CreateMutedText($"{method.Parameters.Count} param{(method.Parameters.Count == 1 ? "" : "s")}", resourceRoot);
@@ -1349,11 +1361,11 @@ internal static class DetailPanelRenderer
         var text = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 13 };
         text.Inlines.Add(new Run(property.Type)
         {
-            FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
-            Foreground = Brush(resourceRoot, "AccentBrush"),
+            FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont"),
+            Foreground = Brush(resourceRoot, "PrimaryBrush"),
         });
-        text.Inlines.Add(new Run($"  {property.Name}") { FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextBrush") });
-        text.Inlines.Add(new Run($"  ({property.AccessModifier})") { Foreground = Brush(resourceRoot, "MutedBrush") });
+        text.Inlines.Add(new Run($"  {property.Name}") { FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextPrimaryBrush") });
+        text.Inlines.Add(new Run($"  ({property.AccessModifier})") { Foreground = Brush(resourceRoot, "TextSecondaryBrush") });
         panel.Children.Add(text);
         row.Child = panel;
         return row;
@@ -1367,28 +1379,28 @@ internal static class DetailPanelRenderer
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(8, 3, 8, 3),
             Margin = new Thickness(0, 4, 6, 4),
-            Child = new TextBlock { Text = text, Foreground = Brush(resourceRoot, "AccentBrush"), FontSize = 11 },
+            Child = new TextBlock { Text = text, Foreground = Brush(resourceRoot, "PrimaryBrush"), FontSize = 11 },
         };
     }
 
     private static TextBlock CreateAccentTitle(string text, FrameworkElement resourceRoot, double fontSize = 20)
     {
-        return new TextBlock { Text = text, FontSize = fontSize, FontWeight = FontWeights.Bold, Foreground = Brush(resourceRoot, "AccentBrush"), VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+        return new TextBlock { Text = text, FontSize = fontSize, FontWeight = FontWeights.Bold, Foreground = Brush(resourceRoot, "PrimaryBrush"), VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
     }
 
     private static TextBlock CreateMutedText(string text, FrameworkElement resourceRoot, double marginTop = 0, double marginLeft = 0, double opacity = 0.55)
     {
-        return new TextBlock { Text = text, Foreground = Brush(resourceRoot, "TextBrush"), Opacity = opacity, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(marginLeft, marginTop, 0, 0) };
+        return new TextBlock { Text = text, Foreground = Brush(resourceRoot, "TextPrimaryBrush"), Opacity = opacity, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(marginLeft, marginTop, 0, 0) };
     }
 
     private static TextBlock CreateBodyText(string text, FrameworkElement resourceRoot, FontWeight? fontWeight = null, double marginTop = 0, double marginLeft = 0)
     {
-        return new TextBlock { Text = text, Foreground = Brush(resourceRoot, "TextBrush"), TextWrapping = TextWrapping.Wrap, FontWeight = fontWeight ?? FontWeights.Normal, Margin = new Thickness(marginLeft, marginTop, 0, 0), FontSize = 13 };
+        return new TextBlock { Text = text, Foreground = Brush(resourceRoot, "TextPrimaryBrush"), TextWrapping = TextWrapping.Wrap, FontWeight = fontWeight ?? FontWeights.Normal, Margin = new Thickness(marginLeft, marginTop, 0, 0), FontSize = 13 };
     }
 
     private static TextBlock CreateItalicPlaceholder(string text, FrameworkElement resourceRoot, double marginTop = 0)
     {
-        return new TextBlock { Text = text, Foreground = Brush(resourceRoot, "TextBrush"), Opacity = 0.55, FontStyle = FontStyles.Italic, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, marginTop, 0, 0), FontSize = 13 };
+        return new TextBlock { Text = text, Foreground = Brush(resourceRoot, "TextPrimaryBrush"), Opacity = 0.55, FontStyle = FontStyles.Italic, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, marginTop, 0, 0), FontSize = 13 };
     }
 
     private static UIElement CreateSummaryOrPlaceholder(string? summary, bool isMethod, FrameworkElement resourceRoot)
@@ -1405,7 +1417,7 @@ internal static class DetailPanelRenderer
     private static StackPanel CreateLabeledRow(string label, string value, FrameworkElement resourceRoot, double marginTop = 0)
     {
         var panel = new StackPanel { Margin = new Thickness(0, marginTop, 0, 0) };
-        var line = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Brush(resourceRoot, "TextBrush"), FontSize = 13 };
+        var line = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Brush(resourceRoot, "TextPrimaryBrush"), FontSize = 13 };
         line.Inlines.Add(new Run($"{label}: ") { FontWeight = FontWeights.SemiBold });
         line.Inlines.Add(new Run(value));
         panel.Children.Add(line);
@@ -1423,7 +1435,7 @@ internal static class DetailPanelRenderer
             BorderBrush = Brush(resourceRoot, "BorderBrush"),
             BorderThickness = new Thickness(1),
             VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock { Text = accessModifier, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextBrush") },
+            Child = new TextBlock { Text = accessModifier, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextPrimaryBrush") },
         };
     }
 
@@ -1438,29 +1450,41 @@ internal static class DetailPanelRenderer
             BorderBrush = Brush(resourceRoot, "BorderBrush"),
             BorderThickness = new Thickness(1),
             VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock { Text = text, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "AccentBrush") },
+            Child = new TextBlock { Text = text, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "PrimaryBrush") },
+        };
+    }
+
+    /// <summary>
+    /// Rounded badge pill per the design spec: C# = Secondary, C++ = Primary, AI = Warning
+    /// background, all with Surface text, 11px font, 4px vertical / 8px horizontal padding.
+    /// </summary>
+    internal static Border CreateBadge(string label, string backgroundKey, FrameworkElement resourceRoot, double marginLeft = 0)
+    {
+        return new Border
+        {
+            Margin = new Thickness(marginLeft, 0, 0, 0),
+            Padding = new Thickness(8, 4, 8, 4),
+            CornerRadius = new CornerRadius(10),
+            Background = Brush(resourceRoot, backgroundKey),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = label,
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brush(resourceRoot, "SurfaceBrush"),
+            },
         };
     }
 
     private static Border CreateSubtleLanguagePill(string text, FrameworkElement resourceRoot, double marginLeft = 0)
     {
-        return new Border
-        {
-            Margin = new Thickness(marginLeft, 0, 0, 0),
-            Padding = new Thickness(8, 2, 8, 2),
-            CornerRadius = new CornerRadius(8),
-            Background = Brush(resourceRoot, "SurfaceBrush"),
-            BorderBrush = Brush(resourceRoot, "BorderBrush"),
-            BorderThickness = new Thickness(1),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock
-            {
-                Text = text,
-                FontSize = 11,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = Brush(resourceRoot, "MutedBrush"),
-            },
-        };
+        var isCpp = text.Contains("C++", StringComparison.Ordinal);
+        return CreateBadge(
+            text.Trim('[', ']'),
+            isCpp ? "PrimaryBrush" : "SecondaryBrush",
+            resourceRoot,
+            marginLeft);
     }
 
     private static string? GetMethodLanguageBadge(MethodInfo method)
@@ -1499,15 +1523,19 @@ internal static class DetailPanelRenderer
         return "AI model not loaded. Place a .gguf model file in the models/ folder.";
     }
 
-    private static TextBlock CreateLanguageBadge(string text, FrameworkElement resourceRoot, double marginTop = 0)
+    private static Border CreateLanguageBadge(string text, FrameworkElement resourceRoot, double marginTop = 0)
     {
-        return new TextBlock { Text = text, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "AccentBrush"), Margin = new Thickness(0, marginTop, 0, 0) };
+        var isCpp = text.Contains("C++", StringComparison.Ordinal);
+        var badge = CreateBadge(text.Trim('[', ']'), isCpp ? "PrimaryBrush" : "SecondaryBrush", resourceRoot);
+        badge.Margin = new Thickness(0, marginTop, 0, 0);
+        badge.HorizontalAlignment = HorizontalAlignment.Left;
+        return badge;
     }
 
     private static Brush AccessBrush(string accessModifier, FrameworkElement resourceRoot) => accessModifier switch
     {
-        "public"    => Brush(resourceRoot, "AccentBrush"),
-        "protected" => Brush(resourceRoot, "AccentHoverBrush"),
+        "public"    => Brush(resourceRoot, "PrimaryBrush"),
+        "protected" => Brush(resourceRoot, "PrimaryHoverBrush"),
         _           => Brush(resourceRoot, "BorderBrush"),
     };
 
