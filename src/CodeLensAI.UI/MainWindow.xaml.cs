@@ -278,7 +278,9 @@ public partial class MainWindow : Window
 
         try
         {
-            var scanResult = await Task.Run(() => _scideEngine.AnalyzeProject(folderPath));
+            // Task.Run keeps the sequential post-parse work (relationships, graph, metrics) off
+            // the dispatcher; the parse itself fans out on worker threads inside the engine.
+            var scanResult = await Task.Run(() => _scideEngine.AnalyzeProjectAsync(folderPath));
 
             if (!scanResult.Success)
             {

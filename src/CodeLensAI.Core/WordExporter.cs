@@ -270,6 +270,12 @@ public static class WordExporter
     {
         onProgress?.Invoke($"Documenting {method.ParentClass?.Name}.{method.Name}…");
 
+        // One merged model call produces all five AI sections (instead of five sequential
+        // round-trips). Null when AI is off or the model isn't ready.
+        MethodAiDocumentation? aiDoc = includeAi && explanationService is { IsReady: true }
+            ? explanationService.GenerateMethodDocumentation(method)
+            : null;
+
         var signature = BuildSignature(method);
 
         document.InsertParagraph(signature)
@@ -291,9 +297,9 @@ public static class WordExporter
             document.InsertParagraph(method.XmlSummary)
                 .SpacingAfter(6d);
         }
-        else if (includeAi && explanationService is { IsReady: true })
+        else if (aiDoc is { } briefDoc)
         {
-            document.InsertParagraph(explanationService.GenerateBriefDescription(method))
+            document.InsertParagraph(briefDoc.Brief)
                 .SpacingAfter(6d);
         }
         else
@@ -398,16 +404,16 @@ public static class WordExporter
             WriteDeterministicAnalysisSection(document, cached);
         }
 
-        if (includeAi && explanationService is { IsReady: true })
+        if (aiDoc is { } sections)
         {
-            WriteBulletSection(document, "Pre & Post Conditions", explanationService.GeneratePrePostConditions(method));
-            WriteBulletSection(document, "Design Constraints", explanationService.GenerateDesignConstraints(method));
-            WriteBulletSection(document, "AI Error Analysis", explanationService.GenerateErrorAnalysis(method));
+            WriteBulletSection(document, "Pre & Post Conditions", sections.PrePostConditions);
+            WriteBulletSection(document, "Design Constraints", sections.DesignConstraints);
+            WriteBulletSection(document, "AI Error Analysis", sections.ErrorAnalysis);
 
             document.InsertParagraph("AI Explanation")
                 .Bold()
                 .SpacingAfter(4d);
-            document.InsertParagraph(explanationService.ExplainMethod(method))
+            document.InsertParagraph(sections.Explanation)
                 .SpacingAfter(12d);
         }
     }

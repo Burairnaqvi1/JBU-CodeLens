@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using CodeLensAI.Core;
 using CodeLensAI.Core.Analysis;
 
@@ -5,10 +6,11 @@ namespace CodeLensAI.Core.Structural;
 
 /// <summary>
 /// Single entry point for project-wide structural analysis (relationships, call graph, metrics,
-/// knowledge graph) layered on top of CodeLensAI's own parsers. Scans and parses each source file
-/// exactly once — the resulting <see cref="ParseResult"/>/<see cref="ClassInfo"/> trees back both
-/// the UI's file/class tree and the <see cref="ProjectIR"/> used for structural analysis, so a
-/// project scan no longer parses every file twice.
+/// knowledge graph) layered on top of CodeLensAI's own parsers. Files are parsed in parallel
+/// (bounded to half the logical cores, leaving headroom for the UI and LLM threads) and each
+/// file's <see cref="ParseResult"/> is cached across scans keyed on its last-write time, so a
+/// rescan only re-parses files that actually changed — which also preserves their cached
+/// deterministic analysis and AI descriptions.
 /// </summary>
 public sealed class ScideEngine
 {
@@ -20,7 +22,12 @@ public sealed class ScideEngine
     private readonly CallGraphBuilder _callGraphBuilder = new();
     private readonly MetricsCalculator _metricsCalculator = new();
 
-    public AnalysisResult AnalyzeProject(string path)
+    // Cross-scan parse cache keyed on file path; entries are valid while the file's last-write
+    // time is unchanged. Entries for files that leave the scanned set are evicted at scan end.
+    private readonly ConcurrentDictionary<string, (DateTime LastWriteUtc, ParseResult Result)> _parseCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    public async Task<AnalysisResult> AnalyzeProjectAsync(string path, CancellationToken cancellationToken = default)
     {
         var result = new AnalysisResult();
 
@@ -32,12 +39,32 @@ public sealed class ScideEngine
 
         try
         {
-            var filePaths = DirectoryScanner.ScanForSourceFiles(path).ToList();
+            var filePaths = DirectoryScanner.ScanForSourceFiles(path)
+                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToList();
             if (filePaths.Count == 0)
             {
                 result.Error = "No C# or C++ source files found";
                 return result;
             }
+
+            // Parse in parallel into an index-addressed array: no collection contention, and
+            // the deterministic file order survives regardless of task completion order.
+            var parsed = new ParseResult[filePaths.Count];
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2),
+                CancellationToken = cancellationToken,
+            };
+            await Parallel.ForEachAsync(
+                Enumerable.Range(0, filePaths.Count),
+                parallelOptions,
+                async (i, ct) =>
+                {
+                    parsed[i] = await ParseFileCachedAsync(filePaths[i], ct).ConfigureAwait(false);
+                }).ConfigureAwait(false);
+
+            EvictStaleCacheEntries(filePaths);
 
             var parseResults = new List<ParseResult>(filePaths.Count);
             var failedFiles = new List<string>();
@@ -46,11 +73,9 @@ public sealed class ScideEngine
             var classCount = 0;
             var methodCount = 0;
 
-            foreach (var filePath in filePaths.OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+            foreach (var parseResult in parsed)
             {
-                var parseResult = LanguageFileExtensions.IsCppFile(filePath)
-                    ? _cppParser.Parse(filePath)
-                    : _csharpParser.Parse(filePath);
+                var filePath = parseResult.FilePath;
 
                 if (parseResult.Errors.Count > 0)
                 {
@@ -65,7 +90,8 @@ public sealed class ScideEngine
                     foreach (var method in classInfo.Methods)
                     {
                         method.ParentClass = classInfo;
-                        method.CachedAnalysis = _inferenceEngine.Analyze(method);
+                        // ??= so cache-hit files keep their analysis instead of recomputing it.
+                        method.CachedAnalysis ??= _inferenceEngine.Analyze(method);
                         methodCount++;
                     }
 
@@ -136,6 +162,56 @@ public sealed class ScideEngine
         {
             result.Error = ex.Message;
             return result;
+        }
+    }
+
+    /// <summary>
+    /// Parses one file, or returns the cached result when the file's last-write time matches the
+    /// cached entry. Stat failures fall through to a plain parse (never cached with a bad stamp).
+    /// </summary>
+    private async Task<ParseResult> ParseFileCachedAsync(string filePath, CancellationToken cancellationToken)
+    {
+        DateTime lastWriteUtc;
+        try
+        {
+            lastWriteUtc = File.GetLastWriteTimeUtc(filePath);
+        }
+        catch
+        {
+            lastWriteUtc = DateTime.MinValue;
+        }
+
+        if (lastWriteUtc != DateTime.MinValue &&
+            _parseCache.TryGetValue(filePath, out var cached) &&
+            cached.LastWriteUtc == lastWriteUtc)
+        {
+            return cached.Result;
+        }
+
+        var parser = (ILanguageParser)(LanguageFileExtensions.IsCppFile(filePath) ? _cppParser : _csharpParser);
+        var parseResult = await parser.ParseAsync(filePath, cancellationToken).ConfigureAwait(false);
+
+        if (lastWriteUtc != DateTime.MinValue && parseResult.Errors.Count == 0)
+        {
+            _parseCache[filePath] = (lastWriteUtc, parseResult);
+        }
+
+        return parseResult;
+    }
+
+    /// <summary>
+    /// Drops cache entries for files that are no longer part of the scanned set, so switching
+    /// between projects doesn't accumulate stale parse trees.
+    /// </summary>
+    private void EvictStaleCacheEntries(List<string> currentFiles)
+    {
+        var current = new HashSet<string>(currentFiles, StringComparer.OrdinalIgnoreCase);
+        foreach (var key in _parseCache.Keys)
+        {
+            if (!current.Contains(key))
+            {
+                _parseCache.TryRemove(key, out _);
+            }
         }
     }
 

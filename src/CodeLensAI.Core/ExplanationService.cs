@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Text;
 using LLama;
 using LLama.Common;
@@ -11,12 +13,14 @@ namespace CodeLensAI.Core;
 /// </summary>
 /// <remarks>
 /// The model <em>weights</em> are loaded once in the constructor (this is the expensive step and
-/// holds significant native memory). Each individual inference then spins up a fresh
-/// <see cref="LLamaContext"/> and <see cref="InstructExecutor"/> and disposes them afterwards.
-/// Creating a context per call is deliberately chosen over sharing one long-lived context: a
-/// shared context accumulates KV-cache state between unrelated prompts, which both pollutes later
-/// outputs and eventually overflows the context window. Per-call contexts keep each explanation
-/// independent and predictable, while still paying the heavy model-load cost only once.
+/// holds significant native memory). A single <see cref="LLamaContext"/> is then kept for the
+/// service's lifetime and reused for every inference: its KV cache is cleared
+/// (<c>MemoryClear</c>) and a fresh executor is created before each call, so prompts stay fully
+/// isolated from each other without paying the context's KV/compute-buffer allocation
+/// (~360 MB native churn) on every call. All inference is serialized by a semaphore, which also
+/// guards the shared context. Successful results are cached per session keyed on
+/// (file path, method signature, file last-write time), so repeated requests for an unchanged
+/// method skip the model entirely.
 /// </remarks>
 public sealed class ExplanationService : IDisposable
 {
@@ -37,16 +41,36 @@ public sealed class ExplanationService : IDisposable
     private const string DefaultSystemPrompt =
         "You are a concise technical writer. Answer briefly and stay factual.";
 
+    private const int MaxInputTokens = 512;
+    private const int MaxTokensMergedDocumentation = 700;
+
     private readonly LLamaWeights? _weights;
     private readonly ModelParams? _modelParams;
     private readonly bool _usesPhiTemplate;
     private readonly bool _usesChatMlTemplate;
 
-    // Serializes all inference. Each call creates its own LLamaContext (a fresh KV-cache
-    // allocation) and uses ProcessorCount-1 threads; letting two calls overlap oversubscribes
-    // the CPU and spikes native memory, making both calls slower than running them in sequence.
+    // Serializes all inference and guards the shared context below. Inference uses
+    // ProcessorCount-1 threads; letting two calls overlap oversubscribes the CPU and spikes
+    // native memory, making both calls slower than running them in sequence.
     private readonly SemaphoreSlim _inferenceLock = new(1, 1);
+
+    // Created lazily on first inference (inside the lock) and reused for every call with its
+    // KV cache cleared between calls. Disposed with the service.
+    private LLamaContext? _context;
+
+    // Session-scoped inference results keyed on a stable hash of
+    // (operation, file path, file last-write time, method signature). Only clean model output
+    // is stored — bracketed error strings are never cached.
+    private readonly ConcurrentDictionary<string, string> _resultCache = new();
+
+    private int _inferenceCallCount;
     private bool _disposed;
+
+    /// <summary>
+    /// Number of actual model executions performed by this service instance. Cache hits do not
+    /// increment it, which lets callers verify the cache (a fully cached scan leaves it flat).
+    /// </summary>
+    public int InferenceCallCount => Volatile.Read(ref _inferenceCallCount);
 
     /// <summary>
     /// True when the model loaded successfully and inference can be attempted.
@@ -118,8 +142,11 @@ public sealed class ExplanationService : IDisposable
             return LoadError ?? "The explanation model is not available.";
         }
 
-        var prompt = BuildExplainMethodPrompt(methodInfo);
-        return TruncateProse(RunInstruction(prompt, MaxTokensExplanation), maxSentences: 3, maxWords: 80);
+        return RunCached("explain", methodInfo, () =>
+        {
+            var prompt = BuildExplainMethodPrompt(methodInfo);
+            return TruncateProse(RunInstruction(prompt, MaxTokensExplanation), maxSentences: 3, maxWords: 80);
+        });
     }
 
     /// <summary>
@@ -132,19 +159,22 @@ public sealed class ExplanationService : IDisposable
             return LoadError ?? "The explanation model is not available.";
         }
 
-        var source = GetMethodSourceSnippet(methodInfo, MaxSourceSnippetBrief);
-        var userPrompt =
-            $"Method: {methodInfo.Name}, Returns: {methodInfo.ReturnType}, " +
-            $"Params: {string.Join(", ", methodInfo.Parameters)}, Source: {source}";
-
-        var systemPrompt = "Write one sentence describing what this C++ or C# method does.";
-        var languageSuffix = GetLanguageSystemSuffix(methodInfo);
-        if (!string.IsNullOrEmpty(languageSuffix))
+        return RunCached("brief", methodInfo, () =>
         {
-            systemPrompt += " " + languageSuffix;
-        }
+            var source = GetMethodSourceSnippet(methodInfo, MaxSourceSnippetBrief);
+            var userPrompt =
+                $"Method: {methodInfo.Name}, Returns: {methodInfo.ReturnType}, " +
+                $"Params: {string.Join(", ", methodInfo.Parameters)}, Source: {source}";
 
-        return TruncateProse(RunInstruction(userPrompt, MaxTokensBrief, systemPrompt), maxSentences: 1, maxWords: 35);
+            var systemPrompt = "Write one sentence describing what this C++ or C# method does.";
+            var languageSuffix = GetLanguageSystemSuffix(methodInfo);
+            if (!string.IsNullOrEmpty(languageSuffix))
+            {
+                systemPrompt += " " + languageSuffix;
+            }
+
+            return TruncateProse(RunInstruction(userPrompt, MaxTokensBrief, systemPrompt), maxSentences: 1, maxWords: 35);
+        });
     }
 
     /// <summary>
@@ -177,11 +207,14 @@ public sealed class ExplanationService : IDisposable
             return LoadError ?? "The explanation model is not available.";
         }
 
-        var prompt = BuildBulletPrompt(
-            "List pre-conditions then post-conditions. Max 3 bullets per section. Format each line as '- text'.",
-            DescribeMethodCompact(methodInfo),
-            methodInfo);
-        return TruncateBullets(RunInstruction(prompt, MaxTokensBullets), maxBullets: 6, maxWordsPerBullet: 14);
+        return RunCached("prepost", methodInfo, () =>
+        {
+            var prompt = BuildBulletPrompt(
+                "List pre-conditions then post-conditions. Max 3 bullets per section. Format each line as '- text'.",
+                DescribeMethodCompact(methodInfo),
+                methodInfo);
+            return TruncateBullets(RunInstruction(prompt, MaxTokensBullets), maxBullets: 6, maxWordsPerBullet: 14);
+        });
     }
 
     /// <summary>
@@ -194,11 +227,14 @@ public sealed class ExplanationService : IDisposable
             return LoadError ?? "The explanation model is not available.";
         }
 
-        var prompt = BuildBulletPrompt(
-            "List up to 4 design constraints as '- ' bullets. Cover state, dependencies, and side effects only when relevant.",
-            DescribeMethodCompact(methodInfo),
-            methodInfo);
-        return TruncateBullets(RunInstruction(prompt, MaxTokensBullets), maxBullets: 4, maxWordsPerBullet: 14);
+        return RunCached("design", methodInfo, () =>
+        {
+            var prompt = BuildBulletPrompt(
+                "List up to 4 design constraints as '- ' bullets. Cover state, dependencies, and side effects only when relevant.",
+                DescribeMethodCompact(methodInfo),
+                methodInfo);
+            return TruncateBullets(RunInstruction(prompt, MaxTokensBullets), maxBullets: 4, maxWordsPerBullet: 14);
+        });
     }
 
     /// <summary>
@@ -211,13 +247,173 @@ public sealed class ExplanationService : IDisposable
             return LoadError ?? "The explanation model is not available.";
         }
 
-        var prompt = BuildBulletPrompt(
-            "Only identify errors actually possible given the source code. " +
-            "Do not list generic errors unrelated to this method. " +
-            "If the method is simple with no error conditions, say so. Max 4 '- ' bullets.",
-            DescribeMethodCompact(methodInfo),
-            methodInfo);
-        return TruncateBullets(RunInstruction(prompt, MaxTokensErrors), maxBullets: 4, maxWordsPerBullet: 16);
+        return RunCached("errors", methodInfo, () =>
+        {
+            var prompt = BuildBulletPrompt(
+                "Only identify errors actually possible given the source code. " +
+                "Do not list generic errors unrelated to this method. " +
+                "If the method is simple with no error conditions, say so. Max 4 '- ' bullets.",
+                DescribeMethodCompact(methodInfo),
+                methodInfo);
+            return TruncateBullets(RunInstruction(prompt, MaxTokensErrors), maxBullets: 4, maxWordsPerBullet: 16);
+        });
+    }
+
+    /// <summary>
+    /// Generates all five AI documentation sections for a method in a <b>single</b> model call
+    /// with a structured output format, then splits the response. Replaces five sequential
+    /// inference round-trips in bulk paths (Word export). Sections that come back empty fall
+    /// back to their individual single-section calls. Results are cached under the same keys
+    /// the individual methods use, so a later single-section request is a cache hit.
+    /// </summary>
+    public MethodAiDocumentation GenerateMethodDocumentation(MethodInfo methodInfo)
+    {
+        if (!IsReady)
+        {
+            var unavailable = LoadError ?? "The explanation model is not available.";
+            return new MethodAiDocumentation(unavailable, unavailable, unavailable, unavailable, unavailable);
+        }
+
+        // Fast path: everything already cached from earlier UI interactions or a prior export.
+        if (TryGetCachedDocumentation(methodInfo, out var cached))
+        {
+            return cached;
+        }
+
+        var instruction = BuildMergedDocumentationPrompt(methodInfo);
+        var response = RunInstruction(instruction, MaxTokensMergedDocumentation,
+            "You are a concise technical writer. Fill in every requested section, keeping the exact '### ' headers. Stay factual.");
+
+        var sections = SplitSections(response);
+
+        var brief = PostProcessSection(sections, "BRIEF",
+            raw => TruncateProse(raw, maxSentences: 1, maxWords: 35),
+            () => GenerateBriefDescription(methodInfo));
+        var prePost = PostProcessSection(sections, "CONDITIONS",
+            raw => TruncateBullets(raw, maxBullets: 6, maxWordsPerBullet: 14),
+            () => GeneratePrePostConditions(methodInfo));
+        var design = PostProcessSection(sections, "DESIGN",
+            raw => TruncateBullets(raw, maxBullets: 4, maxWordsPerBullet: 14),
+            () => GenerateDesignConstraints(methodInfo));
+        var errors = PostProcessSection(sections, "ERRORS",
+            raw => TruncateBullets(raw, maxBullets: 4, maxWordsPerBullet: 16),
+            () => GenerateErrorAnalysis(methodInfo));
+        var explanation = PostProcessSection(sections, "EXPLANATION",
+            raw => TruncateProse(raw, maxSentences: 3, maxWords: 80),
+            () => ExplainMethod(methodInfo));
+
+        CacheSection("brief", methodInfo, brief);
+        CacheSection("prepost", methodInfo, prePost);
+        CacheSection("design", methodInfo, design);
+        CacheSection("errors", methodInfo, errors);
+        CacheSection("explain", methodInfo, explanation);
+
+        return new MethodAiDocumentation(brief, prePost, design, errors, explanation);
+    }
+
+    private bool TryGetCachedDocumentation(MethodInfo methodInfo, out MethodAiDocumentation documentation)
+    {
+        documentation = default!;
+        if (_resultCache.TryGetValue(BuildCacheKey("brief", methodInfo), out var brief) &&
+            _resultCache.TryGetValue(BuildCacheKey("prepost", methodInfo), out var prePost) &&
+            _resultCache.TryGetValue(BuildCacheKey("design", methodInfo), out var design) &&
+            _resultCache.TryGetValue(BuildCacheKey("errors", methodInfo), out var errors) &&
+            _resultCache.TryGetValue(BuildCacheKey("explain", methodInfo), out var explanation))
+        {
+            documentation = new MethodAiDocumentation(brief, prePost, design, errors, explanation);
+            return true;
+        }
+
+        return false;
+    }
+
+    private void CacheSection(string operation, MethodInfo methodInfo, string value)
+    {
+        if (IsCleanOutput(value))
+        {
+            _resultCache[BuildCacheKey(operation, methodInfo)] = value;
+        }
+    }
+
+    private static string BuildMergedDocumentationPrompt(MethodInfo methodInfo)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Document this method in five sections. Output exactly these '### ' headers in this order, each followed by its content:");
+        builder.AppendLine("### BRIEF");
+        builder.AppendLine("One sentence describing what the method does.");
+        builder.AppendLine("### CONDITIONS");
+        builder.AppendLine("Up to 3 precondition then up to 3 postcondition '- ' bullets.");
+        builder.AppendLine("### DESIGN");
+        builder.AppendLine("Up to 4 design-constraint '- ' bullets covering state, dependencies, side effects.");
+        builder.AppendLine("### ERRORS");
+        builder.AppendLine("Up to 4 '- ' bullets for errors actually possible in the source; say so if none.");
+        builder.AppendLine("### EXPLANATION");
+        builder.AppendLine("2-3 sentences summarizing what the method does and what it returns.");
+
+        var languageSuffix = GetLanguageSystemSuffix(methodInfo);
+        if (!string.IsNullOrEmpty(languageSuffix))
+        {
+            builder.AppendLine(languageSuffix);
+        }
+
+        builder.AppendLine();
+        builder.Append(DescribeMethodCompact(methodInfo));
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// Splits a merged response into a name→content map on its <c>### NAME</c> headers.
+    /// Tolerates missing sections and extra whitespace; matching is case-insensitive.
+    /// </summary>
+    private static Dictionary<string, string> SplitSections(string response)
+    {
+        var sections = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string? current = null;
+        var content = new StringBuilder();
+
+        foreach (var line in response.Split('\n'))
+        {
+            var trimmed = line.TrimEnd('\r').Trim();
+            if (trimmed.StartsWith("###", StringComparison.Ordinal))
+            {
+                if (current is not null)
+                {
+                    sections[current] = content.ToString().Trim();
+                }
+
+                current = trimmed.TrimStart('#', ' ').Trim().ToUpperInvariant();
+                content.Clear();
+            }
+            else if (current is not null)
+            {
+                content.AppendLine(trimmed);
+            }
+        }
+
+        if (current is not null)
+        {
+            sections[current] = content.ToString().Trim();
+        }
+
+        return sections;
+    }
+
+    private static string PostProcessSection(
+        Dictionary<string, string> sections,
+        string name,
+        Func<string, string> shape,
+        Func<string> fallback)
+    {
+        if (sections.TryGetValue(name, out var raw) && !string.IsNullOrWhiteSpace(raw))
+        {
+            var shaped = shape(raw);
+            if (IsCleanOutput(shaped))
+            {
+                return shaped;
+            }
+        }
+
+        return fallback();
     }
 
     /// <summary>
@@ -274,10 +470,77 @@ public sealed class ExplanationService : IDisposable
         }
     }
 
+    // ── Session result cache ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Runs <paramref name="run"/> unless an identical request (same operation, same method,
+    /// unchanged source file) already succeeded this session, in which case the cached result is
+    /// returned without touching the model. Only clean output is cached — bracketed
+    /// error/unavailable strings are not, so the model gets retried once it becomes usable.
+    /// </summary>
+    private string RunCached(string operation, MethodInfo methodInfo, Func<string> run)
+    {
+        var key = BuildCacheKey(operation, methodInfo);
+        if (_resultCache.TryGetValue(key, out var hit))
+        {
+            return hit;
+        }
+
+        var result = run();
+        if (IsCleanOutput(result))
+        {
+            _resultCache[key] = result;
+        }
+
+        return result;
+    }
+
+    private static string BuildCacheKey(string operation, MethodInfo methodInfo)
+    {
+        var path = methodInfo.ParentClass?.SourceFilePath ?? string.Empty;
+        long lastWriteTicks = 0;
+        try
+        {
+            if (path.Length > 0 && File.Exists(path))
+            {
+                lastWriteTicks = File.GetLastWriteTimeUtc(path).Ticks;
+            }
+        }
+        catch
+        {
+            // A failed stat just weakens the key to (path, signature); still session-safe.
+        }
+
+        var signature =
+            $"{methodInfo.ParentClass?.Name}|{methodInfo.ReturnType} {methodInfo.Name}({string.Join(",", methodInfo.Parameters)})";
+        var material = $"{operation}|{path}|{lastWriteTicks}|{signature}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
+    }
+
+    private static bool IsCleanOutput(string result) =>
+        !string.IsNullOrWhiteSpace(result) && !result.StartsWith('[');
+
     private async Task<string> RunInstructionLockedAsync(string instruction, int maxTokens, string systemPrompt)
     {
-        // Fresh context + executor per call; disposed promptly to release native memory.
-        using var context = _weights!.CreateContext(_modelParams!);
+        Interlocked.Increment(ref _inferenceCallCount);
+
+        // One context for the service lifetime; KV cache cleared per call so prompts stay
+        // isolated without re-allocating the context's native buffers every time.
+        var context = _context ??= _weights!.CreateContext(_modelParams!);
+        context.NativeHandle.MemoryClear(true);
+
+        // Hard input budget: prompts are structurally small (~100-200 tokens), but a method
+        // with a pathological signature/doc could exceed it. Trim from the end of the
+        // instruction (the source snippet lives there) rather than failing.
+        var promptTokens = context.Tokenize(systemPrompt + "\n" + instruction, addBos: false, special: true).Length;
+        if (promptTokens > MaxInputTokens)
+        {
+            var keep = Math.Max(64, (int)(instruction.Length * ((double)MaxInputTokens / promptTokens)) - 32);
+            if (keep < instruction.Length)
+            {
+                instruction = instruction[..keep] + "…";
+            }
+        }
 
         var inferenceParams = new InferenceParams
         {
@@ -571,6 +834,7 @@ public sealed class ExplanationService : IDisposable
             return;
         }
 
+        _context?.Dispose();
         _weights?.Dispose();
         _inferenceLock.Dispose();
         _disposed = true;

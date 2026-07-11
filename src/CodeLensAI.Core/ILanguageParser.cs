@@ -16,6 +16,14 @@ public interface ILanguageParser
     /// <param name="filePath">Absolute or relative path to the source file to parse.</param>
     /// <returns>A <see cref="ParseResult"/> describing the file's classes and any errors.</returns>
     ParseResult Parse(string filePath);
+
+    /// <summary>
+    /// Asynchronous variant of <see cref="Parse"/>: the file read is awaited
+    /// (<see cref="File.ReadAllTextAsync(string, CancellationToken)"/>) while the CPU-bound
+    /// parse itself runs synchronously on the calling (worker) thread. Same error contract
+    /// as <see cref="Parse"/>.
+    /// </summary>
+    Task<ParseResult> ParseAsync(string filePath, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

@@ -124,32 +124,77 @@ public class CppParser : ILanguageParser
 
     public ParseResult Parse(string filePath)
     {
+        if (!TryValidatePath(filePath, out var invalid))
+        {
+            return invalid;
+        }
+
+        string fileContent;
+        try
+        {
+            fileContent = File.ReadAllText(filePath);
+        }
+        catch
+        {
+            // Parsing can still proceed with an empty buffer for source extraction.
+            fileContent = string.Empty;
+        }
+
+        return ParseWithClang(filePath, fileContent);
+    }
+
+    /// <inheritdoc />
+    public async Task<ParseResult> ParseAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        if (!TryValidatePath(filePath, out var invalid))
+        {
+            return invalid;
+        }
+
+        string fileContent;
+        try
+        {
+            fileContent = await File.ReadAllTextAsync(filePath, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            fileContent = string.Empty;
+        }
+
+        // libclang re-reads the file from disk itself; the managed buffer is only used for
+        // source-text extraction. The native parse is CPU-bound and stays on this worker thread.
+        return ParseWithClang(filePath, fileContent);
+    }
+
+    private static bool TryValidatePath(string filePath, out ParseResult invalid)
+    {
+        invalid = new ParseResult { FilePath = filePath };
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            invalid.Errors.Add("File path is empty.");
+            return false;
+        }
+
+        if (!File.Exists(filePath))
+        {
+            invalid.Errors.Add($"File not found: {filePath}");
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Runs the actual libclang parse. One <c>CXIndex</c> and one <c>CXTranslationUnit</c> are
+    /// created per file and disposed when done; the per-file index is what makes concurrent
+    /// parsing of different files safe (libclang is thread-safe across separate indexes).
+    /// </summary>
+    private static ParseResult ParseWithClang(string filePath, string fileContent)
+    {
         var result = new ParseResult { FilePath = filePath };
 
         try
         {
-            if (string.IsNullOrWhiteSpace(filePath))
-            {
-                result.Errors.Add("File path is empty.");
-                return result;
-            }
-
-            if (!File.Exists(filePath))
-            {
-                result.Errors.Add($"File not found: {filePath}");
-                return result;
-            }
-
-            var fileContent = string.Empty;
-            try
-            {
-                fileContent = File.ReadAllText(filePath);
-            }
-            catch
-            {
-                // Parsing can still proceed with an empty buffer for source extraction.
-            }
-
             var index = clang_createIndex(0, 0);
             if (index == IntPtr.Zero)
             {
