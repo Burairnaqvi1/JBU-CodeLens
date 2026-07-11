@@ -97,7 +97,7 @@ public sealed class ExplanationService : IExplanationService
     public ExplanationService(string modelPath)
     {
         ModelPath = modelPath;
-        var fileName = Path.GetFileName(modelPath);
+        var fileName = Path.GetFileName(modelPath) ?? string.Empty;
         _usesPhiTemplate = fileName.Contains("phi", StringComparison.OrdinalIgnoreCase);
         _usesChatMlTemplate = fileName.Contains("qwen", StringComparison.OrdinalIgnoreCase);
 
@@ -434,18 +434,12 @@ public sealed class ExplanationService : IExplanationService
     internal string RunInstruction(string instruction, int maxTokens) =>
         RunInstruction(instruction, maxTokens, DefaultSystemPrompt);
 
-    // TEMP-PERF: observer used by the perf harness to capture exact prompt text for token
-    // counting. Fires as (systemPrompt, instruction). Removed after the perf audit.
-    internal static event Action<string, string>? PromptIssued;
-
     internal string RunInstruction(string instruction, int maxTokens, string systemPrompt)
     {
         if (!IsReady || _weights is null || _modelParams is null)
         {
             return LoadError ?? "The explanation model is not available.";
         }
-
-        PromptIssued?.Invoke(systemPrompt, instruction);
 
         try
         {

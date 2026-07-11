@@ -9,11 +9,11 @@ of the audit.
 
 | Area | Change | Before | After | After (Section 5) |
 |---|---|---:|---:|---:|
-| SCIDE | Parallel file parsing (`Parallel.ForEachAsync`, DOP = `ProcessorCount / 2` = 4), index-addressed result array (no collection contention, deterministic order) | mixed project scan 1,998 ms | **1,104 ms** (1.8×) | |
-| SCIDE | Cross-scan parse cache keyed (path, last-write-time); evicted for files that leave the set; unchanged files also keep `CachedAnalysis` (`??=`) | rescan = full cost (299 ms C#, 1,998 ms mixed) | **3 ms / 1 ms** (≥300×) | |
-| Roslyn | Single-pass `DescendantNodes()` walk per method (was 8 separate walks: calls, complexity, throws ×2, locals ×2, limits ×2) | 28 ms / 50 files (warm) | 45-60 ms / 50 files (warm) — see note 1 | |
+| SCIDE | Parallel file parsing (`Parallel.ForEachAsync`, DOP = `ProcessorCount / 2` = 4), index-addressed result array (no collection contention, deterministic order) | mixed project scan 1,998 ms | **1,104 ms** (1.8×) | 1,353 ms (cold) |
+| SCIDE | Cross-scan parse cache keyed (path, last-write-time); evicted for files that leave the set; unchanged files also keep `CachedAnalysis` (`??=`) | rescan = full cost (299 ms C#, 1,998 ms mixed) | **3 ms / 1 ms** (≥300×) | 2 ms / 1 ms |
+| Roslyn | Single-pass `DescendantNodes()` walk per method (was 8 separate walks: calls, complexity, throws ×2, locals ×2, limits ×2) | 28 ms / 50 files (warm) | 45-60 ms / 50 files (warm) — see note 1 | 44-47 ms |
 | Roslyn/Clang | `ParseAsync` with `File.ReadAllTextAsync` + `ConfigureAwait(false)` throughout Core; shared sync parse core (no sync-over-async) | sync I/O | async I/O | |
-| AI | Session inference-result cache (`ConcurrentDictionary`, SHA-256 of op + path + last-write + signature); only clean output cached | repeat brief = 3,647 ms (full inference) | **0 ms, 0 model calls** | |
+| AI | Session inference-result cache (`ConcurrentDictionary`, SHA-256 of op + path + last-write + signature); only clean output cached | repeat brief = 3,647 ms (full inference) | **0 ms, 0 model calls** | 0 new calls across rescan + regenerate (verified via `InferenceCallCount`) |
 | AI | Merged 5-in-1 documentation call (`GenerateMethodDocumentation`, structured `###` sections, per-section fallback) used by Word export | 5 calls ≈ 31 s/method | **1 call = 12.1 s/method** (2.6×) | |
 | AI | Persistent `LLamaContext` for the service lifetime with `MemoryClear()` per call (was: create + dispose a 56 MB KV + 302 MB compute context per call) | context construction per call | one construction per session; outputs verified coherent | |
 | AI | Hard 512-token input budget enforced by tokenizing each prompt (trims source snippet tail if exceeded) | char-limit only (measured 103-186 tok) | enforced ceiling | |

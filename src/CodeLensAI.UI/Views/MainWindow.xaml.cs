@@ -88,14 +88,6 @@ public partial class MainWindow : Window
         StatusBarText.Text = _explanationService.IsReady
             ? $"AI model ready — {Path.GetFileName(_explanationService.ModelPath)}"
             : "Model not found — AI features disabled";
-
-        // TEMP-UITEST: auto-scan hook for automated UI verification. Remove before ship.
-        var autoScan = Environment.GetEnvironmentVariable("CODELENS_AUTOSCAN");
-        if (!string.IsNullOrEmpty(autoScan) && Directory.Exists(autoScan))
-        {
-            SelectedFolderPath = autoScan;
-            ScanProject();
-        }
     }
 
     /// <summary>
