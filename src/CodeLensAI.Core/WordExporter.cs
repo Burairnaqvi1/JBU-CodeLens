@@ -1,3 +1,5 @@
+using CodeLensAI.Core;
+using CodeLensAI.Core.Analysis;
 using Xceed.Document.NET;
 using Xceed.Words.NET;
 
@@ -14,7 +16,17 @@ public static class WordExporter
     /// <summary>
     /// Writes a complete project documentation document to <paramref name="outputPath"/>.
     /// </summary>
-    public static void Export(string outputPath, string projectFolderPath, List<ParseResult> parseResults)
+    /// <param name="explanationService">Optional local AI service used when <paramref name="includeAi"/> is true.</param>
+    /// <param name="includeAi">When true, runs AI inference per method to enrich the document.</param>
+    /// <param name="onProgress">Optional callback for export progress messages.</param>
+    public static void Export(
+        string outputPath,
+        string projectFolderPath,
+        List<ParseResult> parseResults,
+        ExplanationService? explanationService = null,
+        bool includeAi = false,
+        Action<string>? onProgress = null,
+        ProjectMetricsSnapshot? metrics = null)
     {
         var projectName = Path.GetFileName(
             projectFolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
@@ -24,22 +36,31 @@ public static class WordExporter
         document.AddFooters();
         document.Footers.Odd.PageNumbers = true;
 
-        WriteCoverPage(document, projectName, parseResults);
+        onProgress?.Invoke("Writing cover page…");
+        WriteCoverPage(document, projectName, parseResults, includeAi, metrics);
         document.InsertParagraph().InsertPageBreakAfterSelf();
 
+        onProgress?.Invoke("Writing table of contents…");
         WriteTableOfContents(document, parseResults);
         document.InsertParagraph().InsertPageBreakAfterSelf();
 
         var isFirstClassInDocument = true;
         foreach (var parseResult in parseResults)
         {
-            WriteFileSection(document, parseResult, ref isFirstClassInDocument);
+            onProgress?.Invoke($"Documenting {Path.GetFileName(parseResult.FilePath)}…");
+            WriteFileSection(document, parseResult, ref isFirstClassInDocument, explanationService, includeAi, onProgress);
         }
 
+        onProgress?.Invoke("Saving document…");
         document.Save();
     }
 
-    private static void WriteCoverPage(DocX document, string projectName, List<ParseResult> parseResults)
+    private static void WriteCoverPage(
+        DocX document,
+        string projectName,
+        List<ParseResult> parseResults,
+        bool includeAi,
+        ProjectMetricsSnapshot? metrics)
     {
         document.InsertParagraph(projectName)
             .FontSize(28)
@@ -52,6 +73,11 @@ public static class WordExporter
 
         document.InsertParagraph($"Generated on {DateTime.Now:MMMM d, yyyy 'at' h:mm tt}")
             .FontSize(11)
+            .SpacingAfter(8d);
+
+        document.InsertParagraph(includeAi ? "Includes AI-generated analysis" : "Parser metadata only (AI skipped)")
+            .FontSize(11)
+            .Italic()
             .SpacingAfter(24d);
 
         var stats = ComputeStats(parseResults);
@@ -66,6 +92,22 @@ public static class WordExporter
             .SpacingAfter(4d);
         document.InsertParagraph($"Functions found: {stats.MethodCount}")
             .SpacingAfter(16d);
+
+        if (metrics is not null)
+        {
+            document.InsertParagraph("SCIDE Project Metrics")
+                .Heading(HeadingType.Heading2)
+                .SpacingAfter(8d);
+
+            document.InsertParagraph($"Namespaces: {metrics.TotalNamespaces}")
+                .SpacingAfter(4d);
+            document.InsertParagraph($"Relationships: {metrics.TotalRelationships}")
+                .SpacingAfter(4d);
+            document.InsertParagraph($"Maintainability index: {metrics.MaintainabilityIndex:F0}")
+                .SpacingAfter(4d);
+            document.InsertParagraph($"Average complexity: {metrics.AverageComplexity:F2} (max {metrics.MaxComplexity})")
+                .SpacingAfter(16d);
+        }
 
         document.InsertParagraph("Class Breakdown by Category")
             .Heading(HeadingType.Heading2)
@@ -96,13 +138,14 @@ public static class WordExporter
         foreach (var parseResult in parseResults)
         {
             var fileName = Path.GetFileName(parseResult.FilePath);
-            document.InsertParagraph(fileName)
+            var languageTag = LanguageFileExtensions.IsCppFile(parseResult.FilePath) ? "[C++]" : "[C#]";
+            document.InsertParagraph($"{fileName} {languageTag}")
                 .Bold()
                 .SpacingAfter(2d);
 
-            if (IsCppFile(parseResult.FilePath))
+            if (parseResult.Errors.Count > 0)
             {
-                document.InsertParagraph("    (C++ — parsing not yet implemented)")
+                document.InsertParagraph($"    (parse error: {parseResult.Errors[0]})")
                     .Italic()
                     .SpacingAfter(6d);
                 continue;
@@ -126,10 +169,16 @@ public static class WordExporter
         }
     }
 
-    private static void WriteFileSection(DocX document, ParseResult parseResult, ref bool isFirstClassInDocument)
+    private static void WriteFileSection(
+        DocX document,
+        ParseResult parseResult,
+        ref bool isFirstClassInDocument,
+        ExplanationService? explanationService,
+        bool includeAi,
+        Action<string>? onProgress)
     {
         var fileName = Path.GetFileName(parseResult.FilePath);
-        var isCpp = IsCppFile(parseResult.FilePath);
+        var isCpp = LanguageFileExtensions.IsCppFile(parseResult.FilePath);
 
         document.InsertParagraph(fileName)
             .Heading(HeadingType.Heading1)
@@ -140,17 +189,17 @@ public static class WordExporter
             .Bold()
             .SpacingAfter(8d);
 
-        if (isCpp)
+        if (parseResult.Errors.Count > 0)
         {
-            document.InsertParagraph("C++ parsing not yet implemented.")
-                .Italic()
+            document.InsertParagraph($"Parse error: {string.Join("; ", parseResult.Errors)}")
                 .SpacingAfter(16d);
             return;
         }
 
-        if (parseResult.Errors.Count > 0)
+        if (parseResult.Classes.Count == 0)
         {
-            document.InsertParagraph($"Parse error: {string.Join("; ", parseResult.Errors)}")
+            document.InsertParagraph("(no classes found in this file)")
+                .Italic()
                 .SpacingAfter(16d);
             return;
         }
@@ -163,11 +212,16 @@ public static class WordExporter
             }
 
             isFirstClassInDocument = false;
-            WriteClassSection(document, parseResult.Classes[i]);
+            WriteClassSection(document, parseResult.Classes[i], explanationService, includeAi, onProgress);
         }
     }
 
-    private static void WriteClassSection(DocX document, ClassInfo classInfo)
+    private static void WriteClassSection(
+        DocX document,
+        ClassInfo classInfo,
+        ExplanationService? explanationService,
+        bool includeAi,
+        Action<string>? onProgress)
     {
         document.InsertParagraph(classInfo.Name)
             .Heading(HeadingType.Heading2)
@@ -203,12 +257,19 @@ public static class WordExporter
 
         foreach (var method in classInfo.Methods)
         {
-            WriteMethodSection(document, method);
+            WriteMethodSection(document, method, explanationService, includeAi, onProgress);
         }
     }
 
-    private static void WriteMethodSection(DocX document, MethodInfo method)
+    private static void WriteMethodSection(
+        DocX document,
+        MethodInfo method,
+        ExplanationService? explanationService,
+        bool includeAi,
+        Action<string>? onProgress)
     {
+        onProgress?.Invoke($"Documenting {method.ParentClass?.Name}.{method.Name}…");
+
         var signature = BuildSignature(method);
 
         document.InsertParagraph(signature)
@@ -220,6 +281,27 @@ public static class WordExporter
 
         document.InsertParagraph($"Access: {method.AccessModifier}")
             .SpacingAfter(6d);
+
+        document.InsertParagraph("Description")
+            .Bold()
+            .SpacingAfter(4d);
+
+        if (!string.IsNullOrWhiteSpace(method.XmlSummary))
+        {
+            document.InsertParagraph(method.XmlSummary)
+                .SpacingAfter(6d);
+        }
+        else if (includeAi && explanationService is { IsReady: true })
+        {
+            document.InsertParagraph(explanationService.GenerateBriefDescription(method))
+                .SpacingAfter(6d);
+        }
+        else
+        {
+            document.InsertParagraph("No description available.")
+                .Italic()
+                .SpacingAfter(6d);
+        }
 
         document.InsertParagraph("Parameters")
             .Bold()
@@ -245,6 +327,12 @@ public static class WordExporter
                     document.InsertParagraph(paramDoc)
                         .SpacingAfter(4d);
                 }
+                else
+                {
+                    document.InsertParagraph("No description available.")
+                        .Italic()
+                        .SpacingAfter(4d);
+                }
             }
 
             document.InsertParagraph(string.Empty).SpacingAfter(4d);
@@ -263,6 +351,12 @@ public static class WordExporter
             document.InsertParagraph(returnsDoc)
                 .SpacingAfter(6d);
         }
+        else if (!string.Equals(method.ReturnType, "void", StringComparison.OrdinalIgnoreCase))
+        {
+            document.InsertParagraph("No return description available.")
+                .Italic()
+                .SpacingAfter(6d);
+        }
         else
         {
             document.InsertParagraph(string.Empty).SpacingAfter(6d);
@@ -272,29 +366,128 @@ public static class WordExporter
             .Bold()
             .SpacingAfter(4d);
 
-        if (method.ThrownExceptions.Count > 0)
+        var hasOrganicErrors = false;
+        foreach (var exception in method.ThrownExceptions)
         {
-            foreach (var exception in method.ThrownExceptions)
-            {
-                document.InsertParagraph($"• {exception}")
-                    .SpacingAfter(2d);
-            }
+            hasOrganicErrors = true;
+            var doc = FindExceptionDescription(method, exception);
+            document.InsertParagraph($"• {exception}: {doc ?? "Thrown in method body"}")
+                .SpacingAfter(2d);
+        }
+
+        foreach (var tag in method.XmlDocTags.Where(t => t.Key.StartsWith("exception:", StringComparison.OrdinalIgnoreCase)))
+        {
+            hasOrganicErrors = true;
+            var type = tag.Key["exception:".Length..];
+            document.InsertParagraph($"• {type}: {tag.Value}")
+                .SpacingAfter(2d);
+        }
+
+        if (!hasOrganicErrors)
+        {
+            document.InsertParagraph("No exceptions detected in source code.")
+                .SpacingAfter(6d);
         }
         else
         {
-            document.InsertParagraph("No exceptions detected.")
-                .SpacingAfter(6d);
+            document.InsertParagraph(string.Empty).SpacingAfter(4d);
         }
 
-        if (!string.IsNullOrWhiteSpace(method.XmlSummary))
+        if (method.CachedAnalysis is { } cached)
         {
-            document.InsertParagraph(method.XmlSummary)
-                .SpacingAfter(6d);
+            WriteDeterministicAnalysisSection(document, cached);
         }
 
-        document.InsertParagraph("[AI Explanation: will be populated once local model is loaded]")
-            .Italic()
-            .SpacingAfter(12d);
+        if (includeAi && explanationService is { IsReady: true })
+        {
+            WriteBulletSection(document, "Pre & Post Conditions", explanationService.GeneratePrePostConditions(method));
+            WriteBulletSection(document, "Design Constraints", explanationService.GenerateDesignConstraints(method));
+            WriteBulletSection(document, "AI Error Analysis", explanationService.GenerateErrorAnalysis(method));
+
+            document.InsertParagraph("AI Explanation")
+                .Bold()
+                .SpacingAfter(4d);
+            document.InsertParagraph(explanationService.ExplainMethod(method))
+                .SpacingAfter(12d);
+        }
+    }
+
+    private static string? FindExceptionDescription(MethodInfo method, string exceptionType)
+    {
+        foreach (var tag in method.XmlDocTags)
+        {
+            if (!tag.Key.StartsWith("exception:", StringComparison.OrdinalIgnoreCase)) continue;
+            var keyType = tag.Key["exception:".Length..];
+            if (string.Equals(keyType, exceptionType, StringComparison.OrdinalIgnoreCase)
+                || keyType.EndsWith(exceptionType, StringComparison.OrdinalIgnoreCase))
+                return tag.Value;
+        }
+
+        return null;
+    }
+
+    private static void WriteDeterministicAnalysisSection(DocX document, MethodAnalysis analysis)
+    {
+        var prePost = new List<string>();
+        prePost.AddRange(analysis.Preconditions.Select(p => p.Description));
+        prePost.AddRange(analysis.Postconditions.Select(p => p.Description));
+        prePost.AddRange(analysis.StateChanges.Select(s => s.Description));
+
+        if (prePost.Count > 0)
+        {
+            WriteBulletSection(document, "Pre & Post Conditions (Deterministic)",
+                string.Join('\n', prePost.Select(p => $"- {p}")));
+        }
+
+        if (analysis.ExecutionSteps.Count > 0)
+        {
+            document.InsertParagraph("Execution Flow (Deterministic)")
+                .Bold()
+                .SpacingBefore(8d)
+                .SpacingAfter(4d);
+
+            foreach (var step in analysis.ExecutionSteps)
+            {
+                document.InsertParagraph($"{step.StepNumber}. {step.Description}")
+                    .SpacingAfter(2d);
+            }
+
+            document.InsertParagraph(string.Empty).SpacingAfter(4d);
+        }
+
+        if (analysis.DesignConstraints.Count > 0)
+        {
+            WriteBulletSection(document, "Design Requirements (Deterministic)",
+                string.Join('\n', analysis.DesignConstraints.Select(c => $"- {c.Description}")));
+        }
+    }
+
+    private static void WriteBulletSection(DocX document, string heading, string content)
+    {
+        document.InsertParagraph(heading)
+            .Bold()
+            .SpacingBefore(8d)
+            .SpacingAfter(4d);
+
+        var hasBullets = false;
+        foreach (var rawLine in content.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var line = rawLine.TrimStart('-', '•', '*', ' ');
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            hasBullets = true;
+            document.InsertParagraph($"• {line}")
+                .SpacingAfter(2d);
+        }
+
+        if (!hasBullets)
+        {
+            document.InsertParagraph(content)
+                .SpacingAfter(6d);
+        }
+        else
+        {
+            document.InsertParagraph(string.Empty).SpacingAfter(4d);
+        }
     }
 
     private static void WriteClassDivider(DocX document)
@@ -327,11 +520,6 @@ public static class WordExporter
 
         foreach (var parseResult in parseResults)
         {
-            if (IsCppFile(parseResult.FilePath))
-            {
-                continue;
-            }
-
             foreach (var classInfo in parseResult.Classes)
             {
                 classCount++;
@@ -373,9 +561,6 @@ public static class WordExporter
 
         return (parameter[..lastSpace].Trim(), parameter[(lastSpace + 1)..].Trim());
     }
-
-    private static bool IsCppFile(string filePath) =>
-        string.Equals(Path.GetExtension(filePath), ".cpp", StringComparison.OrdinalIgnoreCase);
 
     private static string DescribeCategory(CodeCategory category) => category switch
     {

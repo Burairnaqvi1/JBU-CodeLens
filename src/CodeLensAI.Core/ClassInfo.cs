@@ -1,5 +1,8 @@
-namespace CodeLensAI.Core;
+using Microsoft.CodeAnalysis;
 
+using CodeLensAI.Core.Analysis;
+
+namespace CodeLensAI.Core;
 /// <summary>
 /// Describes a single class discovered in a source file, including its documentation summary
 /// and the members (methods and properties) declared directly inside it.
@@ -10,6 +13,12 @@ public class ClassInfo
     /// The class's identifier name (without namespace or type parameters).
     /// </summary>
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The namespace this class is declared inside, or an empty string when it has none
+    /// (e.g. top-level C# types, or C++ classes, which aren't namespace-tracked by the parser).
+    /// </summary>
+    public string NamespaceName { get; set; } = string.Empty;
 
     /// <summary>
     /// The role this class plays in the codebase, assigned by <see cref="CategoryClassifier"/>.
@@ -52,9 +61,26 @@ public class ClassInfo
     public List<PropertyInfo> Properties { get; set; } = new();
 
     /// <summary>
+    /// Class-level fields discovered by the parser (used as global variables in method analysis).
+    /// </summary>
+    public List<VariableInfo> Fields { get; set; } = new();
+
+    /// <summary>
     /// The source file path this class was parsed from.
     /// </summary>
     public string SourceFilePath { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// A variable discovered in source — either a class field or a method-local declaration.
+/// </summary>
+public class VariableInfo
+{
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string? InitialValue { get; set; }
+    public bool IsField { get; set; }
+    public string AccessModifier { get; set; } = "private";
 }
 
 /// <summary>
@@ -104,9 +130,48 @@ public class MethodInfo
     public List<string> ThrownExceptions { get; set; } = new();
 
     /// <summary>
+    /// Method/function call expressions found in this method's body (used to build the
+    /// project-wide call graph in <see cref="Structural.ScideEngine"/>). Populated for C#;
+    /// left empty for C++, matching the parser's existing capability split.
+    /// </summary>
+    public List<string> CalledMethodNames { get; set; } = new();
+
+    /// <summary>
+    /// Cyclomatic complexity (1 + number of branching constructs in the body). Computed for C#;
+    /// defaults to 1 for C++, matching the parser's existing capability split.
+    /// </summary>
+    public int CyclomaticComplexity { get; set; } = 1;
+
+    /// <summary>
     /// The class that declares this method. Set during parsing for relationship context in the UI.
     /// </summary>
     public ClassInfo? ParentClass { get; set; }
+
+    /// <summary>
+    /// Local variables declared inside the method body.
+    /// </summary>
+    public List<VariableInfo> LocalVariables { get; set; } = new();
+
+    /// <summary>
+    /// Value constraints inferred from guard clauses and comparisons in the method body.
+    /// </summary>
+    public List<string> OperationalLimits { get; set; } = new();
+
+    /// <summary>
+    /// Roslyn syntax node for C# methods, set during parsing for reuse by analyzers.
+    /// </summary>
+    public SyntaxNode? SyntaxNode { get; set; }
+
+    /// <summary>
+    /// Pre-computed deterministic analysis from the inference engine (set during SCIDE scan).
+    /// </summary>
+    public MethodAnalysis? CachedAnalysis { get; set; }
+
+    /// <summary>
+    /// AI-generated brief description, cached after the first successful inference so revisiting
+    /// the method in the UI doesn't re-run the model. Reset by a rescan (methods are re-created).
+    /// </summary>
+    public string? CachedAiBriefDescription { get; set; }
 }
 
 /// <summary>

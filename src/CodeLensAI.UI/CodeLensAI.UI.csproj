@@ -3,6 +3,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -20,7 +21,20 @@
     those props run during the UI build and copy the natives into this app's output.
   -->
   <ItemGroup>
+    <PackageReference Include="libclang.runtime.win-x64" Version="21.1.8" />
     <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
   </ItemGroup>
+
+  <!-- libclang ships under runtimes/win-x64/native; P/Invoke expects libclang.dll beside the executable. -->
+  <Target Name="CopyLibClangToAppRoot" AfterTargets="Build;Publish">
+    <PropertyGroup>
+      <_LibClangSource>$(OutputPath)runtimes\win-x64\native\libclang.dll</_LibClangSource>
+    </PropertyGroup>
+    <Copy
+      SourceFiles="$(_LibClangSource)"
+      DestinationFiles="$(OutputPath)libclang.dll"
+      SkipUnchangedFiles="true"
+      Condition="Exists('$(_LibClangSource)')" />
+  </Target>
 
 </Project>

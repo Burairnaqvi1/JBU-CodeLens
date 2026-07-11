@@ -35,9 +35,9 @@ public class CSharpParser : ILanguageParser
             var syntaxTree = CSharpSyntaxTree.ParseText(sourceText);
             var root = syntaxTree.GetCompilationUnitRoot();
 
-            foreach (var classDeclaration in GetTopLevelClasses(root))
+            foreach (var (classDeclaration, namespaceName) in GetTopLevelClasses(root))
             {
-                result.Classes.Add(BuildClassInfo(classDeclaration, filePath));
+                result.Classes.Add(BuildClassInfo(classDeclaration, filePath, namespaceName));
             }
         }
         catch (Exception ex)
@@ -53,14 +53,14 @@ public class CSharpParser : ILanguageParser
     /// namespace (both classic block <c>namespace { }</c> and file-scoped <c>namespace;</c>
     /// forms), excluding classes nested within other type declarations.
     /// </summary>
-    private static IEnumerable<ClassDeclarationSyntax> GetTopLevelClasses(CompilationUnitSyntax root)
+    private static IEnumerable<(ClassDeclarationSyntax Class, string NamespaceName)> GetTopLevelClasses(CompilationUnitSyntax root)
     {
         foreach (var member in root.Members)
         {
             switch (member)
             {
                 case ClassDeclarationSyntax topLevelClass:
-                    yield return topLevelClass;
+                    yield return (topLevelClass, string.Empty);
                     break;
 
                 case BaseNamespaceDeclarationSyntax namespaceDeclaration:
@@ -68,7 +68,7 @@ public class CSharpParser : ILanguageParser
                     {
                         if (namespaceMember is ClassDeclarationSyntax classInNamespace)
                         {
-                            yield return classInNamespace;
+                            yield return (classInNamespace, namespaceDeclaration.Name.ToString());
                         }
                     }
 
@@ -81,12 +81,13 @@ public class CSharpParser : ILanguageParser
     /// Maps a <see cref="ClassDeclarationSyntax"/> to a <see cref="ClassInfo"/>, collecting the
     /// class summary and the methods and properties declared directly within it.
     /// </summary>
-    private static ClassInfo BuildClassInfo(ClassDeclarationSyntax classDeclaration, string filePath)
+    private static ClassInfo BuildClassInfo(ClassDeclarationSyntax classDeclaration, string filePath, string namespaceName)
     {
         var xmlDoc = ExtractXmlDocumentation(classDeclaration);
         var classInfo = new ClassInfo
         {
             Name = classDeclaration.Identifier.Text,
+            NamespaceName = namespaceName,
             XmlSummary = xmlDoc.GetValueOrDefault("summary"),
             SourceFilePath = filePath,
         };
@@ -107,6 +108,18 @@ public class CSharpParser : ILanguageParser
                     break;
 
                 case FieldDeclarationSyntax field:
+                    foreach (var variable in field.Declaration.Variables)
+                    {
+                        classInfo.Fields.Add(new VariableInfo
+                        {
+                            Name = variable.Identifier.Text,
+                            Type = field.Declaration.Type.ToString(),
+                            InitialValue = variable.Initializer?.Value.ToString(),
+                            IsField = true,
+                            AccessModifier = GetAccessModifier(field.Modifiers),
+                        });
+                    }
+
                     CollectTypeNames(field.Declaration.Type, classInfo.Dependencies);
                     break;
             }
@@ -186,7 +199,60 @@ public class CSharpParser : ILanguageParser
             methodInfo.Parameters.Add($"{type} {parameter.Identifier.Text}");
         }
 
+        methodInfo.LocalVariables = ExtractLocalVariables(method);
+        methodInfo.OperationalLimits = ExtractOperationalLimits(method);
+        methodInfo.CalledMethodNames = ExtractCalledMethodNames(method);
+        methodInfo.CyclomaticComplexity = CalculateCyclomaticComplexity(method);
+        methodInfo.SyntaxNode = method;
+
+        // Expose the method body to the deterministic analyzers. Without this, every source-body
+        // based rule (pre/post conditions, runtime risks, design constraints, dependencies) is
+        // skipped for C#, because MethodAnalysisContext reads the body from XmlDocTags["sourceCode"].
+        var bodyText = method.Body?.ToString() ?? method.ExpressionBody?.ToString();
+        if (!string.IsNullOrWhiteSpace(bodyText))
+        {
+            methodInfo.XmlDocTags["sourceCode"] = bodyText;
+        }
+
         return methodInfo;
+    }
+
+    /// <summary>
+    /// Collects the distinct call-expression text (for example <c>DoWork</c> or
+    /// <c>helper.Compute</c>) for every method/function invocation directly inside this method's
+    /// body, for use in the project-wide call graph.
+    /// </summary>
+    private static List<string> ExtractCalledMethodNames(MethodDeclarationSyntax method)
+    {
+        var calls = new List<string>();
+        foreach (var invocation in method.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            var expr = invocation.Expression.ToString();
+            if (!string.IsNullOrEmpty(expr) && !calls.Contains(expr))
+            {
+                calls.Add(expr);
+            }
+        }
+
+        return calls;
+    }
+
+    /// <summary>
+    /// Counts branching constructs in the method body (1 + if/while/for/foreach/case/conditional/
+    /// catch), a standard approximation of cyclomatic complexity.
+    /// </summary>
+    private static int CalculateCyclomaticComplexity(MethodDeclarationSyntax method)
+    {
+        var complexity = 1;
+        complexity += method.DescendantNodes().Count(n =>
+            n.IsKind(SyntaxKind.IfStatement) ||
+            n.IsKind(SyntaxKind.WhileStatement) ||
+            n.IsKind(SyntaxKind.ForStatement) ||
+            n.IsKind(SyntaxKind.ForEachStatement) ||
+            n.IsKind(SyntaxKind.CaseSwitchLabel) ||
+            n.IsKind(SyntaxKind.ConditionalExpression) ||
+            n.IsKind(SyntaxKind.CatchClause));
+        return complexity;
     }
 
     /// <summary>
@@ -223,6 +289,106 @@ public class CSharpParser : ILanguageParser
         }
 
         return exceptions;
+    }
+
+    /// <summary>
+    /// Collects local variable declarations from the method body.
+    /// </summary>
+    private static List<VariableInfo> ExtractLocalVariables(MethodDeclarationSyntax method)
+    {
+        var locals = new List<VariableInfo>();
+
+        foreach (var localDecl in method.DescendantNodes().OfType<LocalDeclarationStatementSyntax>())
+        {
+            var type = localDecl.Declaration.Type.ToString();
+            foreach (var variable in localDecl.Declaration.Variables)
+            {
+                locals.Add(new VariableInfo
+                {
+                    Name = variable.Identifier.Text,
+                    Type = type,
+                    InitialValue = variable.Initializer?.Value.ToString(),
+                    IsField = false,
+                });
+            }
+        }
+
+        foreach (var outArg in method.DescendantNodes().OfType<DeclarationExpressionSyntax>())
+        {
+            if (outArg.Designation is not SingleVariableDesignationSyntax designation)
+            {
+                continue;
+            }
+
+            locals.Add(new VariableInfo
+            {
+                Name = designation.Identifier.Text,
+                Type = outArg.Type.ToString(),
+                IsField = false,
+            });
+        }
+
+        return locals;
+    }
+
+    /// <summary>
+    /// Infers operational limits from guard clauses: if-conditions that lead to throws, and
+    /// common validation patterns such as <c>ArgumentNullException.ThrowIfNull</c>.
+    /// </summary>
+    private static List<string> ExtractOperationalLimits(MethodDeclarationSyntax method)
+    {
+        var limits = new List<string>();
+
+        foreach (var ifStatement in method.DescendantNodes().OfType<IfStatementSyntax>())
+        {
+            if (!ContainsThrow(ifStatement.Statement))
+            {
+                continue;
+            }
+
+            var condition = NormalizeWhitespace(ifStatement.Condition.ToString());
+            if (!string.IsNullOrEmpty(condition))
+            {
+                AddLimit(limits, condition);
+            }
+        }
+
+        foreach (var invocation in method.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            var name = invocation.Expression.ToString();
+            if (!name.Contains("ThrowIfNull", StringComparison.Ordinal) &&
+                !name.Contains("ThrowIfNullOrEmpty", StringComparison.Ordinal) &&
+                !name.Contains("ThrowIfNullOrWhiteSpace", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var argument = invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression.ToString();
+            if (!string.IsNullOrEmpty(argument))
+            {
+                AddLimit(limits, $"{argument} must not be null or empty");
+            }
+        }
+
+        return limits;
+    }
+
+    private static bool ContainsThrow(StatementSyntax statement)
+    {
+        return statement.DescendantNodesAndSelf().Any(node =>
+            node is ThrowStatementSyntax or ThrowExpressionSyntax);
+    }
+
+    private static void AddLimit(List<string> limits, string description)
+    {
+        var formatted = description.StartsWith("When ", StringComparison.OrdinalIgnoreCase)
+            ? description
+            : $"When {description}";
+
+        if (!limits.Contains(formatted, StringComparer.OrdinalIgnoreCase))
+        {
+            limits.Add(formatted);
+        }
     }
 
     private static void AddThrownType(List<string> exceptions, string? typeName)

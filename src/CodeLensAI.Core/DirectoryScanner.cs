@@ -10,18 +10,21 @@ public static class DirectoryScanner
     /// <summary>
     /// File extensions considered "source files" for the current scan.
     /// </summary>
-    private static readonly string[] SourceExtensions = { ".cs", ".cpp" };
+    private static readonly string[] SourceExtensions = { ".cs", ".cpp", ".hpp", ".h" };
 
     /// <summary>
     /// Path segments that mark a folder as excluded. Any file whose path passes through one
     /// of these folders is filtered out.
     /// </summary>
-    private static readonly string[] ExcludedFolders = { "bin", "obj", ".git", "node_modules" };
+    private static readonly string[] ExcludedFolders =
+    {
+        "bin", "obj", ".git", "node_modules", "build", "__pycache__", ".vs",
+    };
 
     /// <summary>
-    /// Recursively enumerates every <c>.cs</c> and <c>.cpp</c> file under
-    /// <paramref name="rootPath"/>, excluding any file located inside a <c>bin</c>, <c>obj</c>,
-    /// <c>.git</c>, or <c>node_modules</c> folder.
+    /// Recursively enumerates every <c>.cs</c>, <c>.cpp</c>, <c>.hpp</c>, and <c>.h</c> file under
+    /// <paramref name="rootPath"/>, excluding generated and tooling folders (<c>bin</c>, <c>obj</c>,
+    /// <c>.git</c>, <c>node_modules</c>, <c>build</c>, <c>__pycache__</c>, <c>.vs</c>).
     /// </summary>
     /// <param name="rootPath">The root directory to scan.</param>
     /// <returns>
@@ -35,10 +38,21 @@ public static class DirectoryScanner
             return new List<string>();
         }
 
+        // IgnoreInaccessible: one protected subfolder must not abort the whole scan.
+        // Skipping reparse points keeps the walk inside the selected tree and immune to
+        // symlink/junction cycles.
+        var options = new EnumerationOptions
+        {
+            RecurseSubdirectories = true,
+            IgnoreInaccessible = true,
+            AttributesToSkip = FileAttributes.ReparsePoint,
+        };
+
         return Directory
-            .EnumerateFiles(rootPath, "*.*", SearchOption.AllDirectories)
+            .EnumerateFiles(rootPath, "*.*", options)
             .Where(IsSourceFile)
             .Where(path => !IsInExcludedFolder(path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 

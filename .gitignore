@@ -26,3 +26,7 @@ Thumbs.db
 *.gguf
 *.bin
 models/
+models_backup/
+
+## Build/publish output
+publish/

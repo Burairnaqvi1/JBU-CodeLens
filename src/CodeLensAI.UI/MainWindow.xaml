@@ -1,371 +1,543 @@
 ﻿<Window x:Class="CodeLensAI.UI.MainWindow"
-
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-
-        xmlns:local="clr-namespace:CodeLensAI.UI"
-
-        mc:Ignorable="d"
-
-        AllowDrop="True"
-
-        DragEnter="Window_DragEnter"
-
-        DragOver="Window_DragEnter"
-
-        DragLeave="Window_DragLeave"
-
-        Drop="Window_Drop"
-
         Title="CodeLens AI"
-
-        Height="720"
-
-        Width="1100">
+        MinWidth="900" MinHeight="600"
+        Width="1100" Height="680"
+        WindowStartupLocation="Manual"
+        AllowDrop="True"
+        DragEnter="Window_DragEnter"
+        DragLeave="Window_DragLeave"
+        Drop="Window_Drop">
 
     <Window.Resources>
+        <SolidColorBrush x:Key="MutedBrush" Color="#888888"/>
+        <SolidColorBrush x:Key="HeaderBrush" Color="#1A1A1A"/>
+        <SolidColorBrush x:Key="StatusBarBrush" Color="#1A1A1A"/>
+        <SolidColorBrush x:Key="SidebarBrush" Color="#252526"/>
+        <SolidColorBrush x:Key="ButtonBgBrush" Color="#2D2D30"/>
+        <SolidColorBrush x:Key="ButtonFgBrush" Color="#E0E0E0"/>
+        <SolidColorBrush x:Key="HoverOverlayBrush" Color="#1FFFFFFF"/>
+        <SolidColorBrush x:Key="PressedOverlayBrush" Color="#38FFFFFF"/>
+        <SolidColorBrush x:Key="ScrollThumbBrush" Color="#4D4D55"/>
+        <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#6A6A75"/>
+        <SolidColorBrush x:Key="TreeSelectionBrush" Color="#094771"/>
 
-        <Style x:Key="MutedTextStyle" TargetType="{x:Type TextBlock}">
-
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-
-            <Setter Property="Opacity" Value="0.55" />
-
-        </Style>
-
-
-
-        <Style x:Key="DetailTreeViewItemStyle" TargetType="{x:Type TreeViewItem}">
-
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-
-            <Setter Property="Background" Value="Transparent" />
-
-            <Setter Property="Padding" Value="4,2" />
-
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-
+        <!-- Themed button: keeps each button's own Background (set locally in XAML/code) and adds
+             hover/pressed feedback via a translucent overlay, so it works on any base color in
+             both themes. Replaces the stock WPF chrome, which ignores custom backgrounds on hover. -->
+        <Style TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="{DynamicResource ButtonBgBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ButtonFgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
-
                 <Setter.Value>
-
-                    <ControlTemplate TargetType="{x:Type TreeViewItem}">
-
+                    <ControlTemplate TargetType="Button">
                         <Grid>
-
-                            <Grid.ColumnDefinitions>
-
-                                <ColumnDefinition Width="Auto" MinWidth="19" />
-
-                                <ColumnDefinition Width="*" />
-
-                            </Grid.ColumnDefinitions>
-
-                            <Grid.RowDefinitions>
-
-                                <RowDefinition Height="Auto" />
-
-                                <RowDefinition />
-
-                            </Grid.RowDefinitions>
-
-                            <ToggleButton x:Name="Expander"
-
-                                          Width="16"
-
-                                          Height="16"
-
-                                          Margin="1,0,2,0"
-
-                                          ClickMode="Press"
-
-                                          Focusable="False"
-
-                                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"
-
-                                          Background="Transparent"
-
-                                          BorderThickness="0">
-
-                                <ToggleButton.Content>
-
-                                    <Path x:Name="ExpandPath"
-
-                                          Data="M 0 0 L 4 4 L 0 8 Z"
-
-                                          Fill="{StaticResource TextBrush}"
-
-                                          HorizontalAlignment="Center"
-
-                                          VerticalAlignment="Center" />
-
-                                </ToggleButton.Content>
-
-                            </ToggleButton>
-
-                            <Border x:Name="ItemBorder"
-
-                                    Grid.Column="1"
-
-                                    Padding="{TemplateBinding Padding}"
-
+                            <Border x:Name="Chrome"
                                     Background="{TemplateBinding Background}"
-
-                                    CornerRadius="3">
-
-                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-
-                                                  VerticalAlignment="Center"
-
-                                                  ContentSource="Header" />
-
-                            </Border>
-
-                            <ItemsPresenter x:Name="ItemsHost"
-
-                                            Grid.Row="1"
-
-                                            Grid.Column="1"
-
-                                            Margin="16,0,0,0" />
-
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6"/>
+                            <Border x:Name="Overlay"
+                                    Background="{DynamicResource HoverOverlayBrush}"
+                                    CornerRadius="6"
+                                    Opacity="0"/>
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
                         </Grid>
-
                         <ControlTemplate.Triggers>
-
-                            <Trigger Property="IsExpanded" Value="False">
-
-                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
-
-                            </Trigger>
-
-                            <Trigger Property="HasItems" Value="False">
-
-                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
-
-                            </Trigger>
-
                             <Trigger Property="IsMouseOver" Value="True">
-
-                                <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource BorderBrush}" />
-
+                                <Setter TargetName="Overlay" Property="Opacity" Value="1"/>
                             </Trigger>
-
-                            <Trigger Property="IsSelected" Value="True">
-
-                                <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource AccentBrush}" />
-
-                                <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Overlay" Property="Background" Value="{DynamicResource PressedOverlayBrush}"/>
+                                <Setter TargetName="Overlay" Property="Opacity" Value="1"/>
                             </Trigger>
-
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="Chrome" Property="BorderThickness" Value="1"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
                         </ControlTemplate.Triggers>
-
                     </ControlTemplate>
-
                 </Setter.Value>
-
             </Setter>
-
         </Style>
 
+        <!-- Themed text input with rounded corners and an accent border when focused. -->
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Slim themed scrollbars (replaces the chunky system chrome that clashes with dark mode). -->
+        <Style x:Key="ScrollThumbStyle" TargetType="Thumb">
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="ThumbBd"
+                                Background="{DynamicResource ScrollThumbBrush}"
+                                CornerRadius="4"
+                                Margin="2"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ThumbBd" Property="Background" Value="{DynamicResource ScrollThumbHoverBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ScrollPageButtonStyle" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="Transparent"/>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Vertical">
+                    <Setter Property="Width" Value="10"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ScrollBar">
+                                <Grid Background="Transparent">
+                                    <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                        <Track.DecreaseRepeatButton>
+                                            <RepeatButton Style="{StaticResource ScrollPageButtonStyle}" Command="ScrollBar.PageUpCommand"/>
+                                        </Track.DecreaseRepeatButton>
+                                        <Track.Thumb>
+                                            <Thumb Style="{StaticResource ScrollThumbStyle}"/>
+                                        </Track.Thumb>
+                                        <Track.IncreaseRepeatButton>
+                                            <RepeatButton Style="{StaticResource ScrollPageButtonStyle}" Command="ScrollBar.PageDownCommand"/>
+                                        </Track.IncreaseRepeatButton>
+                                    </Track>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Height" Value="10"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ScrollBar">
+                                <Grid Background="Transparent">
+                                    <Track x:Name="PART_Track">
+                                        <Track.DecreaseRepeatButton>
+                                            <RepeatButton Style="{StaticResource ScrollPageButtonStyle}" Command="ScrollBar.PageLeftCommand"/>
+                                        </Track.DecreaseRepeatButton>
+                                        <Track.Thumb>
+                                            <Thumb Style="{StaticResource ScrollThumbStyle}"/>
+                                        </Track.Thumb>
+                                        <Track.IncreaseRepeatButton>
+                                            <RepeatButton Style="{StaticResource ScrollPageButtonStyle}" Command="ScrollBar.PageRightCommand"/>
+                                        </Track.IncreaseRepeatButton>
+                                    </Track>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="TreeViewItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeViewItem">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <Border x:Name="Bd" Background="Transparent"
+                                    BorderThickness="0"
+                                    Padding="{TemplateBinding Padding}"
+                                    CornerRadius="4">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{Binding ActualWidth, ElementName=Expander}"/>
+                                        <ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <ToggleButton x:Name="Expander"
+                                                  Width="16" Height="16"
+                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"
+                                                  Background="Transparent"
+                                                  BorderThickness="0"
+                                                  Focusable="False"
+                                                  ClickMode="Press">
+                                        <ToggleButton.Style>
+                                            <Style TargetType="ToggleButton">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ToggleButton">
+                                                            <Border Background="Transparent">
+                                                                <Path x:Name="Arrow"
+                                                                      Data="M 0 0 L 4 4 L 8 0"
+                                                                      Stroke="{DynamicResource MutedBrush}"
+                                                                      StrokeThickness="1.5"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsChecked" Value="False">
+                                                                    <Setter TargetName="Arrow" Property="RenderTransform">
+                                                                        <Setter.Value>
+                                                                            <RotateTransform Angle="-90" CenterX="4" CenterY="2"/>
+                                                                        </Setter.Value>
+                                                                    </Setter>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ToggleButton.Style>
+                                    </ToggleButton>
+                                    <ContentPresenter x:Name="PART_Header"
+                                                      Grid.Column="1"
+                                                      ContentSource="Header"
+                                                      HorizontalAlignment="Left"
+                                                      TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                </Grid>
+                            </Border>
+                            <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Margin="16,0,0,0"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="False">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed"/>
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
+                            </Trigger>
+                            <!-- Selection uses a theme-tinted highlight instead of the full accent
+                                 with forced-white text: accent-colored badges in the header (e.g.
+                                 the [C#]/[C++] tags) would vanish on an accent background. -->
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TreeSelectionBrush}"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="False"/>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BorderBrush}"/>
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
-
-
     <Grid>
-
         <Grid.RowDefinitions>
-
-            <RowDefinition Height="50" />
-
-            <RowDefinition Height="*" />
-
-            <RowDefinition Height="30" />
-
+            <RowDefinition Height="64"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="32"/>
         </Grid.RowDefinitions>
 
-
-
-        <!-- Top bar -->
-
+        <!-- HEADER -->
         <Border Grid.Row="0"
-
-                Background="{StaticResource SurfaceBrush}"
-
-                BorderBrush="{StaticResource BorderBrush}"
-
+                Background="{DynamicResource HeaderBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="0,0,0,1">
+            <Grid Margin="16,0,16,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-            <Grid Margin="16,0">
-
-                <TextBlock Text="CodeLens AI"
-
-                           VerticalAlignment="Center"
-
-                           FontSize="18"
-
-                           FontWeight="SemiBold"
-
-                           Foreground="{StaticResource AccentBrush}" />
-
-                <StackPanel Orientation="Horizontal"
-
-                            HorizontalAlignment="Right"
-
-                            VerticalAlignment="Center">
-
-                    <Button x:Name="BrowseButton"
-
-                            Content="Browse"
-
-                            Click="BrowseButton_Click" />
-
-                    <Button x:Name="ScanButton"
-
-                            Content="Scan"
-
-                            Margin="8,0,0,0"
-
-                            IsEnabled="False"
-
-                            Click="ScanButton_Click" />
-
-                    <Button x:Name="ExportButton"
-
-                            Content="Export to Word"
-
-                            Margin="8,0,0,0"
-
-                            IsEnabled="False"
-
-                            Click="ExportButton_Click" />
-
+                <!-- Logo + Title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="38" Height="38"
+                            Background="{DynamicResource AccentBrush}"
+                            CornerRadius="10"
+                            Margin="0,0,12,0">
+                        <TextBlock Text="CL"
+                                   FontSize="15" FontWeight="Bold"
+                                   Foreground="#FFFFFF"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="CodeLens AI"
+                                   FontSize="18" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextBrush}"/>
+                        <TextBlock Text="Explore, document, and explain your codebase"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedBrush}"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
                 </StackPanel>
 
-            </Grid>
+                <!-- Buttons -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal"
+                            VerticalAlignment="Center">
 
+                    <!-- Light/Dark Toggle -->
+                    <Border CornerRadius="8"
+                            Background="{DynamicResource ButtonBgBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            Padding="2"
+                            Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="LightThemeButton"
+                                    Content="Light"
+                                    Click="LightThemeButton_Click"
+                                    Padding="14,6"
+                                    Background="Transparent"
+                                    Foreground="{DynamicResource MutedBrush}"
+                                    BorderThickness="0"/>
+                            <Button x:Name="DarkThemeButton"
+                                    Content="Dark"
+                                    Click="DarkThemeButton_Click"
+                                    Padding="14,6"
+                                    Background="{DynamicResource AccentBrush}"
+                                    Foreground="#FFFFFF"
+                                    BorderThickness="0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Open Project -->
+                    <Button x:Name="BrowseButton"
+                            Content="Open Project"
+                            Click="BrowseButton_Click"
+                            Padding="18,8"
+                            FontWeight="SemiBold"
+                            Background="{DynamicResource AccentBrush}"
+                            Foreground="#FFFFFF"
+                            BorderThickness="0"
+                            Margin="0,0,8,0"/>
+
+                    <!-- Rescan -->
+                    <Button x:Name="ScanButton"
+                            Content="Rescan"
+                            Click="ScanButton_Click"
+                            IsEnabled="False"
+                            Padding="18,8"
+                            FontWeight="SemiBold"
+                            Background="{DynamicResource ButtonBgBrush}"
+                            Foreground="{DynamicResource ButtonFgBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            Margin="0,0,8,0"/>
+
+                    <!-- Export -->
+                    <Button x:Name="ExportWordButton"
+                            Content="Word"
+                            Click="ExportWordButton_Click"
+                            IsEnabled="False"
+                            Padding="14,8"
+                            FontWeight="SemiBold"
+                            Background="{DynamicResource ButtonBgBrush}"
+                            Foreground="{DynamicResource ButtonFgBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            Margin="0,0,4,0"
+                            ToolTip="Export documentation to Word (.docx)"/>
+
+                    <Button x:Name="ExportMarkdownButton"
+                            Content="MD"
+                            Click="ExportMarkdownButton_Click"
+                            IsEnabled="False"
+                            Padding="14,8"
+                            FontWeight="SemiBold"
+                            Background="{DynamicResource ButtonBgBrush}"
+                            Foreground="{DynamicResource ButtonFgBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            Margin="0,0,4,0"
+                            ToolTip="Export project analysis to Markdown (.md)"/>
+
+                    <Button x:Name="ExportJsonButton"
+                            Content="JSON"
+                            Click="ExportJsonButton_Click"
+                            IsEnabled="False"
+                            Padding="14,8"
+                            FontWeight="SemiBold"
+                            Background="{DynamicResource ButtonBgBrush}"
+                            Foreground="{DynamicResource ButtonFgBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            ToolTip="Export project analysis to JSON (.json)"/>
+                </StackPanel>
+            </Grid>
         </Border>
 
-
-
-        <!-- Main content -->
-
+        <!-- MAIN CONTENT -->
         <Grid Grid.Row="1">
-
             <Grid.ColumnDefinitions>
-
-                <ColumnDefinition Width="280" />
-
-                <ColumnDefinition Width="*" />
-
+                <ColumnDefinition Width="300" MinWidth="200" MaxWidth="420"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-
-
-            <!-- Left: project tree -->
-
+            <!-- Sidebar -->
             <Border Grid.Column="0"
-
-                    Background="{StaticResource SurfaceBrush}"
-
-                    BorderBrush="{StaticResource BorderBrush}"
-
+                    Background="{DynamicResource SidebarBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="0,0,1,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-                <TreeView x:Name="ProjectTree"
+                    <Border Grid.Row="0" Padding="16,14,16,12"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="0,0,0,1">
+                        <StackPanel>
+                            <TextBlock Text="Project Explorer"
+                                       FontSize="13" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextBrush}"/>
+                            <TextBlock x:Name="ProjectPathText"
+                                       Text="No project loaded"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource MutedBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </Border>
 
-                          Background="{StaticResource SurfaceBrush}"
-
-                          BorderThickness="0"
-
-                          Padding="8"
-
-                          ItemContainerStyle="{StaticResource DetailTreeViewItemStyle}"
-
-                          SelectedItemChanged="ProjectTree_SelectedItemChanged" />
-
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Padding="8">
+                        <TreeView x:Name="ProjectTree"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  FontSize="13"
+                                  SelectedItemChanged="ProjectTree_SelectedItemChanged">
+                            <TreeView.Style>
+                                <Style TargetType="TreeView">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="TreeView">
+                                                <ItemsPresenter/>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </TreeView.Style>
+                        </TreeView>
+                    </ScrollViewer>
+                </Grid>
             </Border>
 
+            <!-- Resize grip -->
+            <GridSplitter Grid.Column="1" Width="4"
+                          HorizontalAlignment="Stretch"
+                          Background="{DynamicResource BorderBrush}"
+                          Cursor="SizeWE"/>
 
+            <!-- Detail panel -->
+            <Border Grid.Column="2" Background="{DynamicResource BackgroundBrush}">
+                <Grid>
+                    <!-- Placeholder -->
+                    <Border x:Name="DetailPlaceholder"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center">
+                        <StackPanel HorizontalAlignment="Center">
+                            <Border Width="64" Height="64"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    CornerRadius="16"
+                                    HorizontalAlignment="Center"
+                                    Margin="0,0,0,16">
+                                <TextBlock Text="CL" FontSize="22" FontWeight="Bold"
+                                           Foreground="{DynamicResource AccentBrush}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Select a file, class, or function"
+                                       FontSize="16" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextBrush}"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Drag &amp; drop a folder anywhere"
+                                       FontSize="13"
+                                       Foreground="{DynamicResource MutedBrush}"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,8,0,0"/>
+                        </StackPanel>
+                    </Border>
 
-            <!-- Right: detail panel -->
-
-            <Border Grid.Column="1"
-
-                    Background="{StaticResource BackgroundBrush}"
-
-                    BorderBrush="{StaticResource BorderBrush}"
-
-                    BorderThickness="0">
-
-                <ScrollViewer VerticalScrollBarVisibility="Auto"
-
-                              Padding="24"
-
-                              Background="{StaticResource BackgroundBrush}">
-
-                    <StackPanel Background="{StaticResource BackgroundBrush}">
-
-                        <TextBlock x:Name="DetailPlaceholder"
-
-                                   Style="{StaticResource MutedTextStyle}"
-
-                                   HorizontalAlignment="Center"
-
-                                   Margin="0,120,0,0"
-
-                                   TextAlignment="Center"
-
-                                   Text="Select a class or function from the left panel to view details." />
-
-
-
-                        <StackPanel x:Name="DetailContentHost"
-
-                                    Visibility="Collapsed"
-
-                                    Background="{StaticResource BackgroundBrush}" />
-
-                    </StackPanel>
-
-                </ScrollViewer>
-
+                    <!-- Scrollable detail -->
+                    <ScrollViewer x:Name="DetailScrollViewer"
+                                  Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Padding="28,24,28,24">
+                        <StackPanel x:Name="DetailContentHost"/>
+                    </ScrollViewer>
+                </Grid>
             </Border>
-
         </Grid>
 
-
-
-        <!-- Status bar -->
-
+        <!-- STATUS BAR -->
         <Border Grid.Row="2"
-
-                Background="{StaticResource SurfaceBrush}"
-
-                BorderBrush="{StaticResource BorderBrush}"
-
-                BorderThickness="0,1,0,0"
-
-                Padding="16,0">
-
-            <TextBlock x:Name="StatusBarText"
-
-                       Style="{StaticResource MutedTextStyle}"
-
-                       VerticalAlignment="Center"
-
-                       Text="Ready" />
-
+                Background="{DynamicResource StatusBarBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,1,0,0">
+            <Grid Margin="16,0,16,0">
+                <TextBlock x:Name="StatusBarText"
+                           Text="AI model ready"
+                           FontSize="11"
+                           Foreground="{DynamicResource MutedBrush}"
+                           VerticalAlignment="Center"/>
+                <TextBlock Text="Drag &amp; drop a folder anywhere"
+                           FontSize="11"
+                           Foreground="{DynamicResource MutedBrush}"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Right"/>
+            </Grid>
         </Border>
-
     </Grid>
-
 </Window>
-
-
