@@ -5,29 +5,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeLensAI.Core.Analysis;
 
-public sealed class ExecutionStep
-{
-    public int StepNumber { get; set; }
-    public string Description { get; set; } = string.Empty;
-    public ExecutionStepKind Kind { get; set; }
-}
-
-public enum ExecutionStepKind
-{
-    Validation,
-    Initialization,
-    Calculation,
-    StateUpdate,
-    ExternalCall,
-    LoopProcessing,
-    ExceptionHandling,
-    ConsoleOutput,
-    FileOperation,
-    DatabaseOperation,
-    ReturnResult,
-    Delegation,
-}
-
 /// <summary>
 /// Builds numbered execution steps from Roslyn AST analysis (C#) or MethodInfo fields (C++).
 /// </summary>

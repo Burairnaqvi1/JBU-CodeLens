@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CodeLensAI.Core\CodeLensAI.Core.csproj" />
+    <ProjectReference Include="..\CodeLensAI.Shared\CodeLensAI.Shared.csproj" />
   </ItemGroup>
 
   <!--
@@ -30,11 +31,11 @@
     <PropertyGroup>
       <_LibClangSource>$(OutputPath)runtimes\win-x64\native\libclang.dll</_LibClangSource>
     </PropertyGroup>
-    <Copy
-      SourceFiles="$(_LibClangSource)"
-      DestinationFiles="$(OutputPath)libclang.dll"
-      SkipUnchangedFiles="true"
-      Condition="Exists('$(_LibClangSource)')" />
+    <Copy SourceFiles="$(_LibClangSource)" DestinationFiles="$(OutputPath)libclang.dll" SkipUnchangedFiles="true" Condition="Exists('$(_LibClangSource)')" />
   </Target>
 
+  <ItemGroup>
+    <ApplicationDefinition Include="Theme\App.xaml" />
+    <Page Remove="Theme\App.xaml" />
+  </ItemGroup>
 </Project>
