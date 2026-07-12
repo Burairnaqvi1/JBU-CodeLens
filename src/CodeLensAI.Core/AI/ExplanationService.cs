@@ -271,7 +271,7 @@ public sealed class ExplanationService : IExplanationService
         if (!IsReady)
         {
             var unavailable = LoadError ?? "The explanation model is not available.";
-            return new MethodAiDocumentation(unavailable, unavailable, unavailable, unavailable, unavailable);
+            return new MethodAiDocumentation(unavailable, unavailable, unavailable, unavailable, unavailable, UsedAi: false);
         }
 
         // Fast path: everything already cached from earlier UI interactions or a prior export.
@@ -308,7 +308,9 @@ public sealed class ExplanationService : IExplanationService
         CacheSection("errors", methodInfo, errors);
         CacheSection("explain", methodInfo, explanation);
 
-        return new MethodAiDocumentation(brief, prePost, design, errors, explanation);
+        // The model ran (IsReady above); treat the result as genuine AI output when the Brief
+        // section came back as clean text rather than a bracketed error/unavailable message.
+        return new MethodAiDocumentation(brief, prePost, design, errors, explanation, UsedAi: IsCleanOutput(brief));
     }
 
     private bool TryGetCachedDocumentation(MethodInfo methodInfo, out MethodAiDocumentation documentation)
@@ -320,7 +322,8 @@ public sealed class ExplanationService : IExplanationService
             _resultCache.TryGetValue(BuildCacheKey("errors", methodInfo), out var errors) &&
             _resultCache.TryGetValue(BuildCacheKey("explain", methodInfo), out var explanation))
         {
-            documentation = new MethodAiDocumentation(brief, prePost, design, errors, explanation);
+            // Only clean output is ever cached, so a full cache hit is by definition genuine AI.
+            documentation = new MethodAiDocumentation(brief, prePost, design, errors, explanation, UsedAi: true);
             return true;
         }
 

@@ -1,0 +1,102 @@
+[
+  {
+    "MethodName": "ValidateOrder",
+    "H1": { "Verdict": "PASS", "Reason": "Correctly named the single parameter (Order order) and return type (bool)." },
+    "H2": { "Verdict": "PARTIAL", "Reason": "Accurate but essentially restates the XML summary; does not mention the null/Id/items/email/positive-amount checks that make up the actual logic." },
+    "H3": { "Verdict": "PASS", "Reason": "Captured both key locals (hasValidCustomer, hasPositiveAmounts) with initializers; class fields listed though this method uses neither." },
+    "H4": { "Verdict": "PARTIAL", "Reason": "States the boolean return meaning but misses every guard clause (order==null, Id<=0, empty Items, blank email)." },
+    "H5": { "Verdict": "PASS", "Reason": "Correctly identifies the conditional checks plus the LINQ Any()/All() usage." },
+    "H6": { "Verdict": "PASS", "Reason": "Correct: no exceptions in code, and the method truly throws nothing." },
+    "Commentary": "Inputs, variables and error analysis are exactly right. The brief and pre/post sections stay at the level of the doc-comment rather than the branch logic, so the multi-exit validation pattern is described only generically."
+  },
+  {
+    "MethodName": "CalculateOrderTotal",
+    "H1": { "Verdict": "PASS", "Reason": "All three parameters (order, taxRate, bulkDiscountThreshold) and the decimal return are correct." },
+    "H2": { "Verdict": "PASS", "Reason": "Describes the real logic: iterate items, apply a bulk discount at quantity >= 5, accumulate the subtotal." },
+    "H3": { "Verdict": "PASS", "Reason": "Captured the accumulator (subtotal = 0) plus itemTotal and totalTax with initializers." },
+    "H4": { "Verdict": "PARTIAL", "Reason": "Invents generic 'must be positive' preconditions that the code never enforces and misses the actual postcondition (Math.Round(subtotal+tax, 2))." },
+    "H5": { "Verdict": "PASS", "Reason": "Accurately walks the foreach accumulation, the 10% line discount and the running subtotal." },
+    "H6": { "Verdict": "PASS", "Reason": "No explicit throws exist; 'no errors possible' is defensible for this arithmetic body." },
+    "Commentary": "Strong on the iterative-accumulation pattern: the loop, the discount branch and the subtotal accumulator are all captured. The only weak spot is pre/post conditions, where it asserts constraints the code does not actually check."
+  },
+  {
+    "MethodName": "GetTopSpenders",
+    "H1": { "Verdict": "PASS", "Reason": "Parameter (decimal minimumSpent) and the Dictionary<string,decimal> return are correct." },
+    "H2": { "Verdict": "PASS", "Reason": "Correctly describes selecting high-value customers filtered by a minimum spend." },
+    "H3": { "Verdict": "PASS", "Reason": "Correctly reports no locals (the body is a single LINQ expression) and surfaces the relevant _orders field." },
+    "H4": { "Verdict": "PARTIAL", "Reason": "Reasonable input assumptions but does not state the postcondition (a descending map of email to total for completed orders above the threshold)." },
+    "H5": { "Verdict": "PASS", "Reason": "Excellent decomposition of the chained LINQ: Where(completed) -> GroupBy(email) -> Sum -> Where(>= min) -> OrderByDescending -> ToDictionary." },
+    "H6": { "Verdict": "PASS", "Reason": "No throws in code; the AI also reasonably flags the empty/duplicate-email edge cases." },
+    "Commentary": "The headline test for this pattern is whether the tool can read a dense functional LINQ chain, and it does so cleanly in H5. Deterministic headings are perfect; only the postcondition wording is thin."
+  },
+  {
+    "MethodName": "RefreshInventoryAsync",
+    "H1": { "Verdict": "PASS", "Reason": "Parameter (string apiEndpoint) and the Task<bool> return type are correct, including the Task wrapper." },
+    "H2": { "Verdict": "PARTIAL", "Reason": "Reads as a near-verbatim concatenation of the two XML-summary lines rather than an independent description of the logic." },
+    "H3": { "Verdict": "PASS", "Reason": "Correctly reports no locals and surfaces the relevant _inventory field." },
+    "H4": { "Verdict": "PASS", "Reason": "Captures the guard (apiEndpoint must not be null/empty) and the resulting ArgumentException." },
+    "H5": { "Verdict": "PARTIAL", "Reason": "Notes Task.Delay latency and the inventory clear, but does not explicitly flag async/await as a construct and includes a wrong 'no side effects' bullet that contradicts the inventory mutation." },
+    "H6": { "Verdict": "PARTIAL", "Reason": "Deterministic side correctly lists ArgumentException, but the AI error text says 'None' and misses the silent catch-and-return-false swallow pattern." },
+    "Commentary": "Exception throw and the endpoint guard are captured well. The async pattern is only half-recognised (Task.Delay noted, async/await not called out) and, more importantly, the try/catch that swallows all exceptions and returns false is missed, with a self-contradictory 'no side effects' claim."
+  },
+  {
+    "MethodName": "FulfillInventory",
+    "H1": { "Verdict": "PASS", "Reason": "Parameter (Order order) and the List<string> return are correct." },
+    "H2": { "Verdict": "PASS", "Reason": "Correctly describes deducting items from inventory while handling out-of-stock cases." },
+    "H3": { "Verdict": "PASS", "Reason": "Captured the key local missingItemsReport plus the stockItem lookup." },
+    "H4": { "Verdict": "PARTIAL", "Reason": "Generic, truncated assumptions; does not state the postcondition that the returned list names every short-stocked product." },
+    "H5": { "Verdict": "PASS", "Reason": "Explicitly identifies the lock on _inventory for thread safety and the deduct/short-stock branch — the key structural feature." },
+    "H6": { "Verdict": "PASS", "Reason": "No explicit throws; out-of-stock is handled gracefully rather than by exception, which the AI notes." },
+    "Commentary": "The lock statement — the whole point of this test case — is detected and correctly explained as thread safety. Locals and outputs are accurate; only the pre/post section stays generic."
+  },
+  {
+    "MethodName": "EvaluateFraudRisk",
+    "H1": { "Verdict": "PASS", "Reason": "Both parameters (order, systemIpCountry) and the string return are correct." },
+    "H2": { "Verdict": "PASS", "Reason": "Correctly frames it as threshold- and location-based risk evaluation." },
+    "H3": { "Verdict": "PASS", "Reason": "Captured the key accumulator local riskScore = 0." },
+    "H4": { "Verdict": "PARTIAL", "Reason": "States the return-a-risk-string postcondition but hallucinates an 'UNKNOWN RISK' result that the code never returns (only HIGH/MEDIUM/LOW)." },
+    "H5": { "Verdict": "PASS", "Reason": "Correctly identifies riskScore as a cumulative metric and the additive scoring — the pattern under test." },
+    "H6": { "Verdict": "PASS", "Reason": "No explicit throws exist; consistent with the other guard-free bodies." },
+    "Commentary": "The additive scoring pattern (riskScore += ...) is recognised well in both H3 and H5. The only real error is a fabricated 'UNKNOWN RISK' return value in the postconditions, and stray markdown bold markers leak into the text."
+  },
+  {
+    "MethodName": "FormatInvoice",
+    "H1": { "Verdict": "PASS", "Reason": "Parameter list (order, ExportFormat format) and string return are correct." },
+    "H2": { "Verdict": "PARTIAL", "Reason": "Accurate but restates the summary; does not convey the switch-on-format strategy selection." },
+    "H3": { "Verdict": "PASS", "Reason": "Correctly reports no locals (the body is a single switch expression)." },
+    "H4": { "Verdict": "PASS", "Reason": "Enumerates all three handled formats (Csv, Json, PlainText) and the NotSupportedException default arm." },
+    "H5": { "Verdict": "PASS", "Reason": "Identifies the switch-based strategy selection returning a format-specific string (calls it a switch statement rather than expression, close enough)." },
+    "H6": { "Verdict": "PARTIAL", "Reason": "Deterministic side correctly lists NotSupportedException, but the AI text contradicts it by asserting 'no errors can be thrown by this method.'" },
+    "Commentary": "The switch/enum strategy is handled well across H4 and H5, and the deterministic parser catches the NotSupportedException. The blemish is the AI error paragraph directly contradicting the deterministic exception list — the two halves of H6 disagree."
+  },
+  {
+    "MethodName": "IsSubcategoryOf",
+    "H1": { "Verdict": "PASS", "Reason": "Parameters (Category current, string targetParentName) and bool return are correct." },
+    "H2": { "Verdict": "PASS", "Reason": "Correctly describes walking a category hierarchy to test parentage." },
+    "H3": { "Verdict": "PASS", "Reason": "Correctly reports no locals for the recursive body." },
+    "H4": { "Verdict": "PARTIAL", "Reason": "Says 'current is a valid Category' although the method explicitly tolerates null, and omits the postcondition (true when the name is found up the parent chain)." },
+    "H5": { "Verdict": "FAIL", "Reason": "Completely misses the recursion / self-referential call — the whole point of this case — and falsely claims the method 'modifies the state of the current category object' (it mutates nothing)." },
+    "H6": { "Verdict": "PASS", "Reason": "No explicit throws; the null base case is handled, so 'no exceptions' is correct." },
+    "Commentary": "This is the tool's weakest result. It reads the method as an ordinary hierarchy check but never detects the self-recursive call, and it invents a side effect that does not exist. Recursion detection is the clear gap for this pattern."
+  },
+  {
+    "MethodName": "GenerateNotificationEmail",
+    "H1": { "Verdict": "PASS", "Reason": "All three parameters (template, order, statusReason) and string return are correct." },
+    "H2": { "Verdict": "PASS", "Reason": "Accurately describes filling a template from the order and returning the email body." },
+    "H3": { "Verdict": "PASS", "Reason": "Captured the key local emailBody together with the full chained .Replace(...) initializer." },
+    "H4": { "Verdict": "PASS", "Reason": "Captures the template null/empty guard and correctly notes statusReason may be null (matching the ?? \"N/A\")." },
+    "H5": { "Verdict": "PASS", "Reason": "Identifies the chained token replacement and the null-reason fallback; mislabels chaining as 'interpolation' but the substance is right." },
+    "H6": { "Verdict": "PASS", "Reason": "No throws; the empty-template guard and null handling mean 'None' is correct." },
+    "Commentary": "The best-handled function: all six headings land. The only nit is calling chained .Replace() calls 'string interpolation', a terminology slip that does not change the meaning."
+  },
+  {
+    "MethodName": "TryBatchInsertOrders",
+    "H1": { "Verdict": "PASS", "Reason": "Parameter (List<Order> batch) and bool return are correct." },
+    "H2": { "Verdict": "PASS", "Reason": "Describes the real logic and explicitly names the try/catch/finally structure." },
+    "H3": { "Verdict": "PASS", "Reason": "Captured the key local executionSuccess = false." },
+    "H4": { "Verdict": "PASS", "Reason": "Captures the null/empty guard, the InvalidOperationException it throws, and the boolean success return." },
+    "H5": { "Verdict": "PASS", "Reason": "Identifies the try-catch-finally lifecycle and the null/empty pre-check; one bullet wrongly says it returns no value, but the structure is captured." },
+    "H6": { "Verdict": "PASS", "Reason": "Deterministic side lists InvalidOperationException and the AI text agrees — consistent this time." },
+    "Commentary": "The try-catch-finally lifecycle is recognised across H2, H5 and H6, and here the AI error text agrees with the deterministic exception list. A minor contradictory bullet ('does not return any value') is the only noise."
+  }
+]
