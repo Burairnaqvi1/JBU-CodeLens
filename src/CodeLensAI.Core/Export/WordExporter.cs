@@ -24,12 +24,14 @@ public static class WordExporter
         IExplanationService? explanationService = null,
         bool includeAi = false,
         Action<string>? onProgress = null,
-        ProjectMetricsSnapshot? metrics = null)
+        ProjectMetricsSnapshot? metrics = null,
+        CancellationToken cancellationToken = default)
     {
         // Generation (especially with AI) can take minutes and fail midway; writing to a temp
-        // file and moving on success guarantees the chosen path never holds a corrupt .docx.
+        // file and moving on success guarantees the chosen path never holds a corrupt .docx —
+        // including on cancellation, which propagates out of ExportCore before the final move.
         AtomicFileWriter.Write(outputPath, tempPath =>
-            ExportCore(tempPath, projectFolderPath, parseResults, explanationService, includeAi, onProgress, metrics));
+            ExportCore(tempPath, projectFolderPath, parseResults, explanationService, includeAi, onProgress, metrics, cancellationToken));
     }
 
     private static void ExportCore(
@@ -39,7 +41,8 @@ public static class WordExporter
         IExplanationService? explanationService,
         bool includeAi,
         Action<string>? onProgress,
-        ProjectMetricsSnapshot? metrics)
+        ProjectMetricsSnapshot? metrics,
+        CancellationToken cancellationToken)
     {
         var projectName = Path.GetFileName(
             projectFolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
@@ -60,8 +63,9 @@ public static class WordExporter
         var isFirstClassInDocument = true;
         foreach (var parseResult in parseResults)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             onProgress?.Invoke($"Documenting {Path.GetFileName(parseResult.FilePath)}…");
-            WriteFileSection(document, parseResult, ref isFirstClassInDocument, explanationService, includeAi, onProgress);
+            WriteFileSection(document, parseResult, ref isFirstClassInDocument, explanationService, includeAi, onProgress, cancellationToken);
         }
 
         onProgress?.Invoke("Saving document…");
@@ -188,7 +192,8 @@ public static class WordExporter
         ref bool isFirstClassInDocument,
         IExplanationService? explanationService,
         bool includeAi,
-        Action<string>? onProgress)
+        Action<string>? onProgress,
+        CancellationToken cancellationToken)
     {
         var fileName = Path.GetFileName(parseResult.FilePath);
         var isCpp = LanguageFileExtensions.IsCppFile(parseResult.FilePath);
@@ -225,7 +230,7 @@ public static class WordExporter
             }
 
             isFirstClassInDocument = false;
-            WriteClassSection(document, parseResult.Classes[i], explanationService, includeAi, onProgress);
+            WriteClassSection(document, parseResult.Classes[i], explanationService, includeAi, onProgress, cancellationToken);
         }
     }
 
@@ -234,7 +239,8 @@ public static class WordExporter
         ClassInfo classInfo,
         IExplanationService? explanationService,
         bool includeAi,
-        Action<string>? onProgress)
+        Action<string>? onProgress,
+        CancellationToken cancellationToken)
     {
         document.InsertParagraph(classInfo.Name)
             .Heading(HeadingType.Heading2)
@@ -270,7 +276,8 @@ public static class WordExporter
 
         foreach (var method in classInfo.Methods)
         {
-            WriteMethodSection(document, method, explanationService, includeAi, onProgress);
+            cancellationToken.ThrowIfCancellationRequested();
+            WriteMethodSection(document, method, explanationService, includeAi, onProgress, cancellationToken);
         }
     }
 
@@ -279,14 +286,15 @@ public static class WordExporter
         MethodInfo method,
         IExplanationService? explanationService,
         bool includeAi,
-        Action<string>? onProgress)
+        Action<string>? onProgress,
+        CancellationToken cancellationToken)
     {
         onProgress?.Invoke($"Documenting {method.ParentClass?.Name}.{method.Name}…");
 
         // One merged model call produces all five AI sections (instead of five sequential
         // round-trips). Null when AI is off or the model isn't ready.
         MethodAiDocumentation? aiDoc = includeAi && explanationService is { IsReady: true }
-            ? explanationService.GenerateMethodDocumentation(method)
+            ? explanationService.GenerateMethodDocumentation(method, cancellationToken)
             : null;
 
         var signature = BuildSignature(method);
@@ -412,15 +420,50 @@ public static class WordExporter
             document.InsertParagraph(string.Empty).SpacingAfter(4d);
         }
 
+        // The "Pre & Post Conditions" and "Design Constraints" headings are part of the
+        // mandatory six-heading format and must appear for every method, in order, regardless
+        // of whether the AI ran or produced usable output. Deterministic analysis is always
+        // listed first (it never hallucinates); AI bullets extend it; an explicit placeholder
+        // covers the nothing-detected case.
+        var prePostLines = new List<string>();
+        var designLines = new List<string>();
         if (method.CachedAnalysis is { } cached)
         {
-            WriteDeterministicAnalysisSection(document, cached);
+            prePostLines.AddRange(cached.Preconditions.Select(p => p.Description));
+            prePostLines.AddRange(cached.Postconditions.Select(p => p.Description));
+            prePostLines.AddRange(cached.StateChanges.Select(s => s.Description));
+            designLines.AddRange(cached.DesignConstraints.Select(c => c.Description));
+        }
+
+        if (aiDoc is { UsedAi: true } ai)
+        {
+            prePostLines.AddRange(SplitBulletLines(ai.PrePostConditions));
+            designLines.AddRange(SplitBulletLines(ai.DesignConstraints));
+        }
+
+        WriteMandatoryBulletSection(document, "Pre & Post Conditions", prePostLines,
+            "None detected from source analysis.");
+        WriteMandatoryBulletSection(document, "Design Constraints", designLines,
+            "None detected from source analysis.");
+
+        if (method.CachedAnalysis is { ExecutionSteps.Count: > 0 } withSteps)
+        {
+            document.InsertParagraph("Execution Flow (Deterministic)")
+                .Bold()
+                .SpacingBefore(8d)
+                .SpacingAfter(4d);
+
+            foreach (var step in withSteps.ExecutionSteps)
+            {
+                document.InsertParagraph($"{step.StepNumber}. {step.Description}")
+                    .SpacingAfter(2d);
+            }
+
+            document.InsertParagraph(string.Empty).SpacingAfter(4d);
         }
 
         if (aiDoc is { } sections)
         {
-            WriteBulletSection(document, "Pre & Post Conditions", sections.PrePostConditions);
-            WriteBulletSection(document, "Design Constraints", sections.DesignConstraints);
             WriteBulletSection(document, "AI Error Analysis", sections.ErrorAnalysis);
 
             document.InsertParagraph("AI Explanation")
@@ -429,6 +472,60 @@ public static class WordExporter
             document.InsertParagraph(sections.Explanation)
                 .SpacingAfter(12d);
         }
+    }
+
+    /// <summary>
+    /// Splits AI bullet output into clean lines, dropping bullet markers and blanks. Bracketed
+    /// strings (error/unavailable messages) yield nothing, so they can never surface as a fake
+    /// documentation bullet.
+    /// </summary>
+    private static IEnumerable<string> SplitBulletLines(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content) || content.StartsWith('['))
+        {
+            yield break;
+        }
+
+        foreach (var rawLine in content.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var line = rawLine.TrimStart('-', '•', '*', ' ');
+            if (!string.IsNullOrWhiteSpace(line))
+            {
+                yield return line;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Writes one of the always-present documentation headings with its bullets, or the
+    /// placeholder text when no content is available — the heading itself is never omitted.
+    /// </summary>
+    private static void WriteMandatoryBulletSection(
+        DocX document,
+        string heading,
+        List<string> lines,
+        string placeholder)
+    {
+        document.InsertParagraph(heading)
+            .Bold()
+            .SpacingBefore(8d)
+            .SpacingAfter(4d);
+
+        if (lines.Count == 0)
+        {
+            document.InsertParagraph(placeholder)
+                .Italic()
+                .SpacingAfter(6d);
+            return;
+        }
+
+        foreach (var line in lines.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            document.InsertParagraph($"• {line}")
+                .SpacingAfter(2d);
+        }
+
+        document.InsertParagraph(string.Empty).SpacingAfter(4d);
     }
 
     private static string? FindExceptionDescription(MethodInfo method, string exceptionType)
@@ -443,42 +540,6 @@ public static class WordExporter
         }
 
         return null;
-    }
-
-    private static void WriteDeterministicAnalysisSection(DocX document, MethodAnalysis analysis)
-    {
-        var prePost = new List<string>();
-        prePost.AddRange(analysis.Preconditions.Select(p => p.Description));
-        prePost.AddRange(analysis.Postconditions.Select(p => p.Description));
-        prePost.AddRange(analysis.StateChanges.Select(s => s.Description));
-
-        if (prePost.Count > 0)
-        {
-            WriteBulletSection(document, "Pre & Post Conditions (Deterministic)",
-                string.Join('\n', prePost.Select(p => $"- {p}")));
-        }
-
-        if (analysis.ExecutionSteps.Count > 0)
-        {
-            document.InsertParagraph("Execution Flow (Deterministic)")
-                .Bold()
-                .SpacingBefore(8d)
-                .SpacingAfter(4d);
-
-            foreach (var step in analysis.ExecutionSteps)
-            {
-                document.InsertParagraph($"{step.StepNumber}. {step.Description}")
-                    .SpacingAfter(2d);
-            }
-
-            document.InsertParagraph(string.Empty).SpacingAfter(4d);
-        }
-
-        if (analysis.DesignConstraints.Count > 0)
-        {
-            WriteBulletSection(document, "Design Requirements (Deterministic)",
-                string.Join('\n', analysis.DesignConstraints.Select(c => $"- {c.Description}")));
-        }
     }
 
     private static void WriteBulletSection(DocX document, string heading, string content)

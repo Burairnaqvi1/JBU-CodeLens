@@ -43,8 +43,13 @@ public interface IExplanationService : IDisposable
     /// <summary>Potential-error bullets.</summary>
     string GenerateErrorAnalysis(MethodInfo methodInfo);
 
-    /// <summary>All five documentation sections in a single model call.</summary>
-    MethodAiDocumentation GenerateMethodDocumentation(MethodInfo methodInfo);
+    /// <summary>
+    /// All five documentation sections in a single model call. Honors
+    /// <paramref name="cancellationToken"/> mid-inference (throws
+    /// <see cref="OperationCanceledException"/>), since this is the bulk-export path where a
+    /// cancel must take effect promptly rather than after the current method finishes.
+    /// </summary>
+    MethodAiDocumentation GenerateMethodDocumentation(MethodInfo methodInfo, CancellationToken cancellationToken = default);
 
     /// <summary>Starts a multi-turn Q&amp;A session about a method.</summary>
     IMethodConversationSession StartMethodConversation(MethodInfo methodInfo, string initialExplanation);

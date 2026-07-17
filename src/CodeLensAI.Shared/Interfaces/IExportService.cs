@@ -21,7 +21,8 @@ public interface IExportService
         IExplanationService? explanationService,
         bool includeAi,
         Action<string>? onProgress,
-        ProjectMetricsSnapshot? metrics);
+        ProjectMetricsSnapshot? metrics,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Exports the structural analysis (plus deterministic method analysis) to Markdown.</summary>
     void ExportMarkdown(ProjectIR ir, IReadOnlyList<ParseResult> parseResults, string outputPath);

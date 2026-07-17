@@ -277,7 +277,7 @@ public sealed class ExplanationService : IExplanationService
     /// back to their individual single-section calls. Results are cached under the same keys
     /// the individual methods use, so a later single-section request is a cache hit.
     /// </summary>
-    public MethodAiDocumentation GenerateMethodDocumentation(MethodInfo methodInfo)
+    public MethodAiDocumentation GenerateMethodDocumentation(MethodInfo methodInfo, CancellationToken cancellationToken = default)
     {
         if (!IsReady)
         {
@@ -291,10 +291,17 @@ public sealed class ExplanationService : IExplanationService
             return cached;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         var instruction = BuildMergedDocumentationPrompt(methodInfo);
         var response = RunInstruction(instruction, MaxTokensMergedDocumentation,
             "You are a concise technical writer. Fill in every requested section, keeping the exact '### ' headers. " +
-            "Stay factual and never contradict the verified facts in the request.");
+            "Stay factual and never contradict the verified facts in the request.",
+            cancellationToken);
+
+        // The per-section fallbacks below each run their own (uncancellable) inference call;
+        // don't start any of them for a request that has already been canceled.
+        cancellationToken.ThrowIfCancellationRequested();
 
         var sections = SplitSections(response);
 
@@ -450,7 +457,10 @@ public sealed class ExplanationService : IExplanationService
     internal string RunInstruction(string instruction, int maxTokens) =>
         RunInstruction(instruction, maxTokens, DefaultSystemPrompt);
 
-    internal string RunInstruction(string instruction, int maxTokens, string systemPrompt)
+    internal string RunInstruction(string instruction, int maxTokens, string systemPrompt) =>
+        RunInstruction(instruction, maxTokens, systemPrompt, CancellationToken.None);
+
+    internal string RunInstruction(string instruction, int maxTokens, string systemPrompt, CancellationToken cancellationToken)
     {
         if (!IsReady || _weights is null || _modelParams is null)
         {
@@ -459,7 +469,14 @@ public sealed class ExplanationService : IExplanationService
 
         try
         {
-            return Task.Run(() => RunInstructionAsync(instruction, maxTokens, systemPrompt)).GetAwaiter().GetResult();
+            return Task.Run(() => RunInstructionAsync(instruction, maxTokens, systemPrompt, cancellationToken))
+                .GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is a caller decision, not an inference failure — let it propagate so
+            // bulk paths (Word export) stop instead of embedding an error string in the document.
+            throw;
         }
         catch (Exception ex)
         {
@@ -467,12 +484,12 @@ public sealed class ExplanationService : IExplanationService
         }
     }
 
-    private async Task<string> RunInstructionAsync(string instruction, int maxTokens, string systemPrompt)
+    private async Task<string> RunInstructionAsync(string instruction, int maxTokens, string systemPrompt, CancellationToken cancellationToken)
     {
-        await _inferenceLock.WaitAsync().ConfigureAwait(false);
+        await _inferenceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await RunInstructionLockedAsync(instruction, maxTokens, systemPrompt).ConfigureAwait(false);
+            return await RunInstructionLockedAsync(instruction, maxTokens, systemPrompt, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -530,7 +547,7 @@ public sealed class ExplanationService : IExplanationService
     private static bool IsCleanOutput(string result) =>
         !string.IsNullOrWhiteSpace(result) && !result.StartsWith('[');
 
-    private async Task<string> RunInstructionLockedAsync(string instruction, int maxTokens, string systemPrompt)
+    private async Task<string> RunInstructionLockedAsync(string instruction, int maxTokens, string systemPrompt, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _inferenceCallCount);
 
@@ -577,7 +594,7 @@ public sealed class ExplanationService : IExplanationService
             inferenceParams.AntiPrompts = new[] { "<|end|>", "<|user|>", "<|system|>" };
             var prompt = FormatPhiPrompt(systemPrompt, instruction);
             var executor = new InstructExecutor(context, string.Empty, string.Empty);
-            await foreach (var token in executor.InferAsync(prompt, inferenceParams))
+            await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken))
             {
                 builder.Append(token);
             }
@@ -587,7 +604,7 @@ public sealed class ExplanationService : IExplanationService
             inferenceParams.AntiPrompts = new[] { "<|im_end|>", "<|im_start|>" };
             var prompt = FormatChatMlPrompt(systemPrompt, instruction);
             var executor = new InstructExecutor(context, string.Empty, string.Empty);
-            await foreach (var token in executor.InferAsync(prompt, inferenceParams))
+            await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken))
             {
                 builder.Append(token);
             }
@@ -597,7 +614,7 @@ public sealed class ExplanationService : IExplanationService
             // CodeLlama-Instruct expects the "[INST] ... [/INST]" wrapper.
             inferenceParams.AntiPrompts = new[] { "[INST]", "</s>" };
             var executor = new InstructExecutor(context, "[INST] ", " [/INST]");
-            await foreach (var token in executor.InferAsync(instruction, inferenceParams))
+            await foreach (var token in executor.InferAsync(instruction, inferenceParams, cancellationToken))
             {
                 builder.Append(token);
             }

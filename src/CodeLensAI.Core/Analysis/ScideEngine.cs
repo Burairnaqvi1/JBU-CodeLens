@@ -28,7 +28,10 @@ public sealed class ScideEngine : IProjectAnalyzer
     private readonly ConcurrentDictionary<string, (DateTime LastWriteUtc, ParseResult Result)> _parseCache =
         new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<AnalysisResult> AnalyzeProjectAsync(string path, CancellationToken cancellationToken = default)
+    public async Task<AnalysisResult> AnalyzeProjectAsync(
+        string path,
+        CancellationToken cancellationToken = default,
+        IProgress<ScanProgress>? progress = null)
     {
         var result = new AnalysisResult();
 
@@ -57,12 +60,15 @@ public sealed class ScideEngine : IProjectAnalyzer
                 MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2),
                 CancellationToken = cancellationToken,
             };
+            var parsedCount = 0;
             await Parallel.ForEachAsync(
                 Enumerable.Range(0, filePaths.Count),
                 parallelOptions,
                 async (i, ct) =>
                 {
                     parsed[i] = await ParseFileCachedAsync(filePaths[i], ct).ConfigureAwait(false);
+                    var done = Interlocked.Increment(ref parsedCount);
+                    progress?.Report(new ScanProgress(done, filePaths.Count, Path.GetFileName(filePaths[i])));
                 }).ConfigureAwait(false);
 
             EvictStaleCacheEntries(filePaths);
@@ -93,6 +99,10 @@ public sealed class ScideEngine : IProjectAnalyzer
                         method.ParentClass = classInfo;
                         // ??= so cache-hit files keep their analysis instead of recomputing it.
                         method.CachedAnalysis ??= _inferenceEngine.Analyze(method);
+                        // The Roslyn node retains the whole file's syntax tree via parent links;
+                        // analysis is complete here, so release it. Anything that later needs
+                        // the body (the flow analyzer's fallback) re-parses the stored text.
+                        method.SyntaxNode = null;
                         methodCount++;
                     }
 
@@ -157,6 +167,11 @@ public sealed class ScideEngine : IProjectAnalyzer
             result.AnalyzedFiles = filePaths.Count - failedFiles.Count;
             result.FailedFiles = failedFiles;
 
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            result.Error = "Scan canceled.";
             return result;
         }
         catch (Exception ex)

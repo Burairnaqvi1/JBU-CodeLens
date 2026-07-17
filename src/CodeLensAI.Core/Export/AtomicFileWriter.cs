@@ -19,7 +19,11 @@ internal static class AtomicFileWriter
             throw new IOException($"Cannot resolve an output directory for '{outputPath}'.");
         }
 
-        var tempPath = Path.Combine(directory, $".{Path.GetFileName(outputPath)}.{Guid.NewGuid():N}.tmp");
+        // The temp name keeps the target's real extension: some writers (DocX) silently append
+        // their own extension when given anything else, which would break the final move.
+        var tempPath = Path.Combine(
+            directory,
+            $"~{Path.GetFileNameWithoutExtension(outputPath)}.{Guid.NewGuid():N}{Path.GetExtension(outputPath)}");
         try
         {
             writeTo(tempPath);

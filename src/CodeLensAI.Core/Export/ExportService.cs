@@ -16,9 +16,10 @@ public sealed class ExportService : IExportService
         IExplanationService? explanationService,
         bool includeAi,
         Action<string>? onProgress,
-        ProjectMetricsSnapshot? metrics)
+        ProjectMetricsSnapshot? metrics,
+        CancellationToken cancellationToken = default)
     {
-        WordExporter.Export(outputPath, projectFolder, parseResults, explanationService, includeAi, onProgress, metrics);
+        WordExporter.Export(outputPath, projectFolder, parseResults, explanationService, includeAi, onProgress, metrics, cancellationToken);
     }
 
     /// <inheritdoc />
