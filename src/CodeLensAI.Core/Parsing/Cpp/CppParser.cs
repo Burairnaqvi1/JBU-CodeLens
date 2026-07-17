@@ -35,11 +35,14 @@ public class CppParser : ILanguageParser
     [DllImport("libclang", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr clang_createIndex(int excludeDeclarationsFromPCH, int displayDiagnostics);
 
+    // Path and argument strings are marshaled manually as UTF-8 (see ParseTranslationUnitUtf8):
+    // libclang expects UTF-8, while DllImport's default string marshaling is the system ANSI
+    // code page, which silently breaks any non-ASCII file path.
     [DllImport("libclang", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr clang_parseTranslationUnit(
         IntPtr index,
-        string sourceFilename,
-        string[]? commandLineArgs,
+        IntPtr sourceFilename,
+        IntPtr[]? commandLineArgs,
         int numCommandLineArgs,
         IntPtr unsavedFiles,
         uint numUnsavedFiles,
@@ -129,18 +132,18 @@ public class CppParser : ILanguageParser
             return invalid;
         }
 
-        string fileContent;
+        byte[] fileBytes;
         try
         {
-            fileContent = File.ReadAllText(filePath);
+            fileBytes = File.ReadAllBytes(filePath);
         }
         catch
         {
             // Parsing can still proceed with an empty buffer for source extraction.
-            fileContent = string.Empty;
+            fileBytes = [];
         }
 
-        return ParseWithClang(filePath, fileContent);
+        return ParseWithClang(filePath, fileBytes);
     }
 
     /// <inheritdoc />
@@ -151,19 +154,19 @@ public class CppParser : ILanguageParser
             return invalid;
         }
 
-        string fileContent;
+        byte[] fileBytes;
         try
         {
-            fileContent = await File.ReadAllTextAsync(filePath, cancellationToken).ConfigureAwait(false);
+            fileBytes = await File.ReadAllBytesAsync(filePath, cancellationToken).ConfigureAwait(false);
         }
         catch
         {
-            fileContent = string.Empty;
+            fileBytes = [];
         }
 
         // libclang re-reads the file from disk itself; the managed buffer is only used for
         // source-text extraction. The native parse is CPU-bound and stays on this worker thread.
-        return ParseWithClang(filePath, fileContent);
+        return ParseWithClang(filePath, fileBytes);
     }
 
     private static bool TryValidatePath(string filePath, out ParseResult invalid)
@@ -189,7 +192,7 @@ public class CppParser : ILanguageParser
     /// created per file and disposed when done; the per-file index is what makes concurrent
     /// parsing of different files safe (libclang is thread-safe across separate indexes).
     /// </summary>
-    private static ParseResult ParseWithClang(string filePath, string fileContent)
+    private static ParseResult ParseWithClang(string filePath, byte[] fileBytes)
     {
         var result = new ParseResult { FilePath = filePath };
 
@@ -205,14 +208,7 @@ public class CppParser : ILanguageParser
             try
             {
                 var compileArgs = GetClangCommandLineArgs(filePath);
-                var translationUnit = clang_parseTranslationUnit(
-                    index,
-                    filePath,
-                    compileArgs,
-                    compileArgs?.Length ?? 0,
-                    IntPtr.Zero,
-                    0,
-                    CXTranslationUnit_None);
+                var translationUnit = ParseTranslationUnitUtf8(index, filePath, compileArgs);
 
                 if (translationUnit == IntPtr.Zero)
                 {
@@ -222,7 +218,7 @@ public class CppParser : ILanguageParser
 
                 try
                 {
-                    WalkAst(translationUnit, filePath, fileContent, result);
+                    WalkAst(translationUnit, filePath, fileBytes, result);
                 }
                 catch (Exception ex)
                 {
@@ -246,12 +242,62 @@ public class CppParser : ILanguageParser
         return result;
     }
 
-    private static void WalkAst(IntPtr translationUnit, string filePath, string fileContent, ParseResult result)
+    /// <summary>
+    /// Calls <c>clang_parseTranslationUnit</c> with the path and arguments marshaled as
+    /// null-terminated UTF-8 buffers, matching what libclang expects on every platform.
+    /// </summary>
+    private static IntPtr ParseTranslationUnitUtf8(IntPtr index, string filePath, string[]? compileArgs)
+    {
+        var nativeStrings = new List<IntPtr>();
+        try
+        {
+            var pathPtr = AllocUtf8(filePath);
+            nativeStrings.Add(pathPtr);
+
+            IntPtr[]? argPtrs = null;
+            if (compileArgs is { Length: > 0 })
+            {
+                argPtrs = new IntPtr[compileArgs.Length];
+                for (var i = 0; i < compileArgs.Length; i++)
+                {
+                    argPtrs[i] = AllocUtf8(compileArgs[i]);
+                    nativeStrings.Add(argPtrs[i]);
+                }
+            }
+
+            return clang_parseTranslationUnit(
+                index,
+                pathPtr,
+                argPtrs,
+                argPtrs?.Length ?? 0,
+                IntPtr.Zero,
+                0,
+                CXTranslationUnit_None);
+        }
+        finally
+        {
+            foreach (var ptr in nativeStrings)
+            {
+                Marshal.FreeCoTaskMem(ptr);
+            }
+        }
+    }
+
+    private static IntPtr AllocUtf8(string value)
+    {
+        var bytes = Encoding.UTF8.GetBytes(value);
+        var ptr = Marshal.AllocCoTaskMem(bytes.Length + 1);
+        Marshal.Copy(bytes, 0, ptr, bytes.Length);
+        Marshal.WriteByte(ptr, bytes.Length, 0);
+        return ptr;
+    }
+
+    private static void WalkAst(IntPtr translationUnit, string filePath, byte[] fileBytes, ParseResult result)
     {
         var context = new AstVisitorContext
         {
             FilePath = filePath,
-            FileContent = fileContent,
+            FileBytes = fileBytes,
             Classes = result.Classes,
             FreeFunctions = new List<MethodInfo>(),
         };
@@ -316,10 +362,32 @@ public class CppParser : ILanguageParser
         return null;
     }
 
+    /// <summary>
+    /// Collapses duplicate entries produced when a method appears twice (in-class declaration
+    /// plus out-of-class definition), keying on name <b>and</b> parameter types so genuine
+    /// overloads survive. Prefers the entry that carries the body source (the definition) and
+    /// backfills its doc summary from the header declaration when only that one is documented.
+    /// </summary>
     private static List<MethodInfo> DeduplicateMethods(List<MethodInfo> methods) =>
         methods
-            .GroupBy(method => method.Name, StringComparer.Ordinal)
-            .Select(group => group.First())
+            .GroupBy(
+                // Key on parameter *types* only — the declaration and definition of the same
+                // method may name their parameters differently.
+                method => $"{method.Name}({string.Join(",", method.Parameters.Select(ExtractParameterType))})",
+                StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var preferred = group.FirstOrDefault(m => m.XmlDocTags.ContainsKey("sourceCode"))
+                                ?? group.First();
+                if (string.IsNullOrEmpty(preferred.XmlSummary))
+                {
+                    preferred.XmlSummary = group
+                        .Select(m => m.XmlSummary)
+                        .FirstOrDefault(s => !string.IsNullOrEmpty(s));
+                }
+
+                return preferred;
+            })
             .ToList();
 
     private static CXChildVisitResult VisitTranslationUnitChild(CXCursor cursor, CXCursor parent, IntPtr clientData)
@@ -346,7 +414,7 @@ public class CppParser : ILanguageParser
                     }
 
                     var classInfo = BuildClassInfo(cursor, context.FilePath);
-                    ProcessClassMembers(cursor, classInfo, context.FileContent);
+                    ProcessClassMembers(cursor, classInfo, context.FileBytes);
                     classInfo.Category = CategoryClassifier.Classify(classInfo);
                     context.Classes.Add(classInfo);
                     return CXChildVisitResult.CXChildVisit_Continue;
@@ -378,7 +446,7 @@ public class CppParser : ILanguageParser
                         return CXChildVisitResult.CXChildVisit_Continue;
                     }
 
-                    var freeMethod = BuildMethodInfo(cursor, parentClass: null, isFreeFunction: true, context.FileContent);
+                    var freeMethod = BuildMethodInfo(cursor, parentClass: null, isFreeFunction: true, context.FileBytes);
                     if (!string.IsNullOrEmpty(freeMethod.Name))
                     {
                         context.FreeFunctions.Add(freeMethod);
@@ -424,7 +492,7 @@ public class CppParser : ILanguageParser
                 case CXCursorKind.CXCursor_CXXMethod:
                 case CXCursorKind.CXCursor_Constructor:
                 case CXCursorKind.CXCursor_Destructor:
-                    var method = BuildMethodInfo(cursor, classInfo, isFreeFunction: false, memberContext.FileContent);
+                    var method = BuildMethodInfo(cursor, classInfo, isFreeFunction: false, memberContext.FileBytes);
                     if (!string.IsNullOrEmpty(method.Name))
                     {
                         classInfo.Methods.Add(method);
@@ -514,7 +582,7 @@ public class CppParser : ILanguageParser
         }
 
         var classInfo = FindOrCreateClass(context, className, context.FilePath);
-        var method = BuildMethodInfo(cursor, classInfo, isFreeFunction: false, context.FileContent);
+        var method = BuildMethodInfo(cursor, classInfo, isFreeFunction: false, context.FileBytes);
         if (string.IsNullOrEmpty(method.Name))
         {
             return;
@@ -612,12 +680,12 @@ public class CppParser : ILanguageParser
         return null;
     }
 
-    private static void ProcessClassMembers(CXCursor classCursor, ClassInfo classInfo, string fileContent)
+    private static void ProcessClassMembers(CXCursor classCursor, ClassInfo classInfo, byte[] fileBytes)
     {
         var memberContext = new ClassMemberVisitorContext
         {
             ClassInfo = classInfo,
-            FileContent = fileContent,
+            FileBytes = fileBytes,
         };
         var handle = GCHandle.Alloc(memberContext);
         try
@@ -695,7 +763,7 @@ public class CppParser : ILanguageParser
         CXCursor cursor,
         ClassInfo? parentClass,
         bool isFreeFunction,
-        string fileContent)
+        byte[] fileBytes)
     {
         var name = GetSpelling(cursor);
         if (string.IsNullOrEmpty(name))
@@ -748,7 +816,7 @@ public class CppParser : ILanguageParser
             methodInfo.Parameters.Add($"{paramType} {paramName}");
         }
 
-        var sourceCode = ExtractSourceText(cursor, fileContent);
+        var sourceCode = ExtractSourceText(cursor, fileBytes);
         if (!string.IsNullOrEmpty(sourceCode))
         {
             methodInfo.XmlDocTags["sourceCode"] = sourceCode;
@@ -876,11 +944,17 @@ public class CppParser : ILanguageParser
         return CXChildVisitResult.CXChildVisit_Recurse;
     }
 
-    private static string ExtractSourceText(CXCursor cursor, string fileContent)
+    /// <summary>
+    /// Extracts the cursor's source text by slicing the raw file bytes. libclang reports
+    /// <b>byte</b> offsets into the file it read from disk, so the slice must happen on the same
+    /// bytes — indexing a decoded .NET string shifts every offset after the first non-ASCII
+    /// character (or a UTF-8 BOM) and returns garbled snippets.
+    /// </summary>
+    private static string ExtractSourceText(CXCursor cursor, byte[] fileBytes)
     {
         try
         {
-            if (string.IsNullOrEmpty(fileContent))
+            if (fileBytes.Length == 0)
             {
                 return string.Empty;
             }
@@ -892,18 +966,18 @@ public class CppParser : ILanguageParser
             clang_getSpellingLocation(startLocation, out _, out _, out _, out var startOffset);
             clang_getSpellingLocation(endLocation, out _, out _, out _, out var endOffset);
 
-            if (startOffset >= endOffset || startOffset >= fileContent.Length)
+            if (startOffset >= endOffset || startOffset >= fileBytes.Length)
             {
                 return string.Empty;
             }
 
-            var length = (int)Math.Min(endOffset - startOffset, fileContent.Length - startOffset);
+            var length = (int)Math.Min(endOffset - startOffset, (uint)(fileBytes.Length - startOffset));
             if (length <= 0)
             {
                 return string.Empty;
             }
 
-            var text = fileContent.Substring((int)startOffset, length);
+            var text = Encoding.UTF8.GetString(fileBytes, (int)startOffset, length);
             if (text.Length > MaxSourceCodeLength)
             {
                 text = text[..MaxSourceCodeLength];
@@ -1117,6 +1191,13 @@ public class CppParser : ILanguageParser
         return space >= 0 ? trimmed[(space + 1)..].Trim() : trimmed;
     }
 
+    private static string ExtractParameterType(string parameter)
+    {
+        var trimmed = parameter.Trim();
+        var space = trimmed.LastIndexOf(' ');
+        return space > 0 ? trimmed[..space].Trim() : trimmed;
+    }
+
     private static bool IsMethodParameter(MethodInfo method, string identifier) =>
         method.Parameters.Any(parameter =>
             string.Equals(ExtractParameterName(parameter), identifier, StringComparison.Ordinal));
@@ -1160,7 +1241,7 @@ public class CppParser : ILanguageParser
     private sealed class ClassMemberVisitorContext
     {
         public required ClassInfo ClassInfo { get; init; }
-        public required string FileContent { get; init; }
+        public required byte[] FileBytes { get; init; }
     }
 
     private sealed class LocalVariableVisitorContext
@@ -1470,7 +1551,7 @@ public class CppParser : ILanguageParser
     private sealed class AstVisitorContext
     {
         public required string FilePath { get; init; }
-        public required string FileContent { get; init; }
+        public required byte[] FileBytes { get; init; }
         public required List<ClassInfo> Classes { get; init; }
         public required List<MethodInfo> FreeFunctions { get; init; }
         public List<string> WalkErrors { get; } = new();
@@ -1521,6 +1602,10 @@ public class CppParser : ILanguageParser
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate CXChildVisitResult CXCursorVisitor(CXCursor cursor, CXCursor parent, IntPtr clientData);
 
+    // Values must match clang-c/Index.h exactly. Namespace and LinkageSpec were previously
+    // wrong (33/36 — actually NamespaceAlias and TypeAliasDecl), which made the visitor treat
+    // real namespace cursors as unknown parents and silently drop every class declared inside
+    // a namespace block.
     private enum CXCursorKind : uint
     {
         CXCursor_StructDecl = 2,
@@ -1530,11 +1615,11 @@ public class CppParser : ILanguageParser
         CXCursor_VarDecl = 9,
         CXCursor_ParmDecl = 10,
         CXCursor_CXXMethod = 21,
+        CXCursor_Namespace = 22,
+        CXCursor_LinkageSpec = 23,
         CXCursor_Constructor = 24,
         CXCursor_Destructor = 25,
-        CXCursor_Namespace = 33,
         CXCursor_CXXBaseSpecifier = 44,
-        CXCursor_LinkageSpec = 36,
         CXCursor_TranslationUnit = 350,
     }
 

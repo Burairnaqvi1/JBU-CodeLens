@@ -92,10 +92,10 @@ public static class InferenceExportHelper
     }
 
     public static void WriteMarkdownFile(ProjectIR ir, IReadOnlyList<ParseResult> parseResults, string path) =>
-        File.WriteAllText(path, BuildMarkdown(ir, parseResults));
+        AtomicFileWriter.Write(path, temp => File.WriteAllText(temp, BuildMarkdown(ir, parseResults)));
 
     public static void WriteJsonFile(ProjectIR ir, IReadOnlyList<ParseResult> parseResults, string path) =>
-        File.WriteAllText(path, BuildJson(ir, parseResults));
+        AtomicFileWriter.Write(path, temp => File.WriteAllText(temp, BuildJson(ir, parseResults)));
 
     private static void AppendAnalysisMarkdown(StringBuilder sb, MethodAnalysis analysis)
     {

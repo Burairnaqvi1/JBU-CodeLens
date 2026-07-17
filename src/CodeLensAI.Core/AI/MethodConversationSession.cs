@@ -73,8 +73,12 @@ public sealed class MethodConversationSession : IMethodConversationSession
 
     if (_history.Count > 0)
     {
+      // Only the most recent turns go into the prompt. The full history is unbounded, and the
+      // input-budget overflow handling trims from the END of the instruction — where the new
+      // question sits — so an oversized history would silently destroy the question itself.
+      const int maxHistoryTurns = 4;
       builder.AppendLine("Conversation so far:");
-      foreach (var turn in _history)
+      foreach (var turn in _history.Skip(Math.Max(0, _history.Count - maxHistoryTurns)))
       {
         builder.AppendLine($"Q: {turn.Question}");
         builder.AppendLine($"A: {turn.Answer}");

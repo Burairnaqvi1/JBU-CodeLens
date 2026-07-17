@@ -26,6 +26,21 @@ public static class WordExporter
         Action<string>? onProgress = null,
         ProjectMetricsSnapshot? metrics = null)
     {
+        // Generation (especially with AI) can take minutes and fail midway; writing to a temp
+        // file and moving on success guarantees the chosen path never holds a corrupt .docx.
+        AtomicFileWriter.Write(outputPath, tempPath =>
+            ExportCore(tempPath, projectFolderPath, parseResults, explanationService, includeAi, onProgress, metrics));
+    }
+
+    private static void ExportCore(
+        string outputPath,
+        string projectFolderPath,
+        List<ParseResult> parseResults,
+        IExplanationService? explanationService,
+        bool includeAi,
+        Action<string>? onProgress,
+        ProjectMetricsSnapshot? metrics)
+    {
         var projectName = Path.GetFileName(
             projectFolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
 

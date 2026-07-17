@@ -534,6 +534,12 @@ public sealed class ExplanationService : IExplanationService
     {
         Interlocked.Increment(ref _inferenceCallCount);
 
+        // Analyzed source code is untrusted input: strip chat-template special tokens and
+        // control characters before it is embedded in the prompt, so a file containing e.g.
+        // "<|im_end|>" cannot break out of the template or truncate the response.
+        instruction = SanitizeForPrompt(instruction);
+        systemPrompt = SanitizeForPrompt(systemPrompt);
+
         // One context for the service lifetime; KV cache cleared per call so prompts stay
         // isolated without re-allocating the context's native buffers every time.
         var context = _context ??= _weights!.CreateContext(_modelParams!);
@@ -548,6 +554,9 @@ public sealed class ExplanationService : IExplanationService
             var keep = Math.Max(64, (int)(instruction.Length * ((double)MaxInputTokens / promptTokens)) - 32);
             if (keep < instruction.Length)
             {
+                System.Diagnostics.Trace.WriteLine(
+                    $"[CodeLensAI] Prompt truncated: {promptTokens} tokens exceeded the {MaxInputTokens}-token input budget; " +
+                    $"kept the first {keep} of {instruction.Length} instruction characters.");
                 instruction = instruction[..keep] + "…";
             }
         }
@@ -595,6 +604,21 @@ public sealed class ExplanationService : IExplanationService
         }
 
         return CleanResponse(builder.ToString(), _usesPhiTemplate, _usesChatMlTemplate);
+    }
+
+    /// <summary>
+    /// Removes chat-template special-token sequences (<c>&lt;|…|&gt;</c>) and non-printable
+    /// control characters (keeping newlines and tabs) from text destined for a prompt.
+    /// </summary>
+    internal static string SanitizeForPrompt(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+
+        var cleaned = Regex.Replace(text, @"<\|[^|>]{0,32}\|>", " ");
+        return Regex.Replace(cleaned, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", " ");
     }
 
     private static string FormatPhiPrompt(string systemMessage, string userMessage) =>
