@@ -42,6 +42,13 @@ public partial class MainWindow : Window
     private bool _suppressTreeSelectionChanged;
     private bool _isDarkTheme = true;
     private bool _isScanning;
+    private bool _isExporting;
+
+    // One cancellation source per long-running operation (scan or Word export); only one such
+    // operation can run at a time because the busy state disables the buttons that start them.
+    private CancellationTokenSource? _activeCts;
+
+    private bool IsBusy => _isScanning || _isExporting;
 
     private string? SelectedFolderPath
     {
@@ -256,9 +263,9 @@ public partial class MainWindow : Window
     {
         if (TryGetSingleFolder(e, out var folderPath))
         {
-            if (_isScanning)
+            if (IsBusy)
             {
-                StatusBarText.Text = "A scan is already running — drop the folder again when it finishes.";
+                StatusBarText.Text = "A scan or export is already running — drop the folder again when it finishes.";
             }
             else
             {
@@ -292,13 +299,15 @@ public partial class MainWindow : Window
 
     private async Task ScanProjectAsync()
     {
-        if (string.IsNullOrEmpty(SelectedFolderPath) || _isScanning)
+        if (string.IsNullOrEmpty(SelectedFolderPath) || IsBusy)
         {
             return;
         }
 
         _isScanning = true;
-        SetScanUiState(scanning: true);
+        _activeCts = new CancellationTokenSource();
+        var cancellationToken = _activeCts.Token;
+        SetBusyUiState(busy: true, determinateProgress: true, cancellable: true);
         ProjectTree.Items.Clear();
         _parseCache.Clear();
         _lastScanResults = [];
@@ -315,13 +324,31 @@ public partial class MainWindow : Window
 
         try
         {
+            // Progress<T> marshals reports back to the UI thread that created it.
+            var progress = new Progress<ScanProgress>(p =>
+            {
+                ScanProgressBar.Maximum = p.TotalFiles;
+                ScanProgressBar.Value = p.FilesParsed;
+                StatusBarText.Text = $"Scanning… {p.FilesParsed}/{p.TotalFiles} — {p.CurrentFile}";
+            });
+
             // Task.Run keeps the sequential post-parse work (relationships, graph, metrics) off
             // the dispatcher; the parse itself fans out on worker threads inside the engine.
-            var scanResult = await Task.Run(() => _projectAnalyzer.AnalyzeProjectAsync(folderPath));
+            var scanResult = await Task.Run(() => _projectAnalyzer.AnalyzeProjectAsync(folderPath, cancellationToken, progress));
 
             if (!scanResult.Success)
             {
-                StatusBarText.Text = scanResult.Error ?? "Scan failed.";
+                var message = scanResult.Error ?? "Scan failed.";
+                StatusBarText.Text = message;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    ShowNotification("Scan canceled.");
+                }
+                else
+                {
+                    ShowNotification($"Scan failed: {message}", NotificationKind.Error);
+                }
+
                 return;
             }
 
@@ -381,21 +408,46 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             StatusBarText.Text = $"Scan failed: {ex.Message}";
+            ShowNotification($"Scan failed: {ex.Message}", NotificationKind.Error);
         }
         finally
         {
             _isScanning = false;
-            SetScanUiState(scanning: false);
+            _activeCts?.Dispose();
+            _activeCts = null;
+            SetBusyUiState(busy: false);
         }
     }
 
     private void ScanProject() => _ = ScanProjectAsync();
 
-    private void SetScanUiState(bool scanning)
+    private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
-        BrowseButton.IsEnabled = !scanning;
-        ScanButton.IsEnabled = !scanning && !string.IsNullOrEmpty(SelectedFolderPath);
-        SetExportButtonsEnabled(!scanning && _hasScanResults);
+        CancelButton.IsEnabled = false;
+        StatusBarText.Text = "Canceling…";
+        _activeCts?.Cancel();
+    }
+
+    /// <summary>
+    /// Central busy-state switch for long-running operations: disables everything that could
+    /// start or corrupt a run, and shows the progress bar (determinate for scans, indeterminate
+    /// for exports) plus the Cancel button when the operation supports cancellation.
+    /// </summary>
+    private void SetBusyUiState(bool busy, bool determinateProgress = false, bool cancellable = false)
+    {
+        BrowseButton.IsEnabled = !busy;
+        ScanButton.IsEnabled = !busy && !string.IsNullOrEmpty(SelectedFolderPath);
+        SetExportButtonsEnabled(!busy && _hasScanResults);
+
+        ScanProgressBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        ScanProgressBar.IsIndeterminate = busy && !determinateProgress;
+        if (!busy)
+        {
+            ScanProgressBar.Value = 0;
+        }
+
+        CancelButton.Visibility = busy && cancellable ? Visibility.Visible : Visibility.Collapsed;
+        CancelButton.IsEnabled = busy && cancellable;
     }
 
     private void SetExportButtonsEnabled(bool enabled)
@@ -618,7 +670,10 @@ public partial class MainWindow : Window
 
         var previousStatus = StatusBarText.Text;
         StatusBarText.Text = includeAi ? "Exporting with AI (this may take a while)…" : "Exporting documentation…";
-        SetExportButtonsEnabled(false);
+        _isExporting = true;
+        _activeCts = new CancellationTokenSource();
+        var cancellationToken = _activeCts.Token;
+        SetBusyUiState(busy: true, cancellable: true);
 
         try
         {
@@ -635,12 +690,18 @@ public partial class MainWindow : Window
                 service,
                 useAi,
                 msg => Dispatcher.BeginInvoke(() => StatusBarText.Text = msg),
-                metrics));
+                metrics,
+                cancellationToken));
 
             var exportedPath = dialog.FileName;
             ShowNotification("Documentation exported successfully.", NotificationKind.Success,
                 "Open", () => Process.Start(new ProcessStartInfo(exportedPath) { UseShellExecute = true }));
             StatusBarText.Text = $"Documentation exported to {exportedPath}";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusBarText.Text = previousStatus;
+            ShowNotification("Export canceled — no file was written.");
         }
         catch (Exception ex)
         {
@@ -649,7 +710,10 @@ public partial class MainWindow : Window
         }
         finally
         {
-            SetExportButtonsEnabled(true);
+            _isExporting = false;
+            _activeCts?.Dispose();
+            _activeCts = null;
+            SetBusyUiState(busy: false);
         }
     }
 
@@ -676,7 +740,8 @@ public partial class MainWindow : Window
 
         var previousStatus = StatusBarText.Text;
         StatusBarText.Text = "Exporting Markdown…";
-        SetExportButtonsEnabled(false);
+        _isExporting = true;
+        SetBusyUiState(busy: true);
 
         try
         {
@@ -696,7 +761,8 @@ public partial class MainWindow : Window
         }
         finally
         {
-            SetExportButtonsEnabled(true);
+            _isExporting = false;
+            SetBusyUiState(busy: false);
         }
     }
 
@@ -723,7 +789,8 @@ public partial class MainWindow : Window
 
         var previousStatus = StatusBarText.Text;
         StatusBarText.Text = "Exporting JSON…";
-        SetExportButtonsEnabled(false);
+        _isExporting = true;
+        SetBusyUiState(busy: true);
 
         try
         {
@@ -743,7 +810,8 @@ public partial class MainWindow : Window
         }
         finally
         {
-            SetExportButtonsEnabled(true);
+            _isExporting = false;
+            SetBusyUiState(busy: false);
         }
     }
 
@@ -847,7 +915,7 @@ public partial class MainWindow : Window
         };
         var summaryText = new TextBlock
         {
-            Text = "Click Generate Summary to produce an architecture overview (Ollama or local GGUF).",
+            Text = "Click Generate Summary to produce an architecture overview using the local AI model.",
             Foreground = (Brush)FindResource("TextSecondaryBrush"),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 8),

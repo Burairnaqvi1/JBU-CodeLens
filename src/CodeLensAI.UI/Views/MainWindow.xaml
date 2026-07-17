@@ -606,6 +606,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="StatusBarText"
                            Text="AI model ready"
@@ -613,18 +614,27 @@
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"/>
-                <!-- Progress bar appears only during a scan; updates are immediate (no animation). -->
+                <!-- Progress bar appears during scans (determinate, per file) and exports
+                     (indeterminate); updates are immediate (no animation). -->
                 <ProgressBar x:Name="ScanProgressBar"
                              Grid.Column="1"
                              Width="140" Height="6"
-                             IsIndeterminate="True"
                              Visibility="Collapsed"
-                             Margin="12,0,12,0"
+                             Margin="12,0,0,0"
                              VerticalAlignment="Center"
                              Background="{DynamicResource BorderBrush}"
                              Foreground="{DynamicResource PrimaryBrush}"
                              BorderThickness="0"/>
-                <TextBlock Grid.Column="2"
+                <Button x:Name="CancelButton"
+                        Grid.Column="2"
+                        Content="Cancel"
+                        Click="CancelButton_Click"
+                        Visibility="Collapsed"
+                        FontSize="11"
+                        Padding="10,2"
+                        Margin="12,2,12,2"
+                        ToolTip="Cancel the running scan or export"/>
+                <TextBlock Grid.Column="3"
                            Text="Drag &amp; drop a folder anywhere"
                            FontSize="11"
                            Foreground="{DynamicResource TextSecondaryBrush}"
