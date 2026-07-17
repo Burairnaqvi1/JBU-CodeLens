@@ -295,6 +295,26 @@ internal static class SourcePatternHelpers
         return VariableUsageKind.Unused;
     }
 
+    internal static bool HasCatchWithoutRethrow(string source)
+    {
+        foreach (Match match in Regex.Matches(source, @"catch\s*(?:\([^)]*\))?\s*\{", RegexOptions.IgnoreCase))
+        {
+            var openBrace = match.Index + match.Length - 1;
+            var block = ExtractBalancedBlock(source, openBrace);
+            if (string.IsNullOrEmpty(block))
+            {
+                continue;
+            }
+
+            if (!Regex.IsMatch(block, @"\bthrow\b"))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     internal static string ExtractBalancedBlock(string source, int openBraceIndex)
     {
         if (openBraceIndex < 0 || openBraceIndex >= source.Length || source[openBraceIndex] != '{')

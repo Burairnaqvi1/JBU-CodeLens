@@ -519,7 +519,7 @@ public sealed class PostconditionAnalyzer
 
     private static IEnumerable<StateChange> RuleExceptionSwallowed(MethodAnalysisContext context)
     {
-        if (!context.HasSourceBody || !HasCatchWithoutRethrow(context.SourceBody))
+        if (!context.HasSourceBody || !SourcePatternHelpers.HasCatchWithoutRethrow(context.SourceBody))
         {
             yield break;
         }
@@ -569,24 +569,4 @@ public sealed class PostconditionAnalyzer
 
     private static bool IsVoidReturn(string returnType) =>
         returnType.Equals("void", StringComparison.OrdinalIgnoreCase);
-
-    private static bool HasCatchWithoutRethrow(string source)
-    {
-        foreach (Match match in Regex.Matches(source, @"catch\s*(?:\([^)]*\))?\s*\{", RegexOptions.IgnoreCase))
-        {
-            var openBrace = match.Index + match.Length - 1;
-            var block = SourcePatternHelpers.ExtractBalancedBlock(source, openBrace);
-            if (string.IsNullOrEmpty(block))
-            {
-                continue;
-            }
-
-            if (!Regex.IsMatch(block, @"\bthrow\b"))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

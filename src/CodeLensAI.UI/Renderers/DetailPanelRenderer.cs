@@ -385,45 +385,48 @@ internal static class DetailPanelRenderer
                 stack.Children.Add(CreateCapsLabel("INFERRED DESCRIPTION", resourceRoot));
                 stack.Children.Add(CreateBodyText(inferred, resourceRoot, marginTop: 8));
             }
+        }
 
-            stack.Children.Add(new Border { Height = 1, Background = Brush(resourceRoot, "BorderBrush"), Margin = new Thickness(0, 10, 0, 10) });
-            var aiLabelRow = new StackPanel { Orientation = Orientation.Horizontal };
-            aiLabelRow.Children.Add(CreateCapsLabel("AI DESCRIPTION", resourceRoot));
-            aiLabelRow.Children.Add(CreateBadge("AI", "WarningBrush", resourceRoot, marginLeft: 6));
-            stack.Children.Add(aiLabelRow);
+        // The AI description always runs — even when a developer XML summary exists — so the
+        // model's independent read of the method is shown alongside the documentation. This lets
+        // the reader cross-check the two and improves overall accuracy/confidence.
+        stack.Children.Add(new Border { Height = 1, Background = Brush(resourceRoot, "BorderBrush"), Margin = new Thickness(0, 10, 0, 10) });
+        var aiLabelRow = new StackPanel { Orientation = Orientation.Horizontal };
+        aiLabelRow.Children.Add(CreateCapsLabel("AI DESCRIPTION", resourceRoot));
+        aiLabelRow.Children.Add(CreateBadge("AI", "WarningBrush", resourceRoot, marginLeft: 6));
+        stack.Children.Add(aiLabelRow);
 
-            if (!string.IsNullOrEmpty(method.CachedAiBriefDescription))
+        if (!string.IsNullOrEmpty(method.CachedAiBriefDescription))
+        {
+            aiBriefText = CreateBodyText(method.CachedAiBriefDescription, resourceRoot, marginTop: 8);
+            stack.Children.Add(aiBriefText);
+        }
+        else
+        {
+            aiBriefText = CreateBodyText("Resolving best available summary…", resourceRoot, marginTop: 8);
+            stack.Children.Add(aiBriefText);
+
+            var briefTextBlock = aiBriefText;
+            var svc = explanationService;
+            var m = method;
+            Task.Run(() =>
             {
-                aiBriefText = CreateBodyText(method.CachedAiBriefDescription, resourceRoot, marginTop: 8);
-                stack.Children.Add(aiBriefText);
-            }
-            else
-            {
-                aiBriefText = CreateBodyText("Resolving best available summary…", resourceRoot, marginTop: 8);
-                stack.Children.Add(aiBriefText);
+                var text = svc is { IsReady: true }
+                    ? svc.GenerateBriefDescription(m)
+                    : GetAiUnavailableMessage(svc);
 
-                var briefTextBlock = aiBriefText;
-                var svc = explanationService;
-                var m = method;
-                Task.Run(() =>
+                Application.Current.Dispatcher.BeginInvoke(() =>
                 {
-                    var text = svc is { IsReady: true }
-                        ? svc.GenerateBriefDescription(m)
-                        : GetAiUnavailableMessage(svc);
+                    briefTextBlock.Text = text;
 
-                    Application.Current.Dispatcher.BeginInvoke(() =>
+                    // Only cache real model output — bracketed strings are error/unavailable
+                    // messages, and caching those would hide the AI once it becomes ready.
+                    if (svc is { IsReady: true } && !text.StartsWith('['))
                     {
-                        briefTextBlock.Text = text;
-
-                        // Only cache real model output — bracketed strings are error/unavailable
-                        // messages, and caching those would hide the AI once it becomes ready.
-                        if (svc is { IsReady: true } && !text.StartsWith('['))
-                        {
-                            m.CachedAiBriefDescription = text;
-                        }
-                    });
+                        m.CachedAiBriefDescription = text;
+                    }
                 });
-            }
+            });
         }
 
         return WrapInCard(stack, resourceRoot);

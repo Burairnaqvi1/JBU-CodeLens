@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using LLama;
 using LLama.Common;
 using LLama.Sampling;
@@ -27,13 +28,13 @@ public sealed class ExplanationService : IExplanationService
     private const int ContextSize = 2048;
 
     private const int MaxTokensBrief = 50;
-    private const int MaxTokensBullets = 250;
-    private const int MaxTokensErrors = 150;
+    private const int MaxTokensBullets = 300;
+    private const int MaxTokensErrors = 180;
     private const int MaxTokensExplanation = 400;
     private const int MaxTokensFollowUp = 200;
     private const int MaxTokensFollowUpDetailed = 600;
-    private const int MaxSourceSnippetForAi = 400;
-    private const int MaxSourceSnippetBrief = 300;
+    private const int MaxSourceSnippetForAi = 800;
+    private const int MaxSourceSnippetBrief = 500;
 
     internal const int MaxTokensFollowUpAnswer = MaxTokensFollowUp;
     internal const int MaxTokensFollowUpAnswerDetailed = MaxTokensFollowUpDetailed;
@@ -41,8 +42,10 @@ public sealed class ExplanationService : IExplanationService
     private const string DefaultSystemPrompt =
         "You are a concise technical writer. Answer briefly and stay factual.";
 
-    private const int MaxInputTokens = 512;
-    private const int MaxTokensMergedDocumentation = 700;
+    // Input budget sized so the enlarged source snippet plus the verified-facts block always
+    // fit: 1024 input + 800 merged output stays under the 2048-token context.
+    private const int MaxInputTokens = 1024;
+    private const int MaxTokensMergedDocumentation = 800;
 
     private readonly LLamaWeights? _weights;
     private readonly ModelParams? _modelParams;
@@ -166,7 +169,8 @@ public sealed class ExplanationService : IExplanationService
                 $"Method: {methodInfo.Name}, Returns: {methodInfo.ReturnType}, " +
                 $"Params: {string.Join(", ", methodInfo.Parameters)}, Source: {source}";
 
-            var systemPrompt = "Write one sentence describing what this C++ or C# method does.";
+            var systemPrompt = "Write one sentence describing what this C++ or C# method actually does, " +
+                               "naming its key logic (checks, loops, calculations, calls) from the source.";
             var languageSuffix = GetLanguageSystemSuffix(methodInfo);
             if (!string.IsNullOrEmpty(languageSuffix))
             {
@@ -210,10 +214,13 @@ public sealed class ExplanationService : IExplanationService
         return RunCached("prepost", methodInfo, () =>
         {
             var prompt = BuildBulletPrompt(
-                "List pre-conditions then post-conditions. Max 3 bullets per section. Format each line as '- text'.",
+                "List pre-conditions then post-conditions. Pre-conditions: only requirements the code enforces " +
+                "via guard clauses in the source. Post-conditions: what the return value means, using the verified " +
+                "return statements. Never invent checks absent from the source. " +
+                "Max 3 bullets per section. Format each line as '- text'.",
                 DescribeMethodCompact(methodInfo),
                 methodInfo);
-            return TruncateBullets(RunInstruction(prompt, MaxTokensBullets), maxBullets: 6, maxWordsPerBullet: 14);
+            return TruncateBullets(RunInstruction(prompt, MaxTokensBullets), maxBullets: 6, maxWordsPerBullet: 20);
         });
     }
 
@@ -230,10 +237,12 @@ public sealed class ExplanationService : IExplanationService
         return RunCached("design", methodInfo, () =>
         {
             var prompt = BuildBulletPrompt(
-                "List up to 4 design constraints as '- ' bullets. Cover state, dependencies, and side effects only when relevant.",
+                "List up to 4 design constraints as '- ' bullets. Name the constructs the code actually uses " +
+                "(recursion, lock, async/await, loops, LINQ), plus state, dependencies, and side effects. " +
+                "Cover every verified fact that applies; claim nothing the code does not do.",
                 DescribeMethodCompact(methodInfo),
                 methodInfo);
-            return TruncateBullets(RunInstruction(prompt, MaxTokensBullets), maxBullets: 4, maxWordsPerBullet: 14);
+            return TruncateBullets(RunInstruction(prompt, MaxTokensBullets), maxBullets: 4, maxWordsPerBullet: 20);
         });
     }
 
@@ -251,11 +260,13 @@ public sealed class ExplanationService : IExplanationService
         {
             var prompt = BuildBulletPrompt(
                 "Only identify errors actually possible given the source code. " +
+                "The verified Throws fact is authoritative: name each thrown exception and what triggers it, " +
+                "and mention exceptions that are caught and handled internally. " +
                 "Do not list generic errors unrelated to this method. " +
-                "If the method is simple with no error conditions, say so. Max 4 '- ' bullets.",
+                "Only say there are no error conditions when the verified facts show no throw statements. Max 4 '- ' bullets.",
                 DescribeMethodCompact(methodInfo),
                 methodInfo);
-            return TruncateBullets(RunInstruction(prompt, MaxTokensErrors), maxBullets: 4, maxWordsPerBullet: 16);
+            return TruncateBullets(RunInstruction(prompt, MaxTokensErrors), maxBullets: 4, maxWordsPerBullet: 22);
         });
     }
 
@@ -282,7 +293,8 @@ public sealed class ExplanationService : IExplanationService
 
         var instruction = BuildMergedDocumentationPrompt(methodInfo);
         var response = RunInstruction(instruction, MaxTokensMergedDocumentation,
-            "You are a concise technical writer. Fill in every requested section, keeping the exact '### ' headers. Stay factual.");
+            "You are a concise technical writer. Fill in every requested section, keeping the exact '### ' headers. " +
+            "Stay factual and never contradict the verified facts in the request.");
 
         var sections = SplitSections(response);
 
@@ -290,13 +302,13 @@ public sealed class ExplanationService : IExplanationService
             raw => TruncateProse(raw, maxSentences: 1, maxWords: 35),
             () => GenerateBriefDescription(methodInfo));
         var prePost = PostProcessSection(sections, "CONDITIONS",
-            raw => TruncateBullets(raw, maxBullets: 6, maxWordsPerBullet: 14),
+            raw => TruncateBullets(raw, maxBullets: 6, maxWordsPerBullet: 20),
             () => GeneratePrePostConditions(methodInfo));
         var design = PostProcessSection(sections, "DESIGN",
-            raw => TruncateBullets(raw, maxBullets: 4, maxWordsPerBullet: 14),
+            raw => TruncateBullets(raw, maxBullets: 4, maxWordsPerBullet: 20),
             () => GenerateDesignConstraints(methodInfo));
         var errors = PostProcessSection(sections, "ERRORS",
-            raw => TruncateBullets(raw, maxBullets: 4, maxWordsPerBullet: 16),
+            raw => TruncateBullets(raw, maxBullets: 4, maxWordsPerBullet: 22),
             () => GenerateErrorAnalysis(methodInfo));
         var explanation = PostProcessSection(sections, "EXPLANATION",
             raw => TruncateProse(raw, maxSentences: 3, maxWords: 80),
@@ -343,15 +355,16 @@ public sealed class ExplanationService : IExplanationService
         var builder = new StringBuilder();
         builder.AppendLine("Document this method in five sections. Output exactly these '### ' headers in this order, each followed by its content:");
         builder.AppendLine("### BRIEF");
-        builder.AppendLine("One sentence describing what the method does.");
+        builder.AppendLine("One sentence describing what the method's code actually does — name its key logic; do not restate the Summary line.");
         builder.AppendLine("### CONDITIONS");
-        builder.AppendLine("Up to 3 precondition then up to 3 postcondition '- ' bullets.");
+        builder.AppendLine("Up to 3 precondition '- ' bullets stating only requirements the code enforces via guard clauses, then up to 3 postcondition '- ' bullets stating what the return value means, using the verified return statements. Never invent checks absent from the source.");
         builder.AppendLine("### DESIGN");
-        builder.AppendLine("Up to 4 design-constraint '- ' bullets covering state, dependencies, side effects.");
+        builder.AppendLine("Up to 4 design '- ' bullets naming the constructs the code actually uses (recursion, lock, async/await, loops, LINQ), plus state, dependencies, side effects. Cover every verified fact that applies; claim nothing the code does not do.");
         builder.AppendLine("### ERRORS");
-        builder.AppendLine("Up to 4 '- ' bullets for errors actually possible in the source; say so if none.");
+        builder.AppendLine("Up to 4 '- ' bullets consistent with the verified Throws fact: name each thrown exception and its trigger, note exceptions handled internally, or say none only when the code truly cannot fail.");
         builder.AppendLine("### EXPLANATION");
         builder.AppendLine("2-3 sentences summarizing what the method does and what it returns.");
+        builder.AppendLine("Plain text only — no markdown bold, headings, or labels inside sections.");
 
         var languageSuffix = GetLanguageSystemSuffix(methodInfo);
         if (!string.IsNullOrEmpty(languageSuffix))
@@ -662,6 +675,8 @@ public sealed class ExplanationService : IExplanationService
 
     /// <summary>
     /// Compact method metadata for prompts — keeps token count low for faster inference.
+    /// The verified-facts block sits before the source snippet because prompt overflow is
+    /// trimmed from the end of the instruction: the snippet may be cut, the facts never are.
     /// </summary>
     internal static string DescribeMethodCompact(MethodInfo methodInfo)
     {
@@ -672,17 +687,184 @@ public sealed class ExplanationService : IExplanationService
         if (!string.IsNullOrEmpty(methodInfo.XmlSummary))
             builder.AppendLine($"Summary: {methodInfo.XmlSummary}");
 
-        if (methodInfo.ThrownExceptions.Count > 0)
-            builder.AppendLine($"Throws: {string.Join(", ", methodInfo.ThrownExceptions)}");
-
         if (methodInfo.OperationalLimits.Count > 0)
             builder.AppendLine($"Guards: {string.Join("; ", methodInfo.OperationalLimits.Take(3))}");
+
+        builder.Append(BuildVerifiedFacts(methodInfo));
 
         var source = GetMethodSourceSnippet(methodInfo);
         if (!string.IsNullOrEmpty(source))
             builder.AppendLine($"Source: {source}");
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// Deterministic facts derived from the parse tree and the full (untruncated) method body,
+    /// injected into every prompt so the model can neither miss structural patterns (recursion,
+    /// locking, async, swallowed exceptions, state mutation) nor contradict the code — the two
+    /// failure modes with the model-generated sections.
+    /// </summary>
+    internal static string BuildVerifiedFacts(MethodInfo methodInfo)
+    {
+        methodInfo.XmlDocTags.TryGetValue("sourceCode", out var source);
+        source = source?.Trim() ?? string.Empty;
+
+        var facts = new List<string>();
+
+        // The C++ parser only learns exceptions from doc comments, so an empty list there does
+        // not prove the body is throw-free — fall back to scanning the body text.
+        if (methodInfo.ThrownExceptions.Count > 0)
+        {
+            facts.Add($"Throws: {string.Join(", ", methodInfo.ThrownExceptions)}.");
+        }
+        else if (source.Length > 0)
+        {
+            facts.Add(SourcePatternHelpers.ContainsThrow(source)
+                ? "Contains throw statements."
+                : "Contains no throw statements.");
+        }
+
+        if (IsRecursive(methodInfo, source))
+        {
+            facts.Add("Recursive: the method calls itself.");
+        }
+
+        if (source.Length > 0)
+        {
+            if (source.Contains("await ", StringComparison.Ordinal))
+            {
+                facts.Add("Asynchronous: awaits one or more operations.");
+            }
+
+            if (Regex.IsMatch(source, @"\block\s*\(") || source.Contains("std::lock_guard", StringComparison.Ordinal))
+            {
+                facts.Add("Uses a lock for thread safety.");
+            }
+
+            if (Regex.IsMatch(source, @"\bcatch\b"))
+            {
+                facts.Add(SourcePatternHelpers.HasCatchWithoutRethrow(source)
+                    ? "Catches exceptions internally without rethrowing; callers get a normal return value instead of the exception."
+                    : "Contains try/catch handling.");
+
+                if (Regex.IsMatch(source, @"\bfinally\b"))
+                {
+                    facts.Add("Has a finally block that always runs.");
+                }
+            }
+
+            var mutatedFields = GetMutatedFields(methodInfo, source);
+            if (mutatedFields.Count > 0)
+            {
+                facts.Add($"Modifies class state: {string.Join(", ", mutatedFields)}.");
+            }
+            else if (!HasAnyMutation(source))
+            {
+                facts.Add("Modifies no state: the body contains no assignments or mutating calls.");
+            }
+
+            var returnStatements = ExtractReturnStatements(source);
+            if (returnStatements.Count > 0)
+            {
+                facts.Add($"Return statements: {string.Join(" ; ", returnStatements)}");
+            }
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine("Verified facts from code analysis (authoritative — never contradict them):");
+        foreach (var fact in facts)
+        {
+            builder.AppendLine($"- {fact}");
+        }
+
+        return builder.ToString();
+    }
+
+    private static bool IsRecursive(MethodInfo methodInfo, string source)
+    {
+        var name = methodInfo.Name;
+        if (string.IsNullOrEmpty(name))
+        {
+            return false;
+        }
+
+        if (methodInfo.CalledMethodNames.Any(call =>
+                call.Equals(name, StringComparison.Ordinal) ||
+                call.EndsWith("." + name, StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        if (source.Length == 0)
+        {
+            return false;
+        }
+
+        // The C# parser stores the body only, so any self-call matches; the C++ parser stores
+        // the whole definition, whose signature contributes one non-call occurrence.
+        var selfCalls = Regex.Matches(source, $@"\b{Regex.Escape(name)}\s*\(").Count;
+        var isCSharp = LanguageFileExtensions.IsCSharpFile(methodInfo.ParentClass?.SourceFilePath ?? string.Empty);
+        return isCSharp ? selfCalls >= 1 : selfCalls >= 2;
+    }
+
+    /// <summary>
+    /// True when the body performs any assignment (plain or compound), increment/decrement, or
+    /// mutating collection call. Local declarations count too, so this only clears genuinely
+    /// expression-shaped bodies (pure LINQ chains, switch expressions, recursion) — a
+    /// deliberately conservative bar for claiming "modifies no state".
+    /// </summary>
+    private static bool HasAnyMutation(string source) =>
+        Regex.IsMatch(source, @"[+\-*/%|&^]=(?!=)") ||
+        Regex.IsMatch(source, @"(?<![=!<>+\-*/%|&^])=(?!=|>)") ||
+        Regex.IsMatch(source, @"\+\+|--") ||
+        Regex.IsMatch(source,
+            @"\.\s*(Add|AddRange|Remove|RemoveAll|RemoveAt|Clear|Insert|Push|Pop|Enqueue|Dequeue|push_back|pop_back|erase|clear|insert)\s*\(");
+
+    private static List<string> GetMutatedFields(MethodInfo methodInfo, string source)
+    {
+        var mutated = new List<string>();
+        foreach (var field in methodInfo.ParentClass?.Fields ?? [])
+        {
+            if (string.IsNullOrEmpty(field.Name))
+            {
+                continue;
+            }
+
+            if (SourcePatternHelpers.IsWrittenInSource(source, field.Name) ||
+                Regex.IsMatch(source,
+                    $@"\b{Regex.Escape(field.Name)}\s*\.\s*(Add|AddRange|Remove|RemoveAll|RemoveAt|Clear|Insert|Push|Pop|Enqueue|Dequeue|push_back|pop_back|erase|clear|insert)\s*\("))
+            {
+                mutated.Add(field.Name);
+            }
+        }
+
+        return mutated;
+    }
+
+    private static List<string> ExtractReturnStatements(string source)
+    {
+        var results = new List<string>();
+        foreach (Match match in Regex.Matches(source, @"\breturn\b([^;]*);"))
+        {
+            var expression = Regex.Replace(match.Groups[1].Value, @"\s+", " ").Trim();
+            if (expression.Length > 70)
+            {
+                expression = expression[..70] + "…";
+            }
+
+            var formatted = expression.Length == 0 ? "return;" : $"return {expression};";
+            if (!results.Contains(formatted))
+            {
+                results.Add(formatted);
+                if (results.Count == 4)
+                {
+                    break;
+                }
+            }
+        }
+
+        return results;
     }
 
     /// <summary>
@@ -770,10 +952,18 @@ public sealed class ExplanationService : IExplanationService
         return cleaned.Length == 0 ? "[The model returned an empty response.]" : cleaned;
     }
 
+  /// <summary>
+  /// Removes markdown emphasis the model leaks into plain-text output (e.g. 'State**:'),
+  /// which otherwise survives into the rendered documentation verbatim.
+  /// </summary>
+  private static string StripMarkdownEmphasis(string text) =>
+    text.Replace("**", string.Empty).Replace("__", string.Empty);
+
   private static string TruncateProse(string text, int maxSentences, int maxWords)
   {
     if (text.StartsWith('[')) return text;
 
+    text = StripMarkdownEmphasis(text);
     var sentences = new List<string>();
     var current = new StringBuilder();
     foreach (var ch in text)
@@ -807,7 +997,7 @@ public sealed class ExplanationService : IExplanationService
     var lines = new List<string>();
     foreach (var rawLine in text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
     {
-      var line = rawLine.TrimStart('-', '•', '*', ' ');
+      var line = StripMarkdownEmphasis(rawLine).TrimStart('-', '•', '*', '#', ' ');
       if (string.IsNullOrWhiteSpace(line)) continue;
 
       var words = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
