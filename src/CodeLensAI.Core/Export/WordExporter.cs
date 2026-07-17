@@ -60,16 +60,31 @@ public static class WordExporter
         WriteTableOfContents(document, parseResults);
         document.InsertParagraph().InsertPageBreakAfterSelf();
 
+        var methodProgress = new MethodProgress
+        {
+            Total = parseResults.Sum(r => r.Classes.Sum(c => c.Methods.Count)),
+        };
+
         var isFirstClassInDocument = true;
         foreach (var parseResult in parseResults)
         {
             cancellationToken.ThrowIfCancellationRequested();
             onProgress?.Invoke($"Documenting {Path.GetFileName(parseResult.FilePath)}…");
-            WriteFileSection(document, parseResult, ref isFirstClassInDocument, explanationService, includeAi, onProgress, cancellationToken);
+            WriteFileSection(document, parseResult, ref isFirstClassInDocument, explanationService, includeAi, onProgress, methodProgress, cancellationToken);
         }
 
         onProgress?.Invoke("Saving document…");
         document.Save();
+    }
+
+    /// <summary>
+    /// Running method counter for export progress messages ("method k of n") — the count that
+    /// actually tracks elapsed time during AI exports, where each method costs an inference call.
+    /// </summary>
+    private sealed class MethodProgress
+    {
+        public int Total { get; init; }
+        public int Done { get; set; }
     }
 
     private static void WriteCoverPage(
@@ -193,6 +208,7 @@ public static class WordExporter
         IExplanationService? explanationService,
         bool includeAi,
         Action<string>? onProgress,
+        MethodProgress methodProgress,
         CancellationToken cancellationToken)
     {
         var fileName = Path.GetFileName(parseResult.FilePath);
@@ -230,7 +246,7 @@ public static class WordExporter
             }
 
             isFirstClassInDocument = false;
-            WriteClassSection(document, parseResult.Classes[i], explanationService, includeAi, onProgress, cancellationToken);
+            WriteClassSection(document, parseResult.Classes[i], explanationService, includeAi, onProgress, methodProgress, cancellationToken);
         }
     }
 
@@ -240,6 +256,7 @@ public static class WordExporter
         IExplanationService? explanationService,
         bool includeAi,
         Action<string>? onProgress,
+        MethodProgress methodProgress,
         CancellationToken cancellationToken)
     {
         document.InsertParagraph(classInfo.Name)
@@ -277,7 +294,7 @@ public static class WordExporter
         foreach (var method in classInfo.Methods)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            WriteMethodSection(document, method, explanationService, includeAi, onProgress, cancellationToken);
+            WriteMethodSection(document, method, explanationService, includeAi, onProgress, methodProgress, cancellationToken);
         }
     }
 
@@ -287,9 +304,12 @@ public static class WordExporter
         IExplanationService? explanationService,
         bool includeAi,
         Action<string>? onProgress,
+        MethodProgress methodProgress,
         CancellationToken cancellationToken)
     {
-        onProgress?.Invoke($"Documenting {method.ParentClass?.Name}.{method.Name}…");
+        methodProgress.Done++;
+        onProgress?.Invoke(
+            $"Documenting method {methodProgress.Done}/{methodProgress.Total} — {method.ParentClass?.Name}.{method.Name}…");
 
         // One merged model call produces all five AI sections (instead of five sequential
         // round-trips). Null when AI is off or the model isn't ready.

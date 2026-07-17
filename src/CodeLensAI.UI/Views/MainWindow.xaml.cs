@@ -527,6 +527,10 @@ public partial class MainWindow : Window
         return nsRoot;
     }
 
+    // Marks the single placeholder child that gives a collapsed file node its expander arrow
+    // before its real children exist.
+    private static readonly object LazyChildrenPlaceholderTag = new();
+
     private TreeViewItem BuildFileNode(string filePath, ParseResult result)
     {
         var fileName = Path.GetFileName(filePath);
@@ -558,6 +562,42 @@ public partial class MainWindow : Window
             return fileItem;
         }
 
+        // Class and method items are built on first expand. On large repos, eager building
+        // multiplied the visual-tree element count by every method in the project; lazily the
+        // startup cost is one item per file.
+        fileItem.Items.Add(new TreeViewItem { Tag = LazyChildrenPlaceholderTag });
+        fileItem.Expanded += FileNode_Expanded;
+        return fileItem;
+    }
+
+    private void FileNode_Expanded(object sender, RoutedEventArgs e)
+    {
+        // Expanded bubbles from descendants; only react to the file node itself.
+        if (sender is TreeViewItem fileItem && ReferenceEquals(e.OriginalSource, fileItem))
+        {
+            PopulateFileChildren(fileItem);
+        }
+    }
+
+    /// <summary>
+    /// Replaces a file node's lazy placeholder with its real class/method items. No-op when the
+    /// node is already populated.
+    /// </summary>
+    private void PopulateFileChildren(TreeViewItem fileItem)
+    {
+        if (fileItem.Items.Count != 1 ||
+            fileItem.Items[0] is not TreeViewItem { } onlyChild ||
+            !ReferenceEquals(onlyChild.Tag, LazyChildrenPlaceholderTag))
+        {
+            return;
+        }
+
+        if (fileItem.Tag is not string filePath || !_parseCache.TryGetValue(filePath, out var result))
+        {
+            return;
+        }
+
+        fileItem.Items.Clear();
         foreach (var classInfo in result.Classes)
         {
             var classItem = new TreeViewItem
@@ -578,8 +618,6 @@ public partial class MainWindow : Window
 
             fileItem.Items.Add(classItem);
         }
-
-        return fileItem;
     }
 
     private void ProjectTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -1095,6 +1133,17 @@ public partial class MainWindow : Window
         foreach (var fileObj in root.Items)
         {
             if (fileObj is not TreeViewItem fileItem) continue;
+
+            // Only the file that owns the method can contain its tree item; materialize its
+            // lazily-built children before searching them.
+            if (fileItem.Tag is not string filePath ||
+                !string.Equals(filePath, method.ParentClass?.SourceFilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            PopulateFileChildren(fileItem);
+
             foreach (var classObj in fileItem.Items)
             {
                 if (classObj is not TreeViewItem classItem || classItem.Tag is not ClassInfo classInfo) continue;

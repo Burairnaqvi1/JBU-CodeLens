@@ -10,5 +10,7 @@ public static class AiGuidance
     /// Shown when no GGUF model file could be located.
     /// </summary>
     public const string ModelNotFoundMessage =
-        "Model not found. Please place a .gguf model file in the models/ folder next to the application.";
+        "Model not found. Place a .gguf model file in the models/ folder next to the application, " +
+        "or set its location explicitly via the CODELENSAI_MODEL_PATH environment variable " +
+        "or \"modelPath\" in %APPDATA%\\CodeLensAI\\settings.json.";
 }

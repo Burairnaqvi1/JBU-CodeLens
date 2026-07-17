@@ -146,6 +146,10 @@ public class CppParser : ILanguageParser
         return ParseWithClang(filePath, fileBytes);
     }
 
+    // Generous per-file budget: a normal libclang parse takes well under a second; only a
+    // pathological input (or a libclang hang) exceeds this.
+    private static readonly TimeSpan NativeParseTimeout = TimeSpan.FromSeconds(30);
+
     /// <inheritdoc />
     public async Task<ParseResult> ParseAsync(string filePath, CancellationToken cancellationToken = default)
     {
@@ -164,9 +168,54 @@ public class CppParser : ILanguageParser
             fileBytes = [];
         }
 
-        // libclang re-reads the file from disk itself; the managed buffer is only used for
-        // source-text extraction. The native parse is CPU-bound and stays on this worker thread.
-        return ParseWithClang(filePath, fileBytes);
+        return await RunNativeParseWithWatchdogAsync(filePath, fileBytes, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs the native libclang parse on a dedicated background thread with a watchdog. A call
+    /// into native code cannot be aborted, so on timeout (or cancellation mid-parse) the thread
+    /// is abandoned — it keeps running detached and its index/TU leak if it never returns — and
+    /// the file is reported as failed instead of hanging or stalling the whole scan. That leak
+    /// is bounded to genuinely pathological files and is the price of keeping the app alive.
+    /// </summary>
+    private static async Task<ParseResult> RunNativeParseWithWatchdogAsync(
+        string filePath,
+        byte[] fileBytes,
+        CancellationToken cancellationToken)
+    {
+        var completion = new TaskCompletionSource<ParseResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                completion.TrySetResult(ParseWithClang(filePath, fileBytes));
+            }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "libclang-parse",
+        };
+        thread.Start();
+
+        var finished = await Task.WhenAny(
+            completion.Task,
+            Task.Delay(NativeParseTimeout, cancellationToken)).ConfigureAwait(false);
+
+        if (finished == completion.Task)
+        {
+            return await completion.Task.ConfigureAwait(false);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var result = new ParseResult { FilePath = filePath };
+        result.Errors.Add(
+            $"C++ parse timed out after {NativeParseTimeout.TotalSeconds:F0} seconds — the file was skipped.");
+        return result;
     }
 
     private static bool TryValidatePath(string filePath, out ParseResult invalid)
