@@ -48,6 +48,7 @@ public static class MethodDescriptionBuilder
         // Boolean/query style: "Is", "Has", "Can", or bool return type.
         if (BooleanPrefixes.Contains(verb) || (isBoolReturn && !IsActionVerb(verb)))
         {
+            var subjectIsParams = string.IsNullOrEmpty(remainder) && paramNames.Count > 0;
             var subject = string.IsNullOrEmpty(remainder)
                 ? (paramNames.Count > 0 ? JoinNames(paramNames) : "the current state")
                 : remainder;
@@ -58,7 +59,9 @@ public static class MethodDescriptionBuilder
                 sb.Append($"Determines whether the {remainder} condition holds");
             }
 
-            if (paramNames.Count > 0)
+            // When the parameters already serve as the subject, a "based on" clause would just
+            // repeat them ("Determines whether input, based on input").
+            if (paramNames.Count > 0 && !subjectIsParams)
             {
                 sb.Append($", based on {JoinNames(paramNames)}");
             }
@@ -76,7 +79,10 @@ public static class MethodDescriptionBuilder
 
         if (paramNames.Count > 0)
         {
-            sb.Append(remainder.Length == 0 ? " using " : " from ");
+            // A bare verb reads best with the parameter as its object ("Applies the given
+            // theme"); a verb with an object keeps the parameters as instruments
+            // ("Saves file using path") — "from" wrongly implied extraction.
+            sb.Append(remainder.Length == 0 ? " the given " : " using ");
             sb.Append(JoinNames(paramNames));
         }
 
@@ -239,8 +245,14 @@ public static class MethodDescriptionBuilder
     private static bool IsVoidType(string type)
     {
         var simple = NormalizeType(type);
-        return simple.Equals("void", StringComparison.OrdinalIgnoreCase) ||
-               simple.Equals("Task", StringComparison.OrdinalIgnoreCase);
+        if (simple.Equals("void", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Task<T> produces a value; only the non-generic Task is void-like.
+        return simple.Equals("Task", StringComparison.OrdinalIgnoreCase) &&
+               !type.Contains('<');
     }
 
     private static bool IsBooleanType(string type)

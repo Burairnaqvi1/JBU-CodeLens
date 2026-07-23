@@ -17,9 +17,10 @@ public class CSharpParser : ILanguageParser
     /// methods, properties, and any XML documentation summaries.
     /// </summary>
     /// <remarks>
-    /// Only classes that sit directly inside the compilation unit or a namespace are reported;
-    /// classes nested inside other types are intentionally ignored for now. Likewise, only the
-    /// methods and properties declared directly within each class are collected. Any I/O or
+    /// Only types (classes, records, structs, and interfaces) that sit directly inside the
+    /// compilation unit or a namespace are reported; types nested inside other types are
+    /// intentionally ignored for now. Likewise, only the
+    /// methods and properties declared directly within each type are collected. Any I/O or
     /// parsing failure is captured in <see cref="ParseResult.Errors"/> rather than thrown, so
     /// callers can safely run this across many files in a loop.
     /// </remarks>
@@ -64,9 +65,9 @@ public class CSharpParser : ILanguageParser
             var syntaxTree = CSharpSyntaxTree.ParseText(sourceText);
             var root = syntaxTree.GetCompilationUnitRoot();
 
-            foreach (var (classDeclaration, namespaceName) in GetTopLevelClasses(root))
+            foreach (var (typeDeclaration, namespaceName) in GetTopLevelTypes(root.Members, string.Empty))
             {
-                result.Classes.Add(BuildClassInfo(classDeclaration, filePath, namespaceName));
+                result.Classes.Add(BuildClassInfo(typeDeclaration, filePath, namespaceName));
             }
         }
         catch (Exception ex)
@@ -78,27 +79,28 @@ public class CSharpParser : ILanguageParser
     }
 
     /// <summary>
-    /// Yields the class declarations that are direct members of the compilation unit or of a
-    /// namespace (both classic block <c>namespace { }</c> and file-scoped <c>namespace;</c>
-    /// forms), excluding classes nested within other type declarations.
+    /// Yields the type declarations — classes, records (including record structs), structs, and
+    /// interfaces — that are direct members of the compilation unit or of a namespace (block,
+    /// nested block, and file-scoped forms), excluding types nested within other types.
     /// </summary>
-    private static IEnumerable<(ClassDeclarationSyntax Class, string NamespaceName)> GetTopLevelClasses(CompilationUnitSyntax root)
+    private static IEnumerable<(TypeDeclarationSyntax Type, string NamespaceName)> GetTopLevelTypes(
+        SyntaxList<MemberDeclarationSyntax> members, string namespacePrefix)
     {
-        foreach (var member in root.Members)
+        foreach (var member in members)
         {
             switch (member)
             {
-                case ClassDeclarationSyntax topLevelClass:
-                    yield return (topLevelClass, string.Empty);
+                case TypeDeclarationSyntax typeDeclaration:
+                    yield return (typeDeclaration, namespacePrefix);
                     break;
 
                 case BaseNamespaceDeclarationSyntax namespaceDeclaration:
-                    foreach (var namespaceMember in namespaceDeclaration.Members)
+                    var name = namespacePrefix.Length == 0
+                        ? namespaceDeclaration.Name.ToString()
+                        : $"{namespacePrefix}.{namespaceDeclaration.Name}";
+                    foreach (var nested in GetTopLevelTypes(namespaceDeclaration.Members, name))
                     {
-                        if (namespaceMember is ClassDeclarationSyntax classInNamespace)
-                        {
-                            yield return (classInNamespace, namespaceDeclaration.Name.ToString());
-                        }
+                        yield return nested;
                     }
 
                     break;
@@ -107,23 +109,42 @@ public class CSharpParser : ILanguageParser
     }
 
     /// <summary>
-    /// Maps a <see cref="ClassDeclarationSyntax"/> to a <see cref="ClassInfo"/>, collecting the
-    /// class summary and the methods and properties declared directly within it.
+    /// Maps a <see cref="TypeDeclarationSyntax"/> to a <see cref="ClassInfo"/>, collecting the
+    /// type summary and the methods and properties declared directly within it. Positional
+    /// record parameters are reported as public properties, which is what they compile to.
     /// </summary>
-    private static ClassInfo BuildClassInfo(ClassDeclarationSyntax classDeclaration, string filePath, string namespaceName)
+    private static ClassInfo BuildClassInfo(TypeDeclarationSyntax typeDeclaration, string filePath, string namespaceName)
     {
-        var xmlDoc = ExtractXmlDocumentation(classDeclaration);
+        var xmlDoc = ExtractXmlDocumentation(typeDeclaration);
         var classInfo = new ClassInfo
         {
-            Name = classDeclaration.Identifier.Text,
+            Name = typeDeclaration.Identifier.Text,
             NamespaceName = namespaceName,
             XmlSummary = xmlDoc.GetValueOrDefault("summary"),
             SourceFilePath = filePath,
         };
 
-        ApplyBaseList(classDeclaration, classInfo);
+        ApplyBaseList(typeDeclaration, classInfo);
 
-        foreach (var member in classDeclaration.Members)
+        if (typeDeclaration is RecordDeclarationSyntax { ParameterList: { } recordParameters })
+        {
+            foreach (var parameter in recordParameters.Parameters)
+            {
+                classInfo.Properties.Add(new PropertyInfo
+                {
+                    Name = parameter.Identifier.Text,
+                    Type = parameter.Type?.ToString() ?? "var",
+                    AccessModifier = "public",
+                });
+
+                if (parameter.Type is not null)
+                {
+                    CollectTypeNames(parameter.Type, classInfo.Dependencies);
+                }
+            }
+        }
+
+        foreach (var member in typeDeclaration.Members)
         {
             switch (member)
             {
@@ -169,14 +190,14 @@ public class CSharpParser : ILanguageParser
     /// an interface; anything else is treated as the base class. Since C# permits at most one base
     /// class, only the first non-interface entry is recorded.
     /// </remarks>
-    private static void ApplyBaseList(ClassDeclarationSyntax classDeclaration, ClassInfo classInfo)
+    private static void ApplyBaseList(TypeDeclarationSyntax typeDeclaration, ClassInfo classInfo)
     {
-        if (classDeclaration.BaseList is null)
+        if (typeDeclaration.BaseList is null)
         {
             return;
         }
 
-        foreach (var baseType in classDeclaration.BaseList.Types)
+        foreach (var baseType in typeDeclaration.BaseList.Types)
         {
             var name = GetSimpleTypeName(baseType.Type);
             if (string.IsNullOrEmpty(name))
@@ -601,15 +622,61 @@ public class CSharpParser : ILanguageParser
     private static string GetXmlElementText(XmlElementSyntax element)
     {
         var builder = new StringBuilder();
-        foreach (var textNode in element.Content.OfType<XmlTextSyntax>())
+        AppendXmlContentText(element.Content, builder);
+        return NormalizeWhitespace(builder.ToString());
+    }
+
+    /// <summary>
+    /// Renders XML documentation content to plain text, descending into nested formatting
+    /// elements (<c>&lt;c&gt;</c>, <c>&lt;para&gt;</c>, …) and substituting reference elements
+    /// (<c>&lt;see cref="X"/&gt;</c>, <c>&lt;paramref name="y"/&gt;</c>) with the referenced
+    /// name. Skipping these — as a text-only walk would — leaves holes mid-sentence in every
+    /// summary shown in the UI ("defined in ." instead of "defined in Theme/*.xaml.").
+    /// </summary>
+    private static void AppendXmlContentText(SyntaxList<XmlNodeSyntax> content, StringBuilder builder)
+    {
+        foreach (var node in content)
         {
-            foreach (var token in textNode.TextTokens)
+            switch (node)
             {
-                builder.Append(token.ValueText);
+                case XmlTextSyntax text:
+                    foreach (var token in text.TextTokens)
+                    {
+                        builder.Append(token.ValueText);
+                    }
+
+                    break;
+
+                case XmlElementSyntax nested:
+                    AppendXmlContentText(nested.Content, builder);
+                    break;
+
+                case XmlEmptyElementSyntax empty:
+                    builder.Append(GetXmlReferenceText(empty));
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The display text of a self-closing documentation reference: the cref target for
+    /// <c>&lt;see/&gt;</c>/<c>&lt;seealso/&gt;</c>, or the identifier for
+    /// <c>&lt;paramref/&gt;</c>/<c>&lt;typeparamref/&gt;</c>.
+    /// </summary>
+    private static string GetXmlReferenceText(XmlEmptyElementSyntax element)
+    {
+        foreach (var attribute in element.Attributes)
+        {
+            switch (attribute)
+            {
+                case XmlCrefAttributeSyntax cref:
+                    return cref.Cref.ToString();
+                case XmlNameAttributeSyntax name:
+                    return name.Identifier.Identifier.ValueText;
             }
         }
 
-        return NormalizeWhitespace(builder.ToString());
+        return string.Empty;
     }
 
     /// <summary>
