@@ -285,9 +285,12 @@ public static class WordExporter
                     : "Depends on: None")
             .SpacingAfter(6d);
 
-        if (!string.IsNullOrWhiteSpace(classInfo.XmlSummary))
+        var classSummary = !string.IsNullOrWhiteSpace(classInfo.XmlSummary)
+            ? classInfo.XmlSummary
+            : classInfo.InferredDescription;
+        if (!string.IsNullOrWhiteSpace(classSummary))
         {
-            document.InsertParagraph(classInfo.XmlSummary)
+            document.InsertParagraph(classSummary)
                 .SpacingAfter(8d);
         }
 

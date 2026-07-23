@@ -65,6 +65,7 @@ public sealed class ExplanationService : IExplanationService
     // (operation, file path, file last-write time, method signature). Only clean model output
     // is stored — bracketed error strings are never cached.
     private readonly ConcurrentDictionary<string, string> _resultCache = new();
+    private readonly AiResultStore? _persistentStore;
 
     private int _inferenceCallCount;
     private bool _disposed;
@@ -127,6 +128,14 @@ public sealed class ExplanationService : IExplanationService
 
             _weights = LLamaWeights.LoadFromFile(_modelParams);
             IsReady = true;
+
+            // Warm the session cache from the previous runs' persisted results. Keys embed the
+            // source file's last-write time, so entries for since-edited files simply never hit.
+            _persistentStore = new AiResultStore(AiResultStore.DefaultPath, fileName);
+            foreach (var (key, value) in _persistentStore.Load())
+            {
+                _resultCache[key] = value;
+            }
         }
         catch (Exception ex)
         {
@@ -138,7 +147,7 @@ public sealed class ExplanationService : IExplanationService
     /// <summary>
     /// Generates a plain-English explanation of what <paramref name="methodInfo"/> is responsible for.
     /// </summary>
-    public string ExplainMethod(MethodInfo methodInfo)
+    public string ExplainMethod(MethodInfo methodInfo, Action<string>? onPartial = null)
     {
         if (!IsReady)
         {
@@ -148,14 +157,14 @@ public sealed class ExplanationService : IExplanationService
         return RunCached("explain", methodInfo, () =>
         {
             var prompt = BuildExplainMethodPrompt(methodInfo);
-            return TruncateProse(RunInstruction(prompt, MaxTokensExplanation), maxSentences: 3, maxWords: 80);
+            return TruncateProse(RunInstruction(prompt, MaxTokensExplanation, onPartial), maxSentences: 3, maxWords: 80);
         });
     }
 
     /// <summary>
     /// Generates a brief developer-style description when no XML summary exists.
     /// </summary>
-    public string GenerateBriefDescription(MethodInfo methodInfo)
+    public string GenerateBriefDescription(MethodInfo methodInfo, Action<string>? onPartial = null)
     {
         if (!IsReady)
         {
@@ -177,7 +186,7 @@ public sealed class ExplanationService : IExplanationService
                 systemPrompt += " " + languageSuffix;
             }
 
-            return TruncateProse(RunInstruction(userPrompt, MaxTokensBrief, systemPrompt), maxSentences: 1, maxWords: 35);
+            return TruncateProse(RunInstruction(userPrompt, MaxTokensBrief, systemPrompt, onPartial), maxSentences: 1, maxWords: 35);
         });
     }
 
@@ -199,6 +208,103 @@ public sealed class ExplanationService : IExplanationService
             RunInstruction(projectContext, MaxTokensExplanation, systemPrompt),
             maxSentences: 4,
             maxWords: 110);
+    }
+
+    /// <summary>
+    /// Generates a 2-3 sentence description of a class's responsibility from its verified
+    /// members and relationships. Cached per (file, class) for the session so revisiting a
+    /// class costs nothing.
+    /// </summary>
+    public string GenerateClassSummary(ClassInfo classInfo, Action<string>? onPartial = null)
+    {
+        if (!IsReady)
+        {
+            return LoadError ?? "The explanation model is not available.";
+        }
+
+        var key = BuildClassCacheKey("classsummary", classInfo);
+        if (_resultCache.TryGetValue(key, out var hit))
+        {
+            return hit;
+        }
+
+        var systemPrompt = "You are a concise technical writer. In 2-3 sentences, describe this " +
+                           "class's responsibility using only the listed members and relationships. " +
+                           "Stay factual; do not invent behavior the members do not show.";
+        var result = TruncateProse(
+            RunInstruction(DescribeClassCompact(classInfo), MaxTokensExplanation, systemPrompt, onPartial),
+            maxSentences: 3,
+            maxWords: 80);
+
+        // Small models sometimes tack markup fragments ("<", ">", "|", backticks) after the
+        // final sentence; no legitimate sentence ends with them.
+        result = result.TrimEnd().TrimEnd('>', '<', '|', '`', '#').TrimEnd();
+
+        if (IsCleanOutput(result))
+        {
+            _resultCache[key] = result;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// The verified facts a class summary may draw from: name, base types, dependencies, and
+    /// member signatures (capped so a god class cannot blow the prompt budget).
+    /// </summary>
+    private static string DescribeClassCompact(ClassInfo classInfo)
+    {
+        var sb = new StringBuilder();
+        sb.Append("Class: ").Append(classInfo.Name);
+
+        if (!string.IsNullOrEmpty(classInfo.BaseClassName))
+        {
+            sb.Append(", Extends: ").Append(classInfo.BaseClassName);
+        }
+
+        if (classInfo.ImplementedInterfaces.Count > 0)
+        {
+            sb.Append(", Implements: ").Append(string.Join(", ", classInfo.ImplementedInterfaces));
+        }
+
+        if (classInfo.Dependencies.Count > 0)
+        {
+            sb.Append(", Uses: ").Append(string.Join(", ", classInfo.Dependencies.Take(8)));
+        }
+
+        sb.Append(". Methods: ");
+        sb.Append(classInfo.Methods.Count == 0
+            ? "none"
+            : string.Join("; ", classInfo.Methods.Take(12).Select(m =>
+                $"{m.ReturnType} {m.Name}({string.Join(", ", m.Parameters)})")));
+
+        if (classInfo.Properties.Count > 0)
+        {
+            sb.Append(". Properties: ");
+            sb.Append(string.Join(", ", classInfo.Properties.Take(8).Select(p => $"{p.Type} {p.Name}")));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string BuildClassCacheKey(string operation, ClassInfo classInfo)
+    {
+        var path = classInfo.SourceFilePath ?? string.Empty;
+        long lastWriteTicks = 0;
+        try
+        {
+            if (path.Length > 0 && File.Exists(path))
+            {
+                lastWriteTicks = File.GetLastWriteTimeUtc(path).Ticks;
+            }
+        }
+        catch
+        {
+            // A failed stat just weakens the key to (path, name); still session-safe.
+        }
+
+        var material = $"{operation}|{path}|{lastWriteTicks}|{classInfo.Name}|{classInfo.Methods.Count}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
     }
 
     /// <summary>
@@ -454,13 +560,18 @@ public sealed class ExplanationService : IExplanationService
     internal string RunInstruction(string instruction) =>
         RunInstruction(instruction, MaxTokensExplanation);
 
-    internal string RunInstruction(string instruction, int maxTokens) =>
-        RunInstruction(instruction, maxTokens, DefaultSystemPrompt);
+    internal string RunInstruction(string instruction, int maxTokens, Action<string>? onPartial = null) =>
+        RunInstruction(instruction, maxTokens, DefaultSystemPrompt, onPartial);
 
-    internal string RunInstruction(string instruction, int maxTokens, string systemPrompt) =>
-        RunInstruction(instruction, maxTokens, systemPrompt, CancellationToken.None);
+    internal string RunInstruction(string instruction, int maxTokens, string systemPrompt, Action<string>? onPartial = null) =>
+        RunInstruction(instruction, maxTokens, systemPrompt, CancellationToken.None, onPartial);
 
-    internal string RunInstruction(string instruction, int maxTokens, string systemPrompt, CancellationToken cancellationToken)
+    internal string RunInstruction(
+        string instruction,
+        int maxTokens,
+        string systemPrompt,
+        CancellationToken cancellationToken,
+        Action<string>? onPartial = null)
     {
         if (!IsReady || _weights is null || _modelParams is null)
         {
@@ -469,7 +580,7 @@ public sealed class ExplanationService : IExplanationService
 
         try
         {
-            return Task.Run(() => RunInstructionAsync(instruction, maxTokens, systemPrompt, cancellationToken))
+            return Task.Run(() => RunInstructionAsync(instruction, maxTokens, systemPrompt, cancellationToken, onPartial))
                 .GetAwaiter().GetResult();
         }
         catch (OperationCanceledException)
@@ -484,12 +595,17 @@ public sealed class ExplanationService : IExplanationService
         }
     }
 
-    private async Task<string> RunInstructionAsync(string instruction, int maxTokens, string systemPrompt, CancellationToken cancellationToken)
+    private async Task<string> RunInstructionAsync(
+        string instruction,
+        int maxTokens,
+        string systemPrompt,
+        CancellationToken cancellationToken,
+        Action<string>? onPartial = null)
     {
         await _inferenceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await RunInstructionLockedAsync(instruction, maxTokens, systemPrompt, cancellationToken).ConfigureAwait(false);
+            return await RunInstructionLockedAsync(instruction, maxTokens, systemPrompt, cancellationToken, onPartial).ConfigureAwait(false);
         }
         finally
         {
@@ -547,7 +663,12 @@ public sealed class ExplanationService : IExplanationService
     private static bool IsCleanOutput(string result) =>
         !string.IsNullOrWhiteSpace(result) && !result.StartsWith('[');
 
-    private async Task<string> RunInstructionLockedAsync(string instruction, int maxTokens, string systemPrompt, CancellationToken cancellationToken)
+    private async Task<string> RunInstructionLockedAsync(
+        string instruction,
+        int maxTokens,
+        string systemPrompt,
+        CancellationToken cancellationToken,
+        Action<string>? onPartial = null)
     {
         Interlocked.Increment(ref _inferenceCallCount);
 
@@ -589,6 +710,29 @@ public sealed class ExplanationService : IExplanationService
 
         var builder = new StringBuilder();
 
+        // Live-streams the accumulated text to the caller as the model produces it. Markdown
+        // emphasis is stripped like the final text, and a short trailing "<…" fragment is held
+        // back so a partially generated stop marker (e.g. "<|im_end") never flashes on screen.
+        void ReportPartial()
+        {
+            if (onPartial is null)
+            {
+                return;
+            }
+
+            var partial = StripMarkdownEmphasis(builder.ToString()).TrimStart();
+            var angle = partial.LastIndexOf('<');
+            if (angle >= 0 && partial.Length - angle <= 12)
+            {
+                partial = partial[..angle];
+            }
+
+            if (partial.Length > 0)
+            {
+                onPartial(partial);
+            }
+        }
+
         if (_usesPhiTemplate)
         {
             inferenceParams.AntiPrompts = new[] { "<|end|>", "<|user|>", "<|system|>" };
@@ -597,6 +741,7 @@ public sealed class ExplanationService : IExplanationService
             await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken))
             {
                 builder.Append(token);
+                ReportPartial();
             }
         }
         else if (_usesChatMlTemplate)
@@ -607,6 +752,7 @@ public sealed class ExplanationService : IExplanationService
             await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken))
             {
                 builder.Append(token);
+                ReportPartial();
             }
         }
         else
@@ -617,6 +763,7 @@ public sealed class ExplanationService : IExplanationService
             await foreach (var token in executor.InferAsync(instruction, inferenceParams, cancellationToken))
             {
                 builder.Append(token);
+                ReportPartial();
             }
         }
 
@@ -1061,6 +1208,9 @@ public sealed class ExplanationService : IExplanationService
         {
             return;
         }
+
+        // Persist this session's inference results so the next run starts warm.
+        _persistentStore?.Save(_resultCache);
 
         _context?.Dispose();
         _weights?.Dispose();

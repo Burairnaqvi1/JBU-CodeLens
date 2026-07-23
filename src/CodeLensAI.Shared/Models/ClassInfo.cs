@@ -65,6 +65,19 @@ public class ClassInfo
     /// The source file path this class was parsed from.
     /// </summary>
     public string SourceFilePath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Deterministic one-line description built from the class's own members and relationships
+    /// (set during the SCIDE scan). Shown when the class has no XML documentation, and as the
+    /// immediate text while an AI summary is still generating.
+    /// </summary>
+    public string? InferredDescription { get; set; }
+
+    /// <summary>
+    /// AI-generated class summary, cached after the first successful inference so revisiting
+    /// the class in the UI doesn't re-run the model. Reset by a rescan (classes are re-created).
+    /// </summary>
+    public string? CachedAiSummary { get; set; }
 }
 
 /// <summary>

@@ -31,7 +31,7 @@ public sealed class MethodConversationSession : IMethodConversationSession
       "step by step", "step-by-step", "at length", "more detail",
   ];
 
-  public string Ask(string question)
+  public string Ask(string question, Action<string>? onPartial = null)
   {
     if (string.IsNullOrWhiteSpace(question))
     {
@@ -47,7 +47,7 @@ public sealed class MethodConversationSession : IMethodConversationSession
       : ExplanationService.MaxTokensFollowUpAnswer;
 
     var prompt = BuildConversationPrompt(question, wantsDetail);
-    var answer = _service.RunInstruction(prompt, maxTokens);
+    var answer = _service.RunInstruction(prompt, maxTokens, onPartial);
     _history.Add(new ConversationTurn(question, answer));
     return answer;
   }

@@ -64,7 +64,12 @@ internal static class DetailPanelRenderer
 
     // ── Class ─────────────────────────────────────────────────────────────────
 
-    public static void RenderClass(StackPanel host, ClassInfo classInfo, FrameworkElement resourceRoot, Action<MethodInfo>? onMethodClicked)
+    public static void RenderClass(
+        StackPanel host,
+        ClassInfo classInfo,
+        FrameworkElement resourceRoot,
+        Action<MethodInfo>? onMethodClicked,
+        IExplanationService? explanationService = null)
     {
         Clear(host);
 
@@ -79,7 +84,7 @@ internal static class DetailPanelRenderer
             host.Children.Add(CreateMutedText(classInfo.SourceFilePath, resourceRoot, marginTop: 4));
 
         AddSection(host, "What This Class Does", resourceRoot);
-        host.Children.Add(CreateSummaryOrPlaceholder(classInfo.XmlSummary, isMethod: false, resourceRoot));
+        AddClassDescription(host, classInfo, resourceRoot, explanationService);
 
         AddSection(host, "Inheritance & Relationships", resourceRoot);
         host.Children.Add(CreateLabeledRow("Extends",
@@ -130,6 +135,76 @@ internal static class DetailPanelRenderer
             foreach (var property in classInfo.Properties)
                 host.Children.Add(CreatePropertyRow(property, resourceRoot));
         }
+    }
+
+    /// <summary>
+    /// The class description ladder, mirroring the method brief-description card: a developer
+    /// XML summary always wins; otherwise the deterministic inferred description shows
+    /// immediately and an AI summary is generated lazily (once per class, session-cached) and
+    /// added alongside it. The "add a /// summary" advice stays, but as a muted hint under
+    /// whichever description is shown — never as the only content.
+    /// </summary>
+    private static void AddClassDescription(
+        StackPanel host,
+        ClassInfo classInfo,
+        FrameworkElement resourceRoot,
+        IExplanationService? explanationService)
+    {
+        if (!string.IsNullOrWhiteSpace(classInfo.XmlSummary))
+        {
+            host.Children.Add(CreateCapsLabel("DEVELOPER DESCRIPTION", resourceRoot));
+            host.Children.Add(CreateBodyText(classInfo.XmlSummary, resourceRoot, marginTop: 6));
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(classInfo.InferredDescription))
+        {
+            host.Children.Add(CreateCapsLabel("INFERRED DESCRIPTION", resourceRoot));
+            host.Children.Add(CreateBodyText(classInfo.InferredDescription, resourceRoot, marginTop: 6));
+        }
+
+        var aiLabelRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+        aiLabelRow.Children.Add(CreateCapsLabel("AI DESCRIPTION", resourceRoot));
+        aiLabelRow.Children.Add(CreateBadge("AI", "WarningBrush", resourceRoot, marginLeft: 6));
+        host.Children.Add(aiLabelRow);
+
+        if (!string.IsNullOrEmpty(classInfo.CachedAiSummary))
+        {
+            host.Children.Add(CreateBodyText(classInfo.CachedAiSummary, resourceRoot, marginTop: 6));
+        }
+        else if (explanationService is { IsReady: true })
+        {
+            var aiText = CreateBodyText("Generating AI description…", resourceRoot, marginTop: 6);
+            host.Children.Add(aiText);
+
+            var svc = explanationService;
+            var c = classInfo;
+            Task.Run(() =>
+            {
+                var text = svc.GenerateClassSummary(c, partial =>
+                    Application.Current.Dispatcher.BeginInvoke(() => aiText.Text = partial));
+                Application.Current.Dispatcher.BeginInvoke(() =>
+                {
+                    aiText.Text = text;
+
+                    // Only cache real model output — bracketed strings are error/unavailable
+                    // messages, and caching those would hide the AI once it becomes ready.
+                    if (!text.StartsWith('['))
+                    {
+                        c.CachedAiSummary = text;
+                    }
+                });
+            });
+        }
+        else
+        {
+            host.Children.Add(CreateItalicPlaceholder(GetAiUnavailableMessage(explanationService), resourceRoot, marginTop: 6));
+        }
+
+        host.Children.Add(CreateMutedText(
+            "Tip: add a /// <summary> comment above the class to provide a developer description.",
+            resourceRoot,
+            marginTop: 10));
     }
 
     // ── Method ────────────────────────────────────────────────────────────────
@@ -411,8 +486,11 @@ internal static class DetailPanelRenderer
             var m = method;
             Task.Run(() =>
             {
+                // The partial callback streams the model's words onto the panel as they are
+                // produced; the final assignment below swaps in the post-processed text.
                 var text = svc is { IsReady: true }
-                    ? svc.GenerateBriefDescription(m)
+                    ? svc.GenerateBriefDescription(m, partial =>
+                        Application.Current.Dispatcher.BeginInvoke(() => briefTextBlock.Text = partial))
                     : GetAiUnavailableMessage(svc);
 
                 Application.Current.Dispatcher.BeginInvoke(() =>
@@ -905,6 +983,11 @@ internal static class DetailPanelRenderer
             if (!string.IsNullOrWhiteSpace(existingSummary))
                 return existingSummary;
 
+            // The cache holds the complete text the moment generation finishes; the TextBlock
+            // may still be mid-reveal animation.
+            if (!string.IsNullOrWhiteSpace(method.CachedAiBriefDescription))
+                return method.CachedAiBriefDescription;
+
             if (aiBriefText is not null && !string.IsNullOrWhiteSpace(aiBriefText.Text) &&
                 !aiBriefText.Text.StartsWith("Generating", StringComparison.Ordinal))
                 return aiBriefText.Text;
@@ -954,7 +1037,12 @@ internal static class DetailPanelRenderer
                 string answer;
                 try
                 {
-                    answer = activeSession.Ask(question);
+                    answer = activeSession.Ask(question, partial =>
+                        Application.Current.Dispatcher.BeginInvoke(() =>
+                        {
+                            explanationText.Text = partial;
+                            explanationText.Foreground = Brush(resourceRoot, "TextPrimaryBrush");
+                        }));
                 }
                 catch (Exception ex)
                 {
@@ -1039,7 +1127,13 @@ internal static class DetailPanelRenderer
             var m = method;
             Task.Run(() =>
             {
-                var text = svc.ExplainMethod(m);
+                var text = svc.ExplainMethod(m, partial =>
+                    Application.Current.Dispatcher.BeginInvoke(() =>
+                    {
+                        explanationText.Text = partial;
+                        explanationText.Foreground = Brush(resourceRoot, "TextPrimaryBrush");
+                        explanationText.Visibility = Visibility.Visible;
+                    }));
                 Application.Current.Dispatcher.BeginInvoke(() =>
                 {
                     explanationText.Text = text;
@@ -1404,17 +1498,6 @@ internal static class DetailPanelRenderer
     private static TextBlock CreateItalicPlaceholder(string text, FrameworkElement resourceRoot, double marginTop = 0)
     {
         return new TextBlock { Text = text, Foreground = Brush(resourceRoot, "TextPrimaryBrush"), Opacity = 0.55, FontStyle = FontStyles.Italic, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, marginTop, 0, 0), FontSize = 13 };
-    }
-
-    private static UIElement CreateSummaryOrPlaceholder(string? summary, bool isMethod, FrameworkElement resourceRoot)
-    {
-        if (!string.IsNullOrWhiteSpace(summary))
-            return CreateBodyText(summary, resourceRoot);
-        return CreateItalicPlaceholder(
-            isMethod
-                ? "No documentation comment found. Add a /// <summary> comment above this method."
-                : "No documentation comment found. Add a /// <summary> comment above this class.",
-            resourceRoot);
     }
 
     private static StackPanel CreateLabeledRow(string label, string value, FrameworkElement resourceRoot, double marginTop = 0)

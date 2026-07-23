@@ -92,6 +92,8 @@ public sealed class ScideEngine : IProjectAnalyzer
                 foreach (var classInfo in parseResult.Classes)
                 {
                     classInfo.Category = CategoryClassifier.Classify(classInfo);
+                    // ??= so cache-hit files keep the description already built for them.
+                    classInfo.InferredDescription ??= ClassDescriptionBuilder.Build(classInfo);
                     classCount++;
 
                     foreach (var method in classInfo.Methods)

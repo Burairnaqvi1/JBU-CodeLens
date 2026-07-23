@@ -15,6 +15,9 @@ public interface IMethodConversationSession
 
     /// <summary>
     /// Asks a follow-up question. Synchronous and potentially slow — call from a worker thread.
+    /// When <paramref name="onPartial"/> is supplied it receives the accumulated answer text as
+    /// the model streams tokens (from the inference thread — marshal to the UI thread before
+    /// touching controls).
     /// </summary>
-    string Ask(string question);
+    string Ask(string question, Action<string>? onPartial = null);
 }

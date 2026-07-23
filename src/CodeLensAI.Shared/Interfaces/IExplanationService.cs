@@ -25,14 +25,27 @@ public interface IExplanationService : IDisposable
     /// </summary>
     int InferenceCallCount { get; }
 
-    /// <summary>2-3 sentence explanation of what the method does and returns.</summary>
-    string ExplainMethod(MethodInfo methodInfo);
+    /// <summary>
+    /// 2-3 sentence explanation of what the method does and returns. When
+    /// <paramref name="onPartial"/> is supplied it receives the accumulated raw text as the
+    /// model streams tokens (from the inference thread — marshal to the UI thread before
+    /// touching controls); the returned string is the final post-processed text and may differ
+    /// slightly from the last partial.
+    /// </summary>
+    string ExplainMethod(MethodInfo methodInfo, Action<string>? onPartial = null);
 
-    /// <summary>One-sentence developer-style description.</summary>
-    string GenerateBriefDescription(MethodInfo methodInfo);
+    /// <summary>One-sentence developer-style description. Streams like ExplainMethod.</summary>
+    string GenerateBriefDescription(MethodInfo methodInfo, Action<string>? onPartial = null);
 
     /// <summary>Short project overview from a pre-formatted context description.</summary>
     string GenerateProjectSummary(string projectContext);
+
+    /// <summary>
+    /// 2-3 sentence description of a class's responsibility, built from its verified members
+    /// and relationships. Cached per class for the session, like the method operations.
+    /// Streams like ExplainMethod.
+    /// </summary>
+    string GenerateClassSummary(ClassInfo classInfo, Action<string>? onPartial = null);
 
     /// <summary>Pre/post-condition bullets.</summary>
     string GeneratePrePostConditions(MethodInfo methodInfo);
