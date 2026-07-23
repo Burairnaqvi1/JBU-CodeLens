@@ -289,7 +289,7 @@ internal static class DetailPanelRenderer
             Margin = new Thickness(0, 2, 0, 0),
         });
 
-        return new Border
+        var tile = new Border
         {
             Background = Brush(resourceRoot, "SurfaceBrush"),
             BorderBrush = Brush(resourceRoot, "BorderBrush"),
@@ -299,6 +299,53 @@ internal static class DetailPanelRenderer
             Margin = new Thickness(0, 0, 10, 10),
             MinWidth = 116,
             Child = stack,
+        };
+
+        AttachHoverLift(tile, resourceRoot);
+        return tile;
+    }
+
+    /// <summary>
+    /// Gives a card a subtle lift on hover — it rises a few pixels, gains a soft shadow, and its
+    /// border picks up the accent — so the dashboard feels responsive without implying the tile
+    /// is a button. Animations are short (≈140 ms) and eased.
+    /// </summary>
+    private static void AttachHoverLift(Border card, FrameworkElement resourceRoot)
+    {
+        var lift = new TranslateTransform(0, 0);
+        card.RenderTransform = lift;
+        var shadow = new System.Windows.Media.Effects.DropShadowEffect
+        {
+            BlurRadius = 16,
+            ShadowDepth = 3,
+            Direction = 270,
+            Opacity = 0,
+            Color = Colors.Black,
+        };
+        card.Effect = shadow;
+
+        var ease = new System.Windows.Media.Animation.CubicEase
+        {
+            EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut,
+        };
+        var restBorder = Brush(resourceRoot, "BorderBrush");
+        var accentBorder = FindAccentBrush(resourceRoot);
+
+        card.MouseEnter += (_, _) =>
+        {
+            card.BorderBrush = accentBorder;
+            lift.BeginAnimation(TranslateTransform.YProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(-4, TimeSpan.FromMilliseconds(140)) { EasingFunction = ease });
+            shadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0.22, TimeSpan.FromMilliseconds(140)));
+        };
+        card.MouseLeave += (_, _) =>
+        {
+            card.BorderBrush = restBorder;
+            lift.BeginAnimation(TranslateTransform.YProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(160)) { EasingFunction = ease });
+            shadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(160)));
         };
     }
 

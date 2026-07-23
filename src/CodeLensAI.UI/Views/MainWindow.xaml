@@ -117,9 +117,15 @@
                             </Grid.RowDefinitions>
                             <Border x:Name="Bd" Background="Transparent"
                                     BorderThickness="0"
-                                    Padding="{TemplateBinding Padding}"
                                     CornerRadius="4">
                                 <Grid>
+                                    <!-- Hover tint on its own layer so its opacity can fade
+                                         independently of the selection background on Bd. -->
+                                    <Border x:Name="HoverBd"
+                                            Background="{DynamicResource HoverOverlayBrush}"
+                                            CornerRadius="4"
+                                            Opacity="0"/>
+                                    <Grid Margin="{TemplateBinding Padding}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="{Binding ActualWidth, ElementName=Expander}"/>
                                         <ColumnDefinition/>
@@ -166,6 +172,7 @@
                                                       ContentSource="Header"
                                                       HorizontalAlignment="Left"
                                                       TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                    </Grid>
                                 </Grid>
                             </Border>
                             <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Margin="16,0,0,0">
@@ -207,7 +214,24 @@
                                     <Condition Property="IsSelected" Value="False"/>
                                     <Condition Property="IsMouseOver" Value="True"/>
                                 </MultiTrigger.Conditions>
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverOverlayBrush}"/>
+                                <MultiTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverBd"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1" Duration="0:0:0.10"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiTrigger.EnterActions>
+                                <MultiTrigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverBd"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0" Duration="0:0:0.16"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiTrigger.ExitActions>
                             </MultiTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

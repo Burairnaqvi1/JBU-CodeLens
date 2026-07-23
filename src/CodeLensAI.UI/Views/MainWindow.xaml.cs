@@ -1293,6 +1293,11 @@ public partial class MainWindow : Window
         DetailPlaceholder.Visibility = Visibility.Collapsed;
         DetailScrollViewer.Visibility = Visibility.Visible;
         DetailPanelRenderer.Clear(DetailContentHost);
+
+        // Gentle fade-in so switching selection reads as a transition, not a hard swap.
+        DetailScrollViewer.BeginAnimation(
+            OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(160)));
     }
 
     private void ShowFileDetails(string filePath)
