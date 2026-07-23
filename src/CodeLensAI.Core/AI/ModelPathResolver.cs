@@ -39,10 +39,7 @@ public static class ModelPathResolver
 
         try
         {
-            var settingsPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "CodeLensAI",
-                "settings.json");
+            var settingsPath = AppPaths.InAppData("settings.json");
             if (File.Exists(settingsPath))
             {
                 using var doc = JsonDocument.Parse(File.ReadAllText(settingsPath));

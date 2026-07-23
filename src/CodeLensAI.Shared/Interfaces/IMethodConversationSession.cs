@@ -1,5 +1,3 @@
-using CodeLensAI.Shared.Models;
-
 namespace CodeLensAI.Shared.Interfaces;
 
 /// <summary>

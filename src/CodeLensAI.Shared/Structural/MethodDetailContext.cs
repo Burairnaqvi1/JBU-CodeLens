@@ -1,4 +1,3 @@
-using CodeLensAI.Shared.Models;
 using LensMethod = CodeLensAI.Shared.Models.MethodInfo;
 using LensClass = CodeLensAI.Shared.Models.ClassInfo;
 

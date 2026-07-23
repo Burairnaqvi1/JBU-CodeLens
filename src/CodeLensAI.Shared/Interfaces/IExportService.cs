@@ -1,4 +1,3 @@
-using CodeLensAI.Shared.Models;
 using CodeLensAI.Shared.Structural;
 
 namespace CodeLensAI.Shared.Interfaces;

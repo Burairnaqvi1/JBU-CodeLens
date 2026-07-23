@@ -1,9 +1,4 @@
-using CodeLensAI.Core.Analysis;
-using CodeLensAI.Core.Models;
-using CodeLensAI.Shared.Models;
 using CodeLensAI.Shared.Structural;
-using MethodInfo = CodeLensAI.Shared.Structural.MethodInfo;
-using Xunit;
 
 namespace CodeLensAI.Tests;
 

@@ -41,10 +41,7 @@ public sealed class AiResultStore
     }
 
     /// <summary>The default store location: <c>%APPDATA%\CodeLensAI\ai-cache.json</c>.</summary>
-    public static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "CodeLensAI",
-        "ai-cache.json");
+    public static string DefaultPath => AppPaths.InAppData("ai-cache.json");
 
     /// <summary>
     /// Loads the persisted results. Returns an empty dictionary — never throws — when the file

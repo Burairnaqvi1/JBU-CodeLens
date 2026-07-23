@@ -11,10 +11,7 @@ namespace CodeLensAI.UI.Helpers;
 /// </summary>
 public static class CustomFaqStore
 {
-    private static readonly string FilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "CodeLensAI",
-        "custom_questions.json");
+    private static readonly string FilePath = AppPaths.InAppData("custom_questions.json");
 
     // In-memory cache so Load() — called on every method-detail render, on the UI thread —
     // normally costs a single timestamp stat instead of a read + JSON parse.
