@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -206,6 +207,165 @@ internal static class DetailPanelRenderer
             resourceRoot,
             marginTop: 10));
     }
+
+    // ── Metrics dashboard ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Renders the computed project metrics as a scannable dashboard: stat tiles grouped into
+    /// size and quality, a maintainability tile colored by band, and a "most complex methods"
+    /// bar list that points straight at refactoring candidates. All values are already computed
+    /// during the scan — this is presentation only.
+    /// </summary>
+    public static void RenderMetricsDashboard(
+        StackPanel host,
+        CodeLensAI.Shared.Structural.MetricsResult metrics,
+        CodeLensAI.Shared.Structural.ProjectIR? ir,
+        FrameworkElement resourceRoot)
+    {
+        AddSection(host, "Size", resourceRoot);
+        var sizeTiles = new WrapPanel { Margin = new Thickness(0, 2, 0, 4) };
+        sizeTiles.Children.Add(CreateStatTile("Classes", metrics.TotalClasses.ToString(), "PrimaryBrush", resourceRoot));
+        sizeTiles.Children.Add(CreateStatTile("Methods", metrics.TotalMethods.ToString(), "PrimaryBrush", resourceRoot));
+        sizeTiles.Children.Add(CreateStatTile("Properties", metrics.TotalProperties.ToString(), "PrimaryBrush", resourceRoot));
+        sizeTiles.Children.Add(CreateStatTile("Fields", metrics.TotalFields.ToString(), "PrimaryBrush", resourceRoot));
+        sizeTiles.Children.Add(CreateStatTile("Namespaces", metrics.TotalNamespaces.ToString(), "PrimaryBrush", resourceRoot));
+        sizeTiles.Children.Add(CreateStatTile("Relationships", metrics.TotalRelationships.ToString(), "PrimaryBrush", resourceRoot));
+        host.Children.Add(sizeTiles);
+
+        AddSection(host, "Quality", resourceRoot);
+        var qualityTiles = new WrapPanel { Margin = new Thickness(0, 2, 0, 4) };
+        // Maintainability index: green ≥ 85, amber 65–84, red below (standard MI bands).
+        var miBrushKey = metrics.MaintainabilityIndex >= 85 ? "SecondaryBrush"
+            : metrics.MaintainabilityIndex >= 65 ? "WarningBrush"
+            : "ErrorBrush";
+        qualityTiles.Children.Add(CreateStatTile(
+            "Maintainability", metrics.MaintainabilityIndex.ToString("F0", CultureInfo.InvariantCulture), miBrushKey, resourceRoot));
+        qualityTiles.Children.Add(CreateStatTile(
+            "Avg complexity", metrics.AverageComplexity.ToString("F1", CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot));
+        qualityTiles.Children.Add(CreateStatTile(
+            "Max complexity", metrics.MaxComplexity.ToString(), metrics.MaxComplexity >= 15 ? "WarningBrush" : "PrimaryBrush", resourceRoot));
+        qualityTiles.Children.Add(CreateStatTile(
+            "Avg coupling", metrics.AverageCoupling.ToString("F1", CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot));
+        qualityTiles.Children.Add(CreateStatTile(
+            "Max inheritance", metrics.MaxInheritanceDepth.ToString(), "PrimaryBrush", resourceRoot));
+        host.Children.Add(qualityTiles);
+
+        var topMethods = (ir?.Methods ?? [])
+            .OrderByDescending(m => m.CyclomaticComplexity)
+            .ThenBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(6)
+            .ToList();
+
+        if (topMethods.Count > 0 && topMethods[0].CyclomaticComplexity > 1)
+        {
+            AddSection(host, "Most complex methods", resourceRoot);
+            var listStack = new StackPanel();
+            var max = topMethods[0].CyclomaticComplexity;
+            foreach (var method in topMethods)
+            {
+                listStack.Children.Add(CreateComplexityRow(method, max, resourceRoot));
+            }
+
+            host.Children.Add(WrapInCard(listStack, resourceRoot));
+        }
+    }
+
+    private static Border CreateStatTile(string label, string value, string valueBrushKey, FrameworkElement resourceRoot)
+    {
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock
+        {
+            Text = value,
+            FontSize = 26,
+            FontWeight = FontWeights.Bold,
+            Foreground = Brush(resourceRoot, valueBrushKey),
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = label.ToUpperInvariant(),
+            FontSize = 10,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
+            Margin = new Thickness(0, 2, 0, 0),
+        });
+
+        return new Border
+        {
+            Background = Brush(resourceRoot, "SurfaceBrush"),
+            BorderBrush = Brush(resourceRoot, "BorderBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(14, 12, 14, 12),
+            Margin = new Thickness(0, 0, 10, 10),
+            MinWidth = 116,
+            Child = stack,
+        };
+    }
+
+    private static Grid CreateComplexityRow(
+        CodeLensAI.Shared.Structural.MethodInfo method, int maxComplexity, FrameworkElement resourceRoot)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 5, 0, 5) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140, GridUnitType.Pixel) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var declaringType = method.DeclaringType.Contains('.', StringComparison.Ordinal)
+            ? method.DeclaringType[(method.DeclaringType.LastIndexOf('.') + 1)..]
+            : method.DeclaringType;
+        var name = new TextBlock
+        {
+            Text = string.IsNullOrEmpty(declaringType) ? method.Name : $"{declaringType}.{method.Name}",
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            FontSize = 13,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(name, 0);
+        grid.Children.Add(name);
+
+        // Proportional bar over a faint track.
+        var fraction = maxComplexity > 0 ? (double)method.CyclomaticComplexity / maxComplexity : 0;
+        var track = new Border
+        {
+            Height = 8,
+            CornerRadius = new CornerRadius(4),
+            Background = Brush(resourceRoot, "BorderBrush"),
+            Margin = new Thickness(10, 0, 10, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        var fill = new Border
+        {
+            Height = 8,
+            CornerRadius = new CornerRadius(4),
+            Background = FindAccentBrush(resourceRoot),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Width = Math.Max(4, 140 * fraction),
+        };
+        track.Child = fill;
+        Grid.SetColumn(track, 1);
+        grid.Children.Add(track);
+
+        var count = new TextBlock
+        {
+            Text = method.CyclomaticComplexity.ToString(),
+            FontWeight = FontWeights.Bold,
+            Foreground = Brush(resourceRoot, method.CyclomaticComplexity >= 15 ? "WarningBrush" : "TextPrimaryBrush"),
+            FontSize = 13,
+            VerticalAlignment = VerticalAlignment.Center,
+            MinWidth = 24,
+            TextAlignment = TextAlignment.Right,
+        };
+        Grid.SetColumn(count, 2);
+        grid.Children.Add(count);
+
+        return grid;
+    }
+
+    /// <summary>The accent gradient when defined, otherwise the flat primary brush.</summary>
+    private static Brush FindAccentBrush(FrameworkElement resourceRoot) =>
+        resourceRoot.TryFindResource("AccentGradientBrush") as Brush ?? Brush(resourceRoot, "PrimaryBrush");
 
     // ── Method ────────────────────────────────────────────────────────────────
 
@@ -1253,15 +1413,15 @@ internal static class DetailPanelRenderer
         return new Border
         {
             Background = Brush(resourceRoot, "SurfaceBrush"),
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(12),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(16),
             BorderBrush = Brush(resourceRoot, "BorderBrush"),
             BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                BlurRadius = 8,
-                Opacity = 0.15,
+                BlurRadius = 14,
+                Opacity = 0.18,
                 ShadowDepth = 2,
             },
             Child = content,

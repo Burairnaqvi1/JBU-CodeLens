@@ -1,25 +1,29 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- Light palette. The ONLY place (with DarkTheme.xaml) where color values are defined. -->
-    <Color x:Key="BackgroundColor">#F5F5F5</Color>
+    <!-- Light palette. The ONLY place (with DarkTheme.xaml) where color values are defined.
+         Cool paper ground, white surfaces, the same azure→violet accent pair as dark. -->
+    <Color x:Key="BackgroundColor">#F2F5FA</Color>
     <Color x:Key="SurfaceColor">#FFFFFF</Color>
-    <Color x:Key="BorderColor">#DCDCDC</Color>
-    <Color x:Key="PrimaryColor">#1565C0</Color>
-    <Color x:Key="PrimaryHoverColor">#1E88E5</Color>
-    <Color x:Key="SecondaryColor">#2E7D32</Color>
-    <Color x:Key="WarningColor">#E65100</Color>
-    <Color x:Key="ErrorColor">#C62828</Color>
-    <Color x:Key="TextPrimaryColor">#212121</Color>
-    <Color x:Key="TextSecondaryColor">#757575</Color>
-    <Color x:Key="TreeSelectionColor">#BBDEFB</Color>
+    <Color x:Key="BorderColor">#DCE4F0</Color>
+    <Color x:Key="PrimaryColor">#2273E5</Color>
+    <Color x:Key="PrimaryHoverColor">#468CEF</Color>
+    <Color x:Key="AccentAltColor">#7B5BF5</Color>
+    <Color x:Key="SecondaryColor">#1E9E55</Color>
+    <Color x:Key="WarningColor">#C97514</Color>
+    <Color x:Key="ErrorColor">#D6494F</Color>
+    <Color x:Key="TextPrimaryColor">#17233B</Color>
+    <Color x:Key="TextSecondaryColor">#5E6E86</Color>
+    <Color x:Key="TreeSelectionColor">#D6E6FB</Color>
+    <Color x:Key="OnAccentColor">#FFFFFF</Color>
 
     <!-- Derived chrome colors -->
-    <Color x:Key="HeaderColor">#ECECEC</Color>
-    <Color x:Key="StatusBarColor">#ECECEC</Color>
-    <Color x:Key="SidebarColor">#EFEFEF</Color>
-    <Color x:Key="HoverOverlayColor">#14000000</Color>
-    <Color x:Key="PressedOverlayColor">#26000000</Color>
-    <Color x:Key="ScrollThumbColor">#C4C4C4</Color>
-    <Color x:Key="ScrollThumbHoverColor">#A8A8A8</Color>
+    <Color x:Key="HeaderColor">#FBFCFE</Color>
+    <Color x:Key="StatusBarColor">#FBFCFE</Color>
+    <Color x:Key="SidebarColor">#ECF1F9</Color>
+    <Color x:Key="HoverOverlayColor">#12000000</Color>
+    <Color x:Key="PressedOverlayColor">#22000000</Color>
+    <Color x:Key="ScrollThumbColor">#C2CDDE</Color>
+    <Color x:Key="ScrollThumbHoverColor">#A7B7CC</Color>
     <Color x:Key="ShadowColor">#66000000</Color>
+    <Color x:Key="CloseHoverColor">#E5484D</Color>
 </ResourceDictionary>

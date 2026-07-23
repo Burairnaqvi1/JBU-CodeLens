@@ -186,6 +186,38 @@ public partial class MainWindow : Window
         UpdateTitleBarTheme();
     }
 
+    // ── Custom window chrome ─────────────────────────────────────────────────
+
+    private void MinimizeCaption_Click(object sender, RoutedEventArgs e) =>
+        SystemCommands.MinimizeWindow(this);
+
+    private void MaximizeCaption_Click(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized)
+        {
+            SystemCommands.RestoreWindow(this);
+        }
+        else
+        {
+            SystemCommands.MaximizeWindow(this);
+        }
+    }
+
+    private void CloseCaption_Click(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>
+    /// A maximized borderless window overflows the screen by the resize border; compensate
+    /// with an equal margin, and keep the maximize glyph in sync (E922 maximize / E923 restore).
+    /// </summary>
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        var maximized = WindowState == WindowState.Maximized;
+        RootShell.Margin = maximized ? new Thickness(7) : new Thickness(0);
+        MaximizeCaptionButton.Content = maximized ? "\uE923" : "\uE922";
+        MaximizeCaptionButton.ToolTip = maximized ? "Restore" : "Maximize";
+    }
+
     // ── Sidebar collapse ─────────────────────────────────────────────────────
 
     private bool _sidebarCollapsed;
@@ -1287,29 +1319,22 @@ public partial class MainWindow : Window
         };
         DetailContentHost.Children.Add(title);
 
-        if (_lastMetrics is { } m)
-        {
-            DetailContentHost.Children.Add(new TextBlock
-            {
-                Text = $"{m.TotalClasses} classes · {m.TotalMethods} methods · {m.TotalNamespaces} namespaces · MI {m.MaintainabilityIndex:F0}",
-                Foreground = (Brush)FindResource("TextSecondaryBrush"),
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 8),
-            });
-        }
-
         if (_lastProjectIr is not null)
         {
             DetailContentHost.Children.Add(new TextBlock
             {
-                Text = $"{_lastProjectIr.Relationships.Count} relationships · {_lastProjectIr.FilesAnalyzed} files analyzed",
+                Text = $"{_lastProjectIr.FilesAnalyzed} files analyzed",
                 Foreground = (Brush)FindResource("TextSecondaryBrush"),
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 16),
+                Margin = new Thickness(0, 0, 0, 4),
             });
         }
 
-        var summaryPanel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        if (_lastMetrics is { } m)
+        {
+            DetailPanelRenderer.RenderMetricsDashboard(DetailContentHost, m, _lastProjectIr, this);
+        }
+
+        var summaryPanel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
         var summaryTitle = new TextBlock
         {
             Text = "AI Project Summary",
@@ -1440,31 +1465,10 @@ public partial class MainWindow : Window
             FontSize = 22,
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("TextPrimaryBrush"),
-            Margin = new Thickness(0, 0, 0, 12),
+            Margin = new Thickness(0, 0, 0, 4),
         });
 
-        var lines = new[]
-        {
-            $"Classes: {m.TotalClasses}",
-            $"Methods: {m.TotalMethods}",
-            $"Properties: {m.TotalProperties}",
-            $"Namespaces: {m.TotalNamespaces}",
-            $"Relationships: {m.TotalRelationships}",
-            $"Avg complexity: {m.AverageComplexity:F2} (max {m.MaxComplexity})",
-            $"Maintainability index: {m.MaintainabilityIndex:F0}",
-            $"Avg coupling: {m.AverageCoupling:F2}",
-            $"Max inheritance depth: {m.MaxInheritanceDepth}",
-        };
-
-        foreach (var line in lines)
-        {
-            DetailContentHost.Children.Add(new TextBlock
-            {
-                Text = line,
-                Foreground = (Brush)FindResource("TextPrimaryBrush"),
-                Margin = new Thickness(0, 0, 0, 4),
-            });
-        }
+        DetailPanelRenderer.RenderMetricsDashboard(DetailContentHost, m, _lastProjectIr, this);
     }
 
     private void ShowClassDetails(ClassInfo classInfo)

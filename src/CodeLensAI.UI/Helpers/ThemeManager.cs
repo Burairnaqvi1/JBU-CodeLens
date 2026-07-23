@@ -53,6 +53,23 @@ public static class ThemeManager
             }
         }
 
+        // The accent gradient is the one non-solid brush; retarget its stops from the palette
+        // the same way the solid brushes are mutated (all consumers use DynamicResource).
+        if (palette["PrimaryColor"] is Color primary && palette["AccentAltColor"] is Color accentAlt)
+        {
+            if (appResources["AccentGradientBrush"] is LinearGradientBrush { IsFrozen: false } gradient &&
+                gradient.GradientStops.Count == 2)
+            {
+                gradient.GradientStops[0].Color = primary;
+                gradient.GradientStops[1].Color = accentAlt;
+            }
+            else
+            {
+                appResources["AccentGradientBrush"] =
+                    new LinearGradientBrush(primary, accentAlt, new Point(0, 0), new Point(1, 1));
+            }
+        }
+
         Current = theme;
         ThemeChanged?.Invoke(theme);
     }

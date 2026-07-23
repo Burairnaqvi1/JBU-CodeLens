@@ -12,7 +12,61 @@
         Drop="Window_Drop"
         PreviewKeyDown="Window_PreviewKeyDown">
 
+    <!-- Custom chrome: the header row IS the title bar (drag + double-click maximize come from
+         CaptionHeight), with our own caption buttons. Interactive header controls opt out of
+         the caption via WindowChrome.IsHitTestVisibleInChrome. -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="56"
+                      ResizeBorderThickness="6"
+                      GlassFrameThickness="0,0,0,1"
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
     <Window.Resources>
+        <!-- Frameless-window caption buttons (minimize / maximize / close). -->
+        <Style x:Key="CaptionButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="44"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource IconFont}"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverOverlayBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="CaptionCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource CaptionButtonStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CloseHoverBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Shared control chrome (flat buttons, toolbar buttons, slim scrollbars) lives in
              Theme/ControlStyles.xaml, merged app-wide via App.xaml. Only styles specific to
              this window remain here. -->
@@ -162,34 +216,35 @@
         </Style>
     </Window.Resources>
 
-    <Grid>
+    <Grid x:Name="RootShell">
         <Grid.RowDefinitions>
             <RowDefinition Height="56"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="30"/>
         </Grid.RowDefinitions>
 
-        <!-- HEADER / TOOLBAR -->
+        <!-- HEADER / TOOLBAR (doubles as the window title bar) -->
         <Border Grid.Row="0"
                 Background="{DynamicResource HeaderBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid Margin="16,0,16,0">
+            <Grid Margin="16,0,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Logo + Title -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <Border Width="34" Height="34"
-                            Background="{DynamicResource PrimaryBrush}"
-                            CornerRadius="8"
+                            Background="{DynamicResource AccentGradientBrush}"
+                            CornerRadius="9"
                             Margin="0,0,12,0">
                         <TextBlock Text="JBU"
                                    FontSize="11" FontWeight="Bold"
-                                   Foreground="{DynamicResource SurfaceBrush}"
+                                   Foreground="{DynamicResource OnAccentBrush}"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
                     </Border>
@@ -205,7 +260,9 @@
                 </StackPanel>
 
                 <!-- Toolbar -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                            WindowChrome.IsHitTestVisibleInChrome="True"
+                            Margin="0,0,8,0">
 
                     <!-- Light/Dark toggle -->
                     <Border CornerRadius="8"
@@ -235,8 +292,8 @@
                     <Button x:Name="BrowseButton"
                             Style="{StaticResource ToolbarIconButton}"
                             Click="BrowseButton_Click"
-                            Background="{DynamicResource PrimaryBrush}"
-                            Foreground="{DynamicResource SurfaceBrush}"
+                            Background="{DynamicResource AccentGradientBrush}"
+                            Foreground="{DynamicResource OnAccentBrush}"
                             ToolTip="Open a project folder (Ctrl+O)"
                             Margin="0,0,6,0">
                         <StackPanel Orientation="Horizontal">
@@ -283,6 +340,25 @@
                             Click="ExportJsonButton_Click"
                             IsEnabled="False"
                             ToolTip="Export project analysis to JSON (.json)"/>
+                </StackPanel>
+
+                <!-- Caption buttons, flush to the window edge -->
+                <StackPanel Grid.Column="3" Orientation="Horizontal"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="MinimizeCaptionButton"
+                            Style="{StaticResource CaptionButtonStyle}"
+                            Content="&#xE921;"
+                            Click="MinimizeCaption_Click"
+                            ToolTip="Minimize"/>
+                    <Button x:Name="MaximizeCaptionButton"
+                            Style="{StaticResource CaptionButtonStyle}"
+                            Content="&#xE922;"
+                            Click="MaximizeCaption_Click"
+                            ToolTip="Maximize"/>
+                    <Button Style="{StaticResource CaptionCloseButtonStyle}"
+                            Content="&#xE8BB;"
+                            Click="CloseCaption_Click"
+                            ToolTip="Close"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -433,8 +509,8 @@
                                     Margin="0,18,0,0"
                                     Padding="18,9"
                                     FontSize="13" FontWeight="SemiBold"
-                                    Background="{DynamicResource PrimaryBrush}"
-                                    Foreground="{DynamicResource SurfaceBrush}">
+                                    Background="{DynamicResource AccentGradientBrush}"
+                                    Foreground="{DynamicResource OnAccentBrush}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE8B7;" FontFamily="{DynamicResource IconFont}" FontSize="14" VerticalAlignment="Center"/>
                                     <TextBlock Text="Open Project Folder" Margin="8,0,0,0" VerticalAlignment="Center"/>
@@ -545,7 +621,7 @@
                              Margin="12,0,0,0"
                              VerticalAlignment="Center"
                              Background="{DynamicResource BorderBrush}"
-                             Foreground="{DynamicResource PrimaryBrush}"
+                             Foreground="{DynamicResource AccentGradientBrush}"
                              BorderThickness="0"/>
                 <Button x:Name="CancelButton"
                         Grid.Column="2"
