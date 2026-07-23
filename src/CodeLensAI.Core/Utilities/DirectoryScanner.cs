@@ -33,27 +33,59 @@ public static class DirectoryScanner
     /// </returns>
     public static List<string> ScanForSourceFiles(string rootPath)
     {
+        var results = new List<string>();
         if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
         {
-            return new List<string>();
+            return results;
         }
 
-        // IgnoreInaccessible: one protected subfolder must not abort the whole scan.
-        // Skipping reparse points keeps the walk inside the selected tree and immune to
-        // symlink/junction cycles.
-        var options = new EnumerationOptions
-        {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.ReparsePoint,
-        };
+        // Iterative walk that PRUNES excluded folders instead of enumerating everything and
+        // filtering afterward: an excluded tree (a large node_modules or .git, tens of thousands
+        // of files) is never descended into, so its files are never read from disk at all. A
+        // per-directory try/catch keeps one protected or vanished subfolder from aborting the
+        // whole scan (the old IgnoreInaccessible behavior); reparse-point directories are skipped
+        // so symlinks/junctions can't create cycles or lead outside the selected tree.
+        var pending = new Stack<string>();
+        pending.Push(rootPath);
 
-        return Directory
-            .EnumerateFiles(rootPath, "*.*", options)
-            .Where(IsSourceFile)
-            .Where(path => !IsInExcludedFolder(path))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        while (pending.Count > 0)
+        {
+            var directory = pending.Pop();
+
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(directory))
+                {
+                    if (IsSourceFile(file))
+                    {
+                        results.Add(file);
+                    }
+                }
+
+                foreach (var subDirectory in Directory.EnumerateDirectories(directory))
+                {
+                    var name = Path.GetFileName(subDirectory);
+                    if (ExcludedFolders.Contains(name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if ((File.GetAttributes(subDirectory) & FileAttributes.ReparsePoint) != 0)
+                    {
+                        continue;
+                    }
+
+                    pending.Push(subDirectory);
+                }
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                // Skip a folder we cannot read; the rest of the scan continues.
+            }
+        }
+
+        results.Sort(StringComparer.OrdinalIgnoreCase);
+        return results;
     }
 
     /// <summary>
@@ -63,24 +95,5 @@ public static class DirectoryScanner
     {
         var extension = Path.GetExtension(filePath);
         return SourceExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Returns true when any directory segment of <paramref name="filePath"/> matches one of
-    /// the excluded folder names, compared case-insensitively against whole path segments.
-    /// </summary>
-    private static bool IsInExcludedFolder(string filePath)
-    {
-        var segments = filePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        foreach (var segment in segments)
-        {
-            if (ExcludedFolders.Contains(segment, StringComparer.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

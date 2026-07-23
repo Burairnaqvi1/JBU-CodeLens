@@ -45,22 +45,31 @@ public class MetricsCalculator
 
     private static int CalculateMaxInheritanceDepth(ProjectIR ir)
     {
+        // Index each type's single base once (first INHERITS wins, matching the previous
+        // FirstOrDefault semantics). Without this, every step of every chain walk re-scanned
+        // the entire relationship list — which also contains the far more numerous CALLS edges —
+        // making the whole calculation O(classes × depth × relationships) on large projects.
+        var baseByType = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var rel in ir.Relationships)
+        {
+            if (rel.Kind == "INHERITS")
+            {
+                baseByType.TryAdd(rel.SourceId, rel.TargetId);
+            }
+        }
+
         var depth = 1;
         foreach (var cls in ir.Classes)
         {
             var currentDepth = 1;
             var current = cls.FullName;
-            var visited = new HashSet<string>();
+            var visited = new HashSet<string>(StringComparer.Ordinal);
 
-            while (true)
+            // Add() returns false on a cycle (target already visited), ending the walk.
+            while (baseByType.TryGetValue(current, out var baseType) && visited.Add(baseType))
             {
-                var baseType = ir.Relationships
-                    .FirstOrDefault(r => r.SourceId == current && r.Kind == "INHERITS");
-                if (baseType == null || visited.Contains(baseType.TargetId))
-                    break;
-                visited.Add(baseType.TargetId);
                 currentDepth++;
-                current = baseType.TargetId;
+                current = baseType;
             }
 
             if (currentDepth > depth)
