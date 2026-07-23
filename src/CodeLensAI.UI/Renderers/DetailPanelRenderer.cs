@@ -195,7 +195,7 @@ internal static class DetailPanelRenderer
         PopulateScideStructuralSection(designOrganicHost, context, resourceRoot);
         PopulateExecutionStepsSection(designOrganicHost, organicAnalysis.ExecutionSteps, resourceRoot);
         PopulateInferenceDesignSection(designOrganicHost, organicAnalysis, resourceRoot);
-        designAiHost.Children.Add(CreateItalicPlaceholder("Click Generate Analysis to populate.", resourceRoot));
+        designAiHost.Children.Add(CreateItalicPlaceholder("Click Generate Analysis to add an AI review of the design requirements.", resourceRoot));
 
         var designHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
         designHost.Children.Add(designOrganicHost);
@@ -285,7 +285,7 @@ internal static class DetailPanelRenderer
         if (context.ScideModifiers.Count > 0)
         {
             stack.Children.Add(CreateMutedText(
-                $"Signature: {string.Join(" ", context.ScideModifiers)}",
+                $"Modifiers: {string.Join(" ", context.ScideModifiers)}",
                 resourceRoot,
                 marginTop: 4));
         }
@@ -403,7 +403,7 @@ internal static class DetailPanelRenderer
         }
         else
         {
-            aiBriefText = CreateBodyText("Resolving best available summary…", resourceRoot, marginTop: 8);
+            aiBriefText = CreateBodyText("Generating AI description…", resourceRoot, marginTop: 8);
             stack.Children.Add(aiBriefText);
 
             var briefTextBlock = aiBriefText;
@@ -464,7 +464,7 @@ internal static class DetailPanelRenderer
 
         stack.Children.Add(CreateCapsLabel("LOCAL", resourceRoot, marginTop: 10));
         if (method.LocalVariables.Count == 0)
-            stack.Children.Add(CreateMutedText("No locals detected.", resourceRoot, marginTop: 4));
+            stack.Children.Add(CreateMutedText("No local variables detected.", resourceRoot, marginTop: 4));
         else
             foreach (var local in method.LocalVariables)
             {
@@ -1145,11 +1145,11 @@ internal static class DetailPanelRenderer
 
     private static IEnumerable<string> GetFollowUpQuestions(MethodInfo method)
     {
-        yield return $"What happens if the inputs to `{method.Name}` are null or out of range?";
-        yield return $"How is `{method.Name}` called in the rest of the codebase?";
+        yield return $"What happens if the inputs to {method.Name} are null or out of range?";
+        yield return $"How is {method.Name} called in the rest of the codebase?";
         if (method.ThrownExceptions.Count > 0)
             yield return $"When exactly is {method.ThrownExceptions[0]} thrown?";
-        yield return $"Can `{method.Name}` be made asynchronous?";
+        yield return $"Can {method.Name} be made asynchronous?";
     }
 
     // ── UI primitives ─────────────────────────────────────────────────────────

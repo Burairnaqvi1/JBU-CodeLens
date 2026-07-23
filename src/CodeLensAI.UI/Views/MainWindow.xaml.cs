@@ -48,6 +48,13 @@ public partial class MainWindow : Window
     // operation can run at a time because the busy state disables the buttons that start them.
     private CancellationTokenSource? _activeCts;
 
+    // In-app page navigation: the dashboard, the project-tree visualization, and the node
+    // detail page swap in the main content row (toolbar and status bar stay put).
+    // Back goes Detail → Tree → Dashboard; Esc does the same.
+    private enum AppPage { Dashboard, Visualization, NodeDetail }
+
+    private AppPage _currentPage = AppPage.Dashboard;
+
     private bool IsBusy => _isScanning || _isExporting;
 
     private string? SelectedFolderPath
@@ -71,6 +78,10 @@ public partial class MainWindow : Window
         WindowStyle = WindowStyle.SingleBorderWindow;
         ResizeMode = ResizeMode.CanResize;
         ApplyTheme(AppTheme.Dark);
+
+        VizView.BackRequested += () => ShowAppPage(AppPage.Dashboard);
+        VizView.NodeClicked += NavigateToVisualizedNode;
+        NodeDetailPage.BackRequested += () => ShowAppPage(AppPage.Visualization);
 
         StatusBarText.Text = "Loading AI model…";
         Loaded += MainWindow_Loaded;
@@ -243,24 +254,38 @@ public partial class MainWindow : Window
 
     // ── Drag & drop ──────────────────────────────────────────────────────────
 
+    // Status-bar text saved when a drag enters, restored if it leaves without dropping —
+    // so a passing drag never overwrites a meaningful status (e.g. "Model not found").
+    private string? _statusBeforeDrag;
+
     private void Window_DragEnter(object sender, DragEventArgs e)
     {
-        e.Effects = TryGetSingleFolder(e, out _)
-            ? DragDropEffects.Copy
-            : DragDropEffects.None;
+        if (TryGetSingleFolder(e, out _))
+        {
+            e.Effects = DragDropEffects.Copy;
+            _statusBeforeDrag ??= StatusBarText.Text;
+            StatusBarText.Text = "Drop the folder to scan it";
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+        }
+
         e.Handled = true;
     }
 
     private void Window_DragLeave(object sender, DragEventArgs e)
     {
-        if (_hasScanResults) return;
-        StatusBarText.Text = string.IsNullOrEmpty(SelectedFolderPath)
-            ? "AI model ready"
-            : $"Folder selected: {SelectedFolderPath}";
+        if (_statusBeforeDrag is not null)
+        {
+            StatusBarText.Text = _statusBeforeDrag;
+            _statusBeforeDrag = null;
+        }
     }
 
     private void Window_Drop(object sender, DragEventArgs e)
     {
+        _statusBeforeDrag = null;
         if (TryGetSingleFolder(e, out var folderPath))
         {
             if (IsBusy)
@@ -403,7 +428,18 @@ public partial class MainWindow : Window
                 ? $", MI={m.MaintainabilityIndex:F0}, {_lastProjectIr?.Namespaces.Count ?? 0} namespaces"
                 : string.Empty;
             StatusBarText.Text =
-                $"Scan complete — {scanResult.ParseResults.Count} files, {_classCount} classes, {_methodCount} functions{metricsSuffix}";
+                $"Scan complete — {scanResult.ParseResults.Count} files, {_classCount} classes, {_methodCount} methods{metricsSuffix}";
+
+            // Keep the tree page in sync with the new scan; a node-detail page would be
+            // showing stale objects, so step it back to the refreshed tree.
+            if (VizView.HasProject)
+            {
+                VizView.LoadProject(projectName, folderPath, _lastScanResults);
+                if (_currentPage == AppPage.NodeDetail)
+                {
+                    ShowAppPage(AppPage.Visualization);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -421,6 +457,90 @@ public partial class MainWindow : Window
 
     private void ScanProject() => _ = ScanProjectAsync();
 
+    // ── In-app page navigation ───────────────────────────────────────────────
+
+    /// <summary>Swaps which page occupies the main content row.</summary>
+    private void ShowAppPage(AppPage page)
+    {
+        _currentPage = page;
+        DashboardRoot.Visibility = page == AppPage.Dashboard ? Visibility.Visible : Visibility.Collapsed;
+        VizView.Visibility = page == AppPage.Visualization ? Visibility.Visible : Visibility.Collapsed;
+        NodeDetailPage.Visibility = page == AppPage.NodeDetail ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Esc walks back one navigation level: Detail → Tree → Dashboard.</summary>
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Escape)
+        {
+            return;
+        }
+
+        if (_currentPage == AppPage.NodeDetail)
+        {
+            ShowAppPage(AppPage.Visualization);
+            e.Handled = true;
+        }
+        else if (_currentPage == AppPage.Visualization)
+        {
+            ShowAppPage(AppPage.Dashboard);
+            e.Handled = true;
+        }
+    }
+
+    private void VisualizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults || string.IsNullOrEmpty(_lastScannedFolder))
+        {
+            return;
+        }
+
+        var projectName = Path.GetFileName(
+            _lastScannedFolder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        // Show the page before loading so the fit-to-view pass sees real viewport sizes.
+        ShowAppPage(AppPage.Visualization);
+        VizView.LoadProject(projectName, _lastScannedFolder, _lastScanResults);
+    }
+
+    /// <summary>
+    /// Opens the element behind a clicked visualization node in the in-app detail page,
+    /// rendered by the same <see cref="DetailPanelRenderer"/> the main detail panel uses —
+    /// full headings for methods, member/relationship info for classes, parse info for files.
+    /// </summary>
+    private void NavigateToVisualizedNode(object tag)
+    {
+        switch (tag)
+        {
+            case LensMethod method:
+                NodeDetailPage.ShowDetail(
+                    $"{method.Name}() — {method.ParentClass?.Name ?? "method"}",
+                    host =>
+                    {
+                        var context = _projectAnalyzer.BuildMethodDetailContext(
+                            method, _lastProjectIr, _scideMethodIndex, _scideTypeIndex);
+                        DetailPanelRenderer.RenderMethod(host, context, NodeDetailPage, _explanationService);
+                    });
+                break;
+            case ClassInfo classInfo:
+                NodeDetailPage.ShowDetail(
+                    $"{classInfo.Name} — class",
+                    host => DetailPanelRenderer.RenderClass(
+                        host, classInfo, NodeDetailPage, method => NavigateToVisualizedNode(method)));
+                break;
+            case string filePath when !string.IsNullOrEmpty(filePath):
+                _parseCache.TryGetValue(filePath, out var parseResult);
+                NodeDetailPage.ShowDetail(
+                    Path.GetFileName(filePath),
+                    host => DetailPanelRenderer.RenderFile(host, filePath, parseResult, NodeDetailPage));
+                break;
+            default:
+                return;
+        }
+
+        ShowAppPage(AppPage.NodeDetail);
+    }
+
     private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
         CancelButton.IsEnabled = false;
@@ -437,6 +557,7 @@ public partial class MainWindow : Window
     {
         BrowseButton.IsEnabled = !busy;
         ScanButton.IsEnabled = !busy && !string.IsNullOrEmpty(SelectedFolderPath);
+        VisualizeButton.IsEnabled = !busy && _hasScanResults;
         SetExportButtonsEnabled(!busy && _hasScanResults);
 
         ScanProgressBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
@@ -699,7 +820,7 @@ public partial class MainWindow : Window
         {
             Title = "Save project documentation",
             Filter = "Word Document (*.docx)|*.docx",
-            FileName = $"{projectName}_CodeLensAI_Documentation.docx",
+            FileName = $"{projectName}_JBUCodeLens_Documentation.docx",
             DefaultExt = ".docx",
             AddExtension = true,
         };
@@ -769,7 +890,7 @@ public partial class MainWindow : Window
         {
             Title = "Save Markdown export",
             Filter = "Markdown (*.md)|*.md",
-            FileName = $"{projectName}_CodeLensAI_Analysis.md",
+            FileName = $"{projectName}_JBUCodeLens_Analysis.md",
             DefaultExt = ".md",
             AddExtension = true,
         };
@@ -818,7 +939,7 @@ public partial class MainWindow : Window
         {
             Title = "Save JSON export",
             Filter = "JSON (*.json)|*.json",
-            FileName = $"{projectName}_CodeLensAI_Analysis.json",
+            FileName = $"{projectName}_JBUCodeLens_Analysis.json",
             DefaultExt = ".json",
             AddExtension = true,
         };

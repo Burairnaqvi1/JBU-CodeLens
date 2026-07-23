@@ -7,6 +7,8 @@
             <ResourceDictionary.MergedDictionaries>
                 <!-- Startup palette; ThemeManager retargets every brush when the theme changes. -->
                 <ResourceDictionary Source="/Theme/DarkTheme.xaml" />
+                <!-- Control chrome (buttons, scrollbars) shared by all windows. -->
+                <ResourceDictionary Source="/Theme/ControlStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <!-- Semantic brushes. One per *Color key in the theme dictionaries; ThemeManager

@@ -572,7 +572,7 @@ public sealed class ExplanationService : IExplanationService
             if (keep < instruction.Length)
             {
                 System.Diagnostics.Trace.WriteLine(
-                    $"[CodeLensAI] Prompt truncated: {promptTokens} tokens exceeded the {MaxInputTokens}-token input budget; " +
+                    $"[JBU CodeLens] Prompt truncated: {promptTokens} tokens exceeded the {MaxInputTokens}-token input budget; " +
                     $"kept the first {keep} of {instruction.Length} instruction characters.");
                 instruction = instruction[..keep] + "…";
             }
