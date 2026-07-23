@@ -237,7 +237,7 @@
                             Click="BrowseButton_Click"
                             Background="{DynamicResource PrimaryBrush}"
                             Foreground="{DynamicResource SurfaceBrush}"
-                            ToolTip="Open a project folder"
+                            ToolTip="Open a project folder (Ctrl+O)"
                             Margin="0,0,6,0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE8B7;" FontFamily="{DynamicResource IconFont}" FontSize="15" VerticalAlignment="Center"/>
@@ -250,7 +250,7 @@
                             Content="&#xE72C;"
                             Click="ScanButton_Click"
                             IsEnabled="False"
-                            ToolTip="Rescan the current project"
+                            ToolTip="Rescan the current project (F5)"
                             Margin="0,0,6,0"/>
 
                     <Button x:Name="VisualizeButton"
@@ -323,6 +323,34 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        TextTrimming="CharacterEllipsis"
                                        Margin="0,3,0,0"/>
+
+                            <!-- Tree filter: instant, matches file, class, and method names. -->
+                            <Grid Margin="0,10,0,0">
+                                <TextBox x:Name="FilterBox"
+                                         FontSize="12"
+                                         Padding="8,5,24,5"
+                                         TextChanged="FilterBox_TextChanged"
+                                         ToolTip="Filter files, classes, and methods (Ctrl+F)"/>
+                                <TextBlock x:Name="FilterHint"
+                                           Text="Filter (Ctrl+F)"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Opacity="0.6"
+                                           IsHitTestVisible="False"
+                                           VerticalAlignment="Center"
+                                           Margin="10,0,0,0"/>
+                                <Button x:Name="FilterClearButton"
+                                        Content="&#xE711;"
+                                        FontFamily="{DynamicResource IconFont}"
+                                        FontSize="10"
+                                        Padding="6,3"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Center"
+                                        Margin="0,0,4,0"
+                                        Visibility="Collapsed"
+                                        ToolTip="Clear the filter (Esc)"
+                                        Click="FilterClear_Click"/>
+                            </Grid>
                         </StackPanel>
                     </Border>
 
@@ -388,15 +416,37 @@
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
                             </Border>
-                            <TextBlock Text="Select a file, class, or method"
+                            <TextBlock x:Name="PlaceholderTitle"
+                                       Text="Open a project to get started"
                                        FontSize="16" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        HorizontalAlignment="Center"/>
-                            <TextBlock Text="Drag &amp; drop a folder anywhere"
+                            <TextBlock x:Name="PlaceholderSubtitle"
+                                       Text="Scan a C# or C++ folder to explore, document, and explain it"
                                        FontSize="13"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        HorizontalAlignment="Center"
                                        Margin="0,8,0,0"/>
+                            <Button x:Name="PlaceholderOpenButton"
+                                    Click="BrowseButton_Click"
+                                    HorizontalAlignment="Center"
+                                    Margin="0,18,0,0"
+                                    Padding="18,9"
+                                    FontSize="13" FontWeight="SemiBold"
+                                    Background="{DynamicResource PrimaryBrush}"
+                                    Foreground="{DynamicResource SurfaceBrush}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE8B7;" FontFamily="{DynamicResource IconFont}" FontSize="14" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Open Project Folder" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <TextBlock x:Name="PlaceholderShortcutHint"
+                                       Text="or press Ctrl+O — drag &amp; drop works too"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Opacity="0.8"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,10,0,0"/>
                         </StackPanel>
                     </Border>
 

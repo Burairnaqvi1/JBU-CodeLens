@@ -26,6 +26,9 @@ public partial class VisualizationView : UserControl
     private const double CanvasPadding = 24;
     private const double MinScale = 0.08;
     private const double MaxScale = 2.5;
+
+    /// <summary>Fit-to-view never goes below this zoom; smaller and node labels are unreadable.</summary>
+    private const double ReadableFitFloor = 0.55;
     private const double ZoomStep = 1.15;
     // Beyond this many nodes a single-canvas render stalls the dispatcher for seconds;
     // the depth selector refuses to switch rather than freeze the app.
@@ -209,10 +212,12 @@ public partial class VisualizationView : UserControl
             return;
         }
 
-        // Never enlarge past 100% — small projects should not blow up to fill the view.
+        // Never enlarge past 100% — small projects should not blow up to fill the view — and
+        // never shrink below a readable floor: fitting a big tree entirely renders labels as
+        // unreadable specks, so past the floor the view fits-as-far-as-legible and pans.
         var scale = Math.Clamp(
             Math.Min(viewportWidth / TreeCanvas.Width, viewportHeight / TreeCanvas.Height) * 0.97,
-            MinScale,
+            Math.Max(MinScale, ReadableFitFloor),
             1.0);
         CanvasScale.ScaleX = scale;
         CanvasScale.ScaleY = scale;

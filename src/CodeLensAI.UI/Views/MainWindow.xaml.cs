@@ -146,6 +146,7 @@ public partial class MainWindow : Window
     {
         _isDarkTheme = theme == AppTheme.Dark;
         ThemeManager.Apply(theme);
+        UpdateTitleBarTheme();
 
         var active = _isDarkTheme ? DarkThemeButton : LightThemeButton;
         var inactive = _isDarkTheme ? LightThemeButton : DarkThemeButton;
@@ -155,6 +156,34 @@ public partial class MainWindow : Window
         inactive.SetResourceReference(ForegroundProperty, "TextSecondaryBrush");
 
         RefreshCurrentDetailView();
+    }
+
+    /// <summary>
+    /// Keeps the native Windows title bar in step with the app theme (a white title bar on a
+    /// dark app is the single most visible "unfinished" signal). No-ops before the window
+    /// handle exists; OnSourceInitialized re-applies once it does.
+    /// </summary>
+    private void UpdateTitleBarTheme()
+    {
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var useDark = _isDarkTheme ? 1 : 0;
+        _ = DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref useDark, sizeof(int));
+    }
+
+    private const int DwmwaUseImmersiveDarkMode = 20;
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        UpdateTitleBarTheme();
     }
 
     // ── Sidebar collapse ─────────────────────────────────────────────────────
@@ -423,6 +452,10 @@ public partial class MainWindow : Window
 
             ProjectTree.Items.Add(rootItem);
             _hasScanResults = true;
+            ApplyTreeFilter(FilterBox.Text);
+            // Re-evaluate the placeholder copy: nothing is selected yet, but the onboarding
+            // call-to-action no longer applies now that a project is open.
+            ShowPlaceholder();
 
             var metricsSuffix = _lastMetrics is { } m
                 ? $", MI={m.MaintainabilityIndex:F0}, {_lastProjectIr?.Namespaces.Count ?? 0} namespaces"
@@ -459,24 +492,100 @@ public partial class MainWindow : Window
 
     // ── In-app page navigation ───────────────────────────────────────────────
 
-    /// <summary>Swaps which page occupies the main content row.</summary>
+    /// <summary>
+    /// Swaps which page occupies the main content row, easing the incoming page in with a
+    /// short fade + rise so navigation reads as movement rather than a hard cut.
+    /// </summary>
     private void ShowAppPage(AppPage page)
     {
+        var changed = _currentPage != page;
         _currentPage = page;
         DashboardRoot.Visibility = page == AppPage.Dashboard ? Visibility.Visible : Visibility.Collapsed;
         VizView.Visibility = page == AppPage.Visualization ? Visibility.Visible : Visibility.Collapsed;
         NodeDetailPage.Visibility = page == AppPage.NodeDetail ? Visibility.Visible : Visibility.Collapsed;
+
+        if (changed)
+        {
+            AnimatePageIn(page switch
+            {
+                AppPage.Dashboard => DashboardRoot,
+                AppPage.Visualization => VizView,
+                _ => NodeDetailPage,
+            });
+        }
     }
 
-    /// <summary>Esc walks back one navigation level: Detail → Tree → Dashboard.</summary>
+    private static void AnimatePageIn(UIElement page)
+    {
+        var ease = new System.Windows.Media.Animation.CubicEase
+        {
+            EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut,
+        };
+
+        var rise = new TranslateTransform(0, 10);
+        page.RenderTransform = rise;
+        page.BeginAnimation(
+            OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)) { EasingFunction = ease });
+        rise.BeginAnimation(
+            TranslateTransform.YProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(220)) { EasingFunction = ease });
+    }
+
+    /// <summary>
+    /// Global shortcuts: Ctrl+O open project, F5 rescan, Ctrl+F focus the tree filter,
+    /// Esc clears the filter when it has focus, otherwise walks back one navigation level
+    /// (Detail → Tree → Dashboard).
+    /// </summary>
     private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        var ctrl = System.Windows.Input.Keyboard.Modifiers == System.Windows.Input.ModifierKeys.Control;
+
+        if (ctrl && e.Key == System.Windows.Input.Key.O)
+        {
+            if (BrowseButton.IsEnabled)
+            {
+                BrowseButton_Click(BrowseButton, new RoutedEventArgs());
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == System.Windows.Input.Key.F5)
+        {
+            if (ScanButton.IsEnabled)
+            {
+                ScanButton_Click(ScanButton, new RoutedEventArgs());
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == System.Windows.Input.Key.F)
+        {
+            if (_currentPage == AppPage.Dashboard && !_sidebarCollapsed)
+            {
+                FilterBox.Focus();
+                FilterBox.SelectAll();
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != System.Windows.Input.Key.Escape)
         {
             return;
         }
 
-        if (_currentPage == AppPage.NodeDetail)
+        if (FilterBox.IsKeyboardFocusWithin && FilterBox.Text.Length > 0)
+        {
+            FilterBox.Text = string.Empty;
+            e.Handled = true;
+        }
+        else if (_currentPage == AppPage.NodeDetail)
         {
             ShowAppPage(AppPage.Visualization);
             e.Handled = true;
@@ -526,7 +635,7 @@ public partial class MainWindow : Window
                 NodeDetailPage.ShowDetail(
                     $"{classInfo.Name} — class",
                     host => DetailPanelRenderer.RenderClass(
-                        host, classInfo, NodeDetailPage, method => NavigateToVisualizedNode(method)));
+                        host, classInfo, NodeDetailPage, method => NavigateToVisualizedNode(method), _explanationService));
                 break;
             case string filePath when !string.IsNullOrEmpty(filePath):
                 _parseCache.TryGetValue(filePath, out var parseResult);
@@ -556,6 +665,7 @@ public partial class MainWindow : Window
     private void SetBusyUiState(bool busy, bool determinateProgress = false, bool cancellable = false)
     {
         BrowseButton.IsEnabled = !busy;
+        PlaceholderOpenButton.IsEnabled = !busy;
         ScanButton.IsEnabled = !busy && !string.IsNullOrEmpty(SelectedFolderPath);
         VisualizeButton.IsEnabled = !busy && _hasScanResults;
         SetExportButtonsEnabled(!busy && _hasScanResults);
@@ -738,6 +848,124 @@ public partial class MainWindow : Window
             }
 
             fileItem.Items.Add(classItem);
+        }
+    }
+
+    // ── Tree filter ──────────────────────────────────────────────────────────
+
+    private void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var empty = string.IsNullOrEmpty(FilterBox.Text);
+        FilterHint.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        FilterClearButton.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+        ApplyTreeFilter(FilterBox.Text);
+    }
+
+    private void FilterClear_Click(object sender, RoutedEventArgs e)
+    {
+        FilterBox.Text = string.Empty;
+        FilterBox.Focus();
+    }
+
+    /// <summary>
+    /// Shows only the file nodes whose name — or whose classes/methods — match the query,
+    /// expanding files whose match is inside them. Matching consults the parse results rather
+    /// than tree items, so lazily built children are only materialized for files that match.
+    /// Clearing the filter restores every node (collapsed, matching the freshly scanned state).
+    /// </summary>
+    private void ApplyTreeFilter(string query)
+    {
+        if (ProjectTree.Items.Count == 0 || ProjectTree.Items[0] is not TreeViewItem root)
+        {
+            return;
+        }
+
+        var q = query.Trim();
+        var filtering = q.Length > 0;
+
+        foreach (var child in root.Items)
+        {
+            if (child is not TreeViewItem item)
+            {
+                continue;
+            }
+
+            // Metrics and namespace summary nodes: hidden while filtering (they never match).
+            if (item.Tag is not string filePath || !_parseCache.ContainsKey(filePath))
+            {
+                item.Visibility = filtering ? Visibility.Collapsed : Visibility.Visible;
+                continue;
+            }
+
+            if (!filtering)
+            {
+                item.Visibility = Visibility.Visible;
+                item.IsExpanded = false;
+                SetDescendantsVisible(item);
+                continue;
+            }
+
+            var fileMatch = Path.GetFileName(filePath).Contains(q, StringComparison.OrdinalIgnoreCase);
+            _parseCache.TryGetValue(filePath, out var parse);
+            var memberMatch = parse?.Classes.Any(c =>
+                c.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                c.Methods.Any(m => m.Name.Contains(q, StringComparison.OrdinalIgnoreCase))) == true;
+
+            item.Visibility = fileMatch || memberMatch ? Visibility.Visible : Visibility.Collapsed;
+
+            if (memberMatch)
+            {
+                PopulateFileChildren(item);
+                FilterFileChildren(item, q);
+                item.IsExpanded = true;
+            }
+            else if (fileMatch)
+            {
+                SetDescendantsVisible(item);
+                item.IsExpanded = false;
+            }
+        }
+    }
+
+    private static void FilterFileChildren(TreeViewItem fileItem, string q)
+    {
+        foreach (var childObj in fileItem.Items)
+        {
+            if (childObj is not TreeViewItem classItem || classItem.Tag is not ClassInfo classInfo)
+            {
+                continue;
+            }
+
+            var classMatch = classInfo.Name.Contains(q, StringComparison.OrdinalIgnoreCase);
+            var anyMethodMatch = false;
+            foreach (var methodObj in classItem.Items)
+            {
+                if (methodObj is not TreeViewItem methodItem || methodItem.Tag is not LensMethod method)
+                {
+                    continue;
+                }
+
+                var methodMatch = method.Name.Contains(q, StringComparison.OrdinalIgnoreCase);
+                anyMethodMatch |= methodMatch;
+                methodItem.Visibility = methodMatch || classMatch ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            classItem.Visibility = classMatch || anyMethodMatch ? Visibility.Visible : Visibility.Collapsed;
+            classItem.IsExpanded = anyMethodMatch;
+        }
+    }
+
+    private static void SetDescendantsVisible(TreeViewItem item)
+    {
+        foreach (var childObj in item.Items)
+        {
+            if (childObj is not TreeViewItem child)
+            {
+                continue;
+            }
+
+            child.Visibility = Visibility.Visible;
+            SetDescendantsVisible(child);
         }
     }
 
@@ -979,6 +1207,24 @@ public partial class MainWindow : Window
     private void ShowPlaceholder()
     {
         _currentDetailContext = null;
+
+        // Before a scan the placeholder is an onboarding call-to-action; after one it guides
+        // the user to the tree instead — the project is already open.
+        if (_hasScanResults)
+        {
+            PlaceholderTitle.Text = "Select a file, class, or method";
+            PlaceholderSubtitle.Text = "Pick an item in the Project Explorer to see its documentation";
+            PlaceholderOpenButton.Visibility = Visibility.Collapsed;
+            PlaceholderShortcutHint.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            PlaceholderTitle.Text = "Open a project to get started";
+            PlaceholderSubtitle.Text = "Scan a C# or C++ folder to explore, document, and explain it";
+            PlaceholderOpenButton.Visibility = Visibility.Visible;
+            PlaceholderShortcutHint.Visibility = Visibility.Visible;
+        }
+
         DetailPlaceholder.Visibility = Visibility.Visible;
         DetailScrollViewer.Visibility = Visibility.Collapsed;
         DetailPanelRenderer.Clear(DetailContentHost);
@@ -1226,7 +1472,7 @@ public partial class MainWindow : Window
         ShowDetailContent();
         _currentDetailContext = classInfo;
         DetailPanelRenderer.RenderClass(DetailContentHost, classInfo, this,
-            method => SelectMethodInTree(method));
+            method => SelectMethodInTree(method), _explanationService);
     }
 
     private void ShowMethodDetails(LensMethod methodInfo)
