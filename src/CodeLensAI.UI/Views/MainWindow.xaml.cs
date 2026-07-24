@@ -41,6 +41,9 @@ public partial class MainWindow : Window
     private int _methodCount;
     private bool _suppressTreeSelectionChanged;
     private bool _isDarkTheme = true;
+
+    // Persisted UI preferences (theme, last project). Loaded before the constructor body runs.
+    private readonly UiSettings _settings = UiSettings.Load();
     private bool _isScanning;
     private bool _isExporting;
 
@@ -77,7 +80,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         WindowStyle = WindowStyle.SingleBorderWindow;
         ResizeMode = ResizeMode.CanResize;
-        ApplyTheme(AppTheme.Dark);
+        ApplyTheme(_settings.Theme == "Light" ? AppTheme.Light : AppTheme.Dark);
 
         VizView.BackRequested += () => ShowAppPage(AppPage.Dashboard);
         VizView.NodeClicked += NavigateToVisualizedNode;
@@ -91,6 +94,9 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         FitToWorkArea();
+
+        // Evaluate the empty state now so the "Reopen last project" button appears on launch.
+        ShowPlaceholder();
 
         var modelPath = ModelPathResolver.Resolve();
         if (modelPath is null)
@@ -134,12 +140,29 @@ public partial class MainWindow : Window
 
     private void LightThemeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_isDarkTheme) ApplyTheme(AppTheme.Light);
+        if (_isDarkTheme) { ApplyTheme(AppTheme.Light); PersistTheme(); }
     }
 
     private void DarkThemeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!_isDarkTheme) ApplyTheme(AppTheme.Dark);
+        if (!_isDarkTheme) { ApplyTheme(AppTheme.Dark); PersistTheme(); }
+    }
+
+    /// <summary>Remembers the chosen theme so the next launch opens in it.</summary>
+    private void PersistTheme()
+    {
+        _settings.Theme = _isDarkTheme ? "Dark" : "Light";
+        _settings.Save();
+    }
+
+    private void PlaceholderReopenButton_Click(object sender, RoutedEventArgs e)
+    {
+        var last = _settings.LastProjectPath;
+        if (!IsBusy && !string.IsNullOrEmpty(last) && Directory.Exists(last))
+        {
+            SelectedFolderPath = last;
+            ScanProject();
+        }
     }
 
     private void ApplyTheme(AppTheme theme)
@@ -484,6 +507,8 @@ public partial class MainWindow : Window
 
             ProjectTree.Items.Add(rootItem);
             _hasScanResults = true;
+            _settings.LastProjectPath = folderPath;
+            _settings.Save();
             ApplyTreeFilter(FilterBox.Text);
             // Re-evaluate the placeholder copy: nothing is selected yet, but the onboarding
             // call-to-action no longer applies now that a project is open.
@@ -802,6 +827,7 @@ public partial class MainWindow : Window
         {
             Header = CreateFileHeader(fileName, isCpp),
             Tag = filePath,
+            ToolTip = filePath,
             IsExpanded = false,
         };
 
@@ -1248,6 +1274,7 @@ public partial class MainWindow : Window
             PlaceholderSubtitle.Text = "Pick an item in the Project Explorer to see its documentation";
             PlaceholderOpenButton.Visibility = Visibility.Collapsed;
             PlaceholderShortcutHint.Visibility = Visibility.Collapsed;
+            PlaceholderReopenButton.Visibility = Visibility.Collapsed;
         }
         else
         {
@@ -1255,6 +1282,19 @@ public partial class MainWindow : Window
             PlaceholderSubtitle.Text = "Scan a C# or C++ folder to explore, document, and explain it";
             PlaceholderOpenButton.Visibility = Visibility.Visible;
             PlaceholderShortcutHint.Visibility = Visibility.Visible;
+
+            // Offer to reopen the last project when it still exists on disk.
+            if (!string.IsNullOrEmpty(_settings.LastProjectPath) && Directory.Exists(_settings.LastProjectPath))
+            {
+                var name = Path.GetFileName(
+                    _settings.LastProjectPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                PlaceholderReopenText.Text = $"Reopen {name}";
+                PlaceholderReopenButton.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                PlaceholderReopenButton.Visibility = Visibility.Collapsed;
+            }
         }
 
         DetailPlaceholder.Visibility = Visibility.Visible;
@@ -1738,6 +1778,9 @@ public partial class MainWindow : Window
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(new TextBlock { Text = classInfo.Name, VerticalAlignment = VerticalAlignment.Center });
+        panel.ToolTip = string.IsNullOrEmpty(classInfo.NamespaceName)
+            ? classInfo.Name
+            : $"{classInfo.NamespaceName}.{classInfo.Name}";
         var tag = new TextBlock
         {
             Text = GetCategoryTag(classInfo.Category),
@@ -1769,6 +1812,7 @@ public partial class MainWindow : Window
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
         });
+        panel.ToolTip = $"{method.ReturnType} {method.Name}({parameters})";
         return panel;
     }
 
