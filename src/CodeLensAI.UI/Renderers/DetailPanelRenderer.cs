@@ -371,6 +371,28 @@ internal static class DetailPanelRenderer
     // ── Metric drill-down list ────────────────────────────────────────────────
 
     /// <summary>
+    /// A left-aligned "Back" button. Shared by the drill-down list and by class/method detail
+    /// views that were reached from a drill-down, so the back trail continues instead of dead-ending.
+    /// </summary>
+    public static Button CreateBackButton(Action onBack, FrameworkElement resourceRoot)
+    {
+        var backButton = new Button
+        {
+            Content = (char)0x2190 + "  Back",
+            Padding = new Thickness(12, 6, 14, 6),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Background = Brush(resourceRoot, "SurfaceBrush"),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            BorderBrush = Brush(resourceRoot, "BorderBrush"),
+            BorderThickness = new Thickness(1),
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 14),
+        };
+        backButton.Click += (_, _) => onBack();
+        return backButton;
+    }
+
+    /// <summary>
     /// Renders the list behind a metric tile (the classes, methods, etc. it counts): a Back
     /// button to the dashboard, a counted title, and rows that navigate when clicked. Rows with
     /// no action (for example a relationship breakdown) render as plain informational lines.
@@ -382,20 +404,7 @@ internal static class DetailPanelRenderer
         Action onBack,
         FrameworkElement resourceRoot)
     {
-        var backButton = new Button
-        {
-            Content = "←  Back",
-            Padding = new Thickness(12, 6, 14, 6),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Background = Brush(resourceRoot, "SurfaceBrush"),
-            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
-            BorderBrush = Brush(resourceRoot, "BorderBrush"),
-            BorderThickness = new Thickness(1),
-            FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 0, 0, 14),
-        };
-        backButton.Click += (_, _) => onBack();
-        host.Children.Add(backButton);
+        host.Children.Add(CreateBackButton(onBack, resourceRoot));
 
         host.Children.Add(new TextBlock
         {
@@ -421,7 +430,7 @@ internal static class DetailPanelRenderer
         host.Children.Add(WrapInCard(listStack, resourceRoot));
     }
 
-    private static Border CreateDrillRow(DrillDownItem item, FrameworkElement resourceRoot)
+    private static FrameworkElement CreateDrillRow(DrillDownItem item, FrameworkElement resourceRoot)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -461,28 +470,44 @@ internal static class DetailPanelRenderer
             Child = grid,
         };
 
-        if (item.OnClick is not null)
+                if (item.OnClick is null)
         {
-            var chevron = new TextBlock
-            {
-                Text = "",
-                FontFamily = (FontFamily)resourceRoot.FindResource("IconFont"),
-                FontSize = 10,
-                Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(10, 0, 0, 0),
-            };
-            Grid.SetColumn(chevron, 2);
-            grid.Children.Add(chevron);
-
-            var hover = Brush(resourceRoot, "HoverOverlayBrush");
-            row.Cursor = System.Windows.Input.Cursors.Hand;
-            row.MouseEnter += (_, _) => row.Background = hover;
-            row.MouseLeave += (_, _) => row.Background = System.Windows.Media.Brushes.Transparent;
-            row.MouseLeftButtonUp += (_, _) => item.OnClick();
+            return row;
         }
 
-        return row;
+        var chevron = new TextBlock
+        {
+            Text = "",
+            FontFamily = (FontFamily)resourceRoot.FindResource("IconFont"),
+            FontSize = 10,
+            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0),
+        };
+        Grid.SetColumn(chevron, 2);
+        grid.Children.Add(chevron);
+
+        var hover = Brush(resourceRoot, "HoverOverlayBrush");
+        row.MouseEnter += (_, _) => row.Background = hover;
+        row.MouseLeave += (_, _) => row.Background = System.Windows.Media.Brushes.Transparent;
+
+        // A chromeless Button wrapper makes the row keyboard-operable and exposed to screen
+        // readers / UI Automation as invokable, while the Border keeps the visuals and hover.
+        var rowButton = new Button
+        {
+            Template = new ControlTemplate(typeof(Button)) { VisualTree = new FrameworkElementFactory(typeof(ContentPresenter)) },
+            Content = row,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+        };
+        rowButton.Click += (_, _) => item.OnClick();
+        System.Windows.Automation.AutomationProperties.SetName(
+            rowButton, string.IsNullOrEmpty(item.Secondary) ? item.Primary : $"{item.Primary}, {item.Secondary}");
+        return rowButton;
     }
 
     /// <summary>

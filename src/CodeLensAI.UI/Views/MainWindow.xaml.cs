@@ -1502,6 +1502,9 @@ public partial class MainWindow : Window
         ShowDetailContent();
         _currentDetailContext = (Action)(() => ShowMetricDrillDown(category, onBack));
 
+        // Opening an item from this list leaves a Back button that returns to this same list.
+        void BackToHere() => ShowMetricDrillDown(category, onBack);
+
         var classes = _parseCache.Values.SelectMany(p => p.Classes).ToList();
         string title;
         List<DrillDownItem> items;
@@ -1512,7 +1515,7 @@ public partial class MainWindow : Window
                 title = "Classes";
                 items = classes
                     .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(c => new DrillDownItem(c.Name, $"{c.Methods.Count} methods", () => ShowClassDetails(c)))
+                    .Select(c => new DrillDownItem(c.Name, $"{c.Methods.Count} methods", () => ShowClassDetails(c, BackToHere)))
                     .ToList();
                 break;
 
@@ -1525,7 +1528,7 @@ public partial class MainWindow : Window
                     .Select(m => new DrillDownItem(
                         m.ParentClass is null ? m.Name : $"{m.ParentClass.Name}.{m.Name}",
                         string.IsNullOrWhiteSpace(m.ReturnType) ? null : m.ReturnType,
-                        () => SelectMethodInTree(m)))
+                        () => ShowMethodDetails(m, BackToHere)))
                     .ToList();
                 break;
 
@@ -1534,7 +1537,7 @@ public partial class MainWindow : Window
                 items = classes
                     .SelectMany(c => c.Properties.Select(p => (Class: c, Prop: p)))
                     .OrderBy(x => x.Prop.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(x => new DrillDownItem($"{x.Prop.Name} : {x.Prop.Type}", $"in {x.Class.Name}", () => ShowClassDetails(x.Class)))
+                    .Select(x => new DrillDownItem($"{x.Prop.Name} : {x.Prop.Type}", $"in {x.Class.Name}", () => ShowClassDetails(x.Class, BackToHere)))
                     .ToList();
                 break;
 
@@ -1543,7 +1546,7 @@ public partial class MainWindow : Window
                 items = classes
                     .SelectMany(c => c.Fields.Select(f => (Class: c, Field: f)))
                     .OrderBy(x => x.Field.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(x => new DrillDownItem($"{x.Field.Name} : {x.Field.Type}", $"in {x.Class.Name}", () => ShowClassDetails(x.Class)))
+                    .Select(x => new DrillDownItem($"{x.Field.Name} : {x.Field.Type}", $"in {x.Class.Name}", () => ShowClassDetails(x.Class, BackToHere)))
                     .ToList();
                 break;
 
@@ -1554,7 +1557,7 @@ public partial class MainWindow : Window
                     .Select(n => new DrillDownItem(
                         string.IsNullOrEmpty(n.Name) ? "(global namespace)" : n.Name,
                         $"{n.Classes.Count} {(n.Classes.Count == 1 ? "class" : "classes")}",
-                        () => ShowNamespaceClasses(n.Name, () => ShowMetricDrillDown(MetricCategory.Namespaces, onBack))))
+                        () => ShowNamespaceClasses(n.Name, BackToHere)))
                     .ToList();
                 break;
 
@@ -1576,11 +1579,13 @@ public partial class MainWindow : Window
         ShowDetailContent();
         _currentDetailContext = (Action)(() => ShowNamespaceClasses(namespaceName, onBack));
 
+        void BackToHere() => ShowNamespaceClasses(namespaceName, onBack);
+
         var items = _parseCache.Values
             .SelectMany(p => p.Classes)
             .Where(c => string.Equals(c.NamespaceName ?? string.Empty, namespaceName ?? string.Empty, StringComparison.Ordinal))
             .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(c => new DrillDownItem(c.Name, $"{c.Methods.Count} methods", () => ShowClassDetails(c)))
+            .Select(c => new DrillDownItem(c.Name, $"{c.Methods.Count} methods", () => ShowClassDetails(c, BackToHere)))
             .ToList();
 
         var title = string.IsNullOrEmpty(namespaceName) ? "(global namespace)" : namespaceName;
@@ -1595,18 +1600,21 @@ public partial class MainWindow : Window
         _ => kind,
     };
 
-    private void ShowClassDetails(ClassInfo classInfo)
+    private void ShowClassDetails(ClassInfo classInfo, Action? onBack = null)
     {
         ShowDetailContent();
-        _currentDetailContext = classInfo;
+        // When opened from a drill-down, store a re-render closure so theme switches keep the
+        // back button; from the tree there is no back (the tree is the navigation).
+        _currentDetailContext = onBack is null ? classInfo : (Action)(() => ShowClassDetails(classInfo, onBack));
         DetailPanelRenderer.RenderClass(DetailContentHost, classInfo, this,
             method => SelectMethodInTree(method), _explanationService);
+        PrependBackButton(onBack);
     }
 
-    private void ShowMethodDetails(LensMethod methodInfo)
+    private void ShowMethodDetails(LensMethod methodInfo, Action? onBack = null)
     {
         ShowDetailContent();
-        _currentDetailContext = methodInfo;
+        _currentDetailContext = onBack is null ? methodInfo : (Action)(() => ShowMethodDetails(methodInfo, onBack));
 
         // Brief Description resolves as: XML doc → organic inferred sentence → ExplanationService AI.
         var context = _projectAnalyzer.BuildMethodDetailContext(
@@ -1616,6 +1624,16 @@ public partial class MainWindow : Window
             _scideTypeIndex);
 
         DetailPanelRenderer.RenderMethod(DetailContentHost, context, this, _explanationService);
+        PrependBackButton(onBack);
+    }
+
+    /// <summary>Puts a Back button above the just-rendered detail when there's somewhere to return to.</summary>
+    private void PrependBackButton(Action? onBack)
+    {
+        if (onBack is not null)
+        {
+            DetailContentHost.Children.Insert(0, DetailPanelRenderer.CreateBackButton(onBack, this));
+        }
     }
 
     private void SelectMethodInTree(LensMethod method)
