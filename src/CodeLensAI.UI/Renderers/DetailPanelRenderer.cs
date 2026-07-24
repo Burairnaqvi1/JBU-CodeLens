@@ -1632,12 +1632,19 @@ internal static class DetailPanelRenderer
 
     private static Border WrapInCard(UIElement content, FrameworkElement resourceRoot)
     {
-        return new Border
+        // The border sits on its own brush so it can fade to the accent on hover — the card
+        // "lights up" a little without moving. Colors are captured per theme; cards rebuild on
+        // a theme switch, so the captured values stay correct.
+        var restColor = ((SolidColorBrush)Brush(resourceRoot, "BorderBrush")).Color;
+        var hoverColor = ((SolidColorBrush)Brush(resourceRoot, "PrimaryBrush")).Color;
+        var borderBrush = new SolidColorBrush(restColor);
+
+        var card = new Border
         {
             Background = Brush(resourceRoot, "SurfaceBrush"),
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(16),
-            BorderBrush = Brush(resourceRoot, "BorderBrush"),
+            BorderBrush = borderBrush,
             BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
@@ -1648,6 +1655,15 @@ internal static class DetailPanelRenderer
             },
             Child = content,
         };
+
+        card.MouseEnter += (_, _) => borderBrush.BeginAnimation(
+            SolidColorBrush.ColorProperty,
+            new System.Windows.Media.Animation.ColorAnimation(hoverColor, TimeSpan.FromMilliseconds(140)));
+        card.MouseLeave += (_, _) => borderBrush.BeginAnimation(
+            SolidColorBrush.ColorProperty,
+            new System.Windows.Media.Animation.ColorAnimation(restColor, TimeSpan.FromMilliseconds(180)));
+
+        return card;
     }
 
     private static StackPanel AddCardHeader(StackPanel stack, string title, FrameworkElement resourceRoot)
