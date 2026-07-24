@@ -1285,6 +1285,11 @@ public partial class MainWindow : Window
             case string filePath when !string.IsNullOrEmpty(filePath):
                 ShowFileDetails(filePath);
                 break;
+            case Action reRender:
+                // Drill-down views store their own re-render closure so a theme switch
+                // rebuilds exactly what's on screen.
+                reRender();
+                break;
         }
     }
 
@@ -1336,7 +1341,9 @@ public partial class MainWindow : Window
 
         if (_lastMetrics is { } m)
         {
-            DetailPanelRenderer.RenderMetricsDashboard(DetailContentHost, m, _lastProjectIr, this);
+            DetailPanelRenderer.RenderMetricsDashboard(
+                DetailContentHost, m, _lastProjectIr, this,
+                category => ShowMetricDrillDown(category, ShowProjectSummary));
         }
 
         var summaryPanel = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
@@ -1473,8 +1480,120 @@ public partial class MainWindow : Window
             Margin = new Thickness(0, 0, 0, 4),
         });
 
-        DetailPanelRenderer.RenderMetricsDashboard(DetailContentHost, m, _lastProjectIr, this);
+        DetailPanelRenderer.RenderMetricsDashboard(
+            DetailContentHost, m, _lastProjectIr, this,
+            category => ShowMetricDrillDown(category, ShowMetricsSummary));
     }
+
+    /// <summary>
+    /// Shows the items behind a clicked metric tile — the actual classes, methods, properties,
+    /// etc. it counts — each navigable to its own detail. Relationships render as a breakdown by
+    /// kind rather than a raw list. <paramref name="onBack"/> returns to the dashboard the user
+    /// came from (project or metrics).
+    /// </summary>
+    private void ShowMetricDrillDown(MetricCategory category, Action onBack)
+    {
+        if (_lastProjectIr is null)
+        {
+            onBack();
+            return;
+        }
+
+        ShowDetailContent();
+        _currentDetailContext = (Action)(() => ShowMetricDrillDown(category, onBack));
+
+        var classes = _parseCache.Values.SelectMany(p => p.Classes).ToList();
+        string title;
+        List<DrillDownItem> items;
+
+        switch (category)
+        {
+            case MetricCategory.Classes:
+                title = "Classes";
+                items = classes
+                    .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(c => new DrillDownItem(c.Name, $"{c.Methods.Count} methods", () => ShowClassDetails(c)))
+                    .ToList();
+                break;
+
+            case MetricCategory.Methods:
+                title = "Methods";
+                items = classes
+                    .SelectMany(c => c.Methods)
+                    .OrderBy(m => m.ParentClass?.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(m => new DrillDownItem(
+                        m.ParentClass is null ? m.Name : $"{m.ParentClass.Name}.{m.Name}",
+                        string.IsNullOrWhiteSpace(m.ReturnType) ? null : m.ReturnType,
+                        () => SelectMethodInTree(m)))
+                    .ToList();
+                break;
+
+            case MetricCategory.Properties:
+                title = "Properties";
+                items = classes
+                    .SelectMany(c => c.Properties.Select(p => (Class: c, Prop: p)))
+                    .OrderBy(x => x.Prop.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(x => new DrillDownItem($"{x.Prop.Name} : {x.Prop.Type}", $"in {x.Class.Name}", () => ShowClassDetails(x.Class)))
+                    .ToList();
+                break;
+
+            case MetricCategory.Fields:
+                title = "Fields";
+                items = classes
+                    .SelectMany(c => c.Fields.Select(f => (Class: c, Field: f)))
+                    .OrderBy(x => x.Field.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(x => new DrillDownItem($"{x.Field.Name} : {x.Field.Type}", $"in {x.Class.Name}", () => ShowClassDetails(x.Class)))
+                    .ToList();
+                break;
+
+            case MetricCategory.Namespaces:
+                title = "Namespaces";
+                items = _lastProjectIr.Namespaces
+                    .OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(n => new DrillDownItem(
+                        string.IsNullOrEmpty(n.Name) ? "(global namespace)" : n.Name,
+                        $"{n.Classes.Count} {(n.Classes.Count == 1 ? "class" : "classes")}",
+                        () => ShowNamespaceClasses(n.Name, () => ShowMetricDrillDown(MetricCategory.Namespaces, onBack))))
+                    .ToList();
+                break;
+
+            default: // Relationships — a breakdown by kind, not a navigable list.
+                title = "Relationships";
+                items = _lastProjectIr.Relationships
+                    .GroupBy(r => r.Kind)
+                    .OrderByDescending(g => g.Count())
+                    .Select(g => new DrillDownItem(DescribeRelationshipKind(g.Key), g.Count().ToString(), null))
+                    .ToList();
+                break;
+        }
+
+        DetailPanelRenderer.RenderDrillDown(DetailContentHost, title, items, onBack, this);
+    }
+
+    private void ShowNamespaceClasses(string namespaceName, Action onBack)
+    {
+        ShowDetailContent();
+        _currentDetailContext = (Action)(() => ShowNamespaceClasses(namespaceName, onBack));
+
+        var items = _parseCache.Values
+            .SelectMany(p => p.Classes)
+            .Where(c => string.Equals(c.NamespaceName ?? string.Empty, namespaceName ?? string.Empty, StringComparison.Ordinal))
+            .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(c => new DrillDownItem(c.Name, $"{c.Methods.Count} methods", () => ShowClassDetails(c)))
+            .ToList();
+
+        var title = string.IsNullOrEmpty(namespaceName) ? "(global namespace)" : namespaceName;
+        DetailPanelRenderer.RenderDrillDown(DetailContentHost, title, items, onBack, this);
+    }
+
+    private static string DescribeRelationshipKind(string kind) => kind switch
+    {
+        "INHERITS" => "Inherits from",
+        "IMPLEMENTS" => "Implements",
+        "CALLS" => "Calls",
+        _ => kind,
+    };
 
     private void ShowClassDetails(ClassInfo classInfo)
     {

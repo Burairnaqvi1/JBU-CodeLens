@@ -9,6 +9,15 @@ using MethodDetailContext = CodeLensAI.Shared.Structural.MethodDetailContext;
 
 namespace CodeLensAI.UI.Renderers;
 
+/// <summary>Which metric category a dashboard tile drills into.</summary>
+public enum MetricCategory { Classes, Methods, Properties, Fields, Namespaces, Relationships }
+
+/// <summary>
+/// One row in a metric drill-down list: a primary label, an optional detail string, and an
+/// optional navigation action (null = an informational row that isn't clickable).
+/// </summary>
+public sealed record DrillDownItem(string Primary, string? Secondary, Action? OnClick);
+
 internal static class DetailPanelRenderer
 {
     public static void Clear(StackPanel host) => host.Children.Clear();
@@ -220,16 +229,22 @@ internal static class DetailPanelRenderer
         StackPanel host,
         CodeLensAI.Shared.Structural.MetricsResult metrics,
         CodeLensAI.Shared.Structural.ProjectIR? ir,
-        FrameworkElement resourceRoot)
+        FrameworkElement resourceRoot,
+        Action<MetricCategory>? onCategoryClick = null)
     {
+        // The size tiles drill into the actual items they count; a null handler leaves them
+        // as plain stat cards.
+        Action? Drill(MetricCategory category) =>
+            onCategoryClick is null ? null : () => onCategoryClick(category);
+
         AddSection(host, "Size", resourceRoot);
         var sizeTiles = new WrapPanel { Margin = new Thickness(0, 2, 0, 4) };
-        sizeTiles.Children.Add(CreateStatTile("Classes", metrics.TotalClasses.ToString(), "PrimaryBrush", resourceRoot));
-        sizeTiles.Children.Add(CreateStatTile("Methods", metrics.TotalMethods.ToString(), "PrimaryBrush", resourceRoot));
-        sizeTiles.Children.Add(CreateStatTile("Properties", metrics.TotalProperties.ToString(), "PrimaryBrush", resourceRoot));
-        sizeTiles.Children.Add(CreateStatTile("Fields", metrics.TotalFields.ToString(), "PrimaryBrush", resourceRoot));
-        sizeTiles.Children.Add(CreateStatTile("Namespaces", metrics.TotalNamespaces.ToString(), "PrimaryBrush", resourceRoot));
-        sizeTiles.Children.Add(CreateStatTile("Relationships", metrics.TotalRelationships.ToString(), "PrimaryBrush", resourceRoot));
+        sizeTiles.Children.Add(CreateStatTile("Classes", metrics.TotalClasses.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Classes)));
+        sizeTiles.Children.Add(CreateStatTile("Methods", metrics.TotalMethods.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Methods)));
+        sizeTiles.Children.Add(CreateStatTile("Properties", metrics.TotalProperties.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Properties)));
+        sizeTiles.Children.Add(CreateStatTile("Fields", metrics.TotalFields.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Fields)));
+        sizeTiles.Children.Add(CreateStatTile("Namespaces", metrics.TotalNamespaces.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Namespaces)));
+        sizeTiles.Children.Add(CreateStatTile("Relationships", metrics.TotalRelationships.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Relationships)));
         host.Children.Add(sizeTiles);
 
         AddSection(host, "Quality", resourceRoot);
@@ -270,7 +285,8 @@ internal static class DetailPanelRenderer
         }
     }
 
-    private static Border CreateStatTile(string label, string value, string valueBrushKey, FrameworkElement resourceRoot)
+    private static FrameworkElement CreateStatTile(
+        string label, string value, string valueBrushKey, FrameworkElement resourceRoot, Action? onClick = null)
     {
         var stack = new StackPanel();
         stack.Children.Add(new TextBlock
@@ -280,14 +296,33 @@ internal static class DetailPanelRenderer
             FontWeight = FontWeights.Bold,
             Foreground = Brush(resourceRoot, valueBrushKey),
         });
-        stack.Children.Add(new TextBlock
+
+        // Clickable tiles get a small "view" affordance next to the label so it's clear they
+        // drill in, not just a hover flourish.
+        var labelRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        labelRow.Children.Add(new TextBlock
         {
             Text = label.ToUpperInvariant(),
             FontSize = 10,
             FontWeight = FontWeights.SemiBold,
             Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
-            Margin = new Thickness(0, 2, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
         });
+        if (onClick is not null)
+        {
+            labelRow.Children.Add(new TextBlock
+            {
+                Text = "",
+                FontFamily = (FontFamily)resourceRoot.FindResource("IconFont"),
+                FontSize = 8,
+                Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(5, 1, 0, 0),
+                Opacity = 0.8,
+            });
+        }
+
+        stack.Children.Add(labelRow);
 
         var tile = new Border
         {
@@ -302,7 +337,152 @@ internal static class DetailPanelRenderer
         };
 
         AttachHoverLift(tile, resourceRoot);
-        return tile;
+
+        if (onClick is null)
+        {
+            return tile;
+        }
+
+        // Clickable tiles are wrapped in a chromeless Button so they are also keyboard-operable
+        // (Enter/Space) and exposed to screen readers / UI Automation as invokable — the Border
+        // still carries all the visuals and the hover lift.
+        tile.Margin = new Thickness(0);
+        var buttonTemplate = new ControlTemplate(typeof(Button))
+        {
+            VisualTree = new FrameworkElementFactory(typeof(ContentPresenter)),
+        };
+        var button = new Button
+        {
+            Template = buttonTemplate,
+            Content = tile,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            Margin = new Thickness(0, 0, 10, 10),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+        };
+        button.Click += (_, _) => onClick();
+        System.Windows.Automation.AutomationProperties.SetName(button, $"{label}: {value}. Show list.");
+        return button;
+    }
+
+    // ── Metric drill-down list ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Renders the list behind a metric tile (the classes, methods, etc. it counts): a Back
+    /// button to the dashboard, a counted title, and rows that navigate when clicked. Rows with
+    /// no action (for example a relationship breakdown) render as plain informational lines.
+    /// </summary>
+    public static void RenderDrillDown(
+        StackPanel host,
+        string title,
+        IReadOnlyList<DrillDownItem> items,
+        Action onBack,
+        FrameworkElement resourceRoot)
+    {
+        var backButton = new Button
+        {
+            Content = "←  Back",
+            Padding = new Thickness(12, 6, 14, 6),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Background = Brush(resourceRoot, "SurfaceBrush"),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            BorderBrush = Brush(resourceRoot, "BorderBrush"),
+            BorderThickness = new Thickness(1),
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 14),
+        };
+        backButton.Click += (_, _) => onBack();
+        host.Children.Add(backButton);
+
+        host.Children.Add(new TextBlock
+        {
+            Text = $"{title} ({items.Count})",
+            FontSize = 20,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            Margin = new Thickness(0, 0, 0, 10),
+        });
+
+        if (items.Count == 0)
+        {
+            host.Children.Add(CreateItalicPlaceholder("Nothing to show here.", resourceRoot));
+            return;
+        }
+
+        var listStack = new StackPanel();
+        foreach (var item in items)
+        {
+            listStack.Children.Add(CreateDrillRow(item, resourceRoot));
+        }
+
+        host.Children.Add(WrapInCard(listStack, resourceRoot));
+    }
+
+    private static Border CreateDrillRow(DrillDownItem item, FrameworkElement resourceRoot)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var primary = new TextBlock
+        {
+            Text = item.Primary,
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            FontSize = 13,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        Grid.SetColumn(primary, 0);
+        grid.Children.Add(primary);
+
+        if (!string.IsNullOrEmpty(item.Secondary))
+        {
+            var secondary = new TextBlock
+            {
+                Text = item.Secondary,
+                Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(10, 0, 0, 0),
+            };
+            Grid.SetColumn(secondary, 1);
+            grid.Children.Add(secondary);
+        }
+
+        var row = new Border
+        {
+            Padding = new Thickness(10, 8, 10, 8),
+            CornerRadius = new CornerRadius(6),
+            Background = System.Windows.Media.Brushes.Transparent,
+            Child = grid,
+        };
+
+        if (item.OnClick is not null)
+        {
+            var chevron = new TextBlock
+            {
+                Text = "",
+                FontFamily = (FontFamily)resourceRoot.FindResource("IconFont"),
+                FontSize = 10,
+                Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(10, 0, 0, 0),
+            };
+            Grid.SetColumn(chevron, 2);
+            grid.Children.Add(chevron);
+
+            var hover = Brush(resourceRoot, "HoverOverlayBrush");
+            row.Cursor = System.Windows.Input.Cursors.Hand;
+            row.MouseEnter += (_, _) => row.Background = hover;
+            row.MouseLeave += (_, _) => row.Background = System.Windows.Media.Brushes.Transparent;
+            row.MouseLeftButtonUp += (_, _) => item.OnClick();
+        }
+
+        return row;
     }
 
     /// <summary>
