@@ -1299,6 +1299,13 @@ public partial class MainWindow : Window
         DetailScrollViewer.Visibility = Visibility.Visible;
         DetailPanelRenderer.Clear(DetailContentHost);
 
+        // Every selection starts at the top; otherwise the scroll position of the previously
+        // viewed item carries over. Reset now and again once the new content has laid out.
+        DetailScrollViewer.ScrollToTop();
+        Dispatcher.BeginInvoke(
+            new Action(() => DetailScrollViewer.ScrollToTop()),
+            System.Windows.Threading.DispatcherPriority.Loaded);
+
         // Gentle fade-in so switching selection reads as a transition, not a hard swap.
         DetailScrollViewer.BeginAnimation(
             OpacityProperty,
@@ -1606,8 +1613,12 @@ public partial class MainWindow : Window
         // When opened from a drill-down, store a re-render closure so theme switches keep the
         // back button; from the tree there is no back (the tree is the navigation).
         _currentDetailContext = onBack is null ? classInfo : (Action)(() => ShowClassDetails(classInfo, onBack));
+
+        // Opening a method from inside the class detail leaves a Back button that returns to
+        // this class, so the trail continues instead of stranding the user on the method.
+        void BackToThisClass() => ShowClassDetails(classInfo, onBack);
         DetailPanelRenderer.RenderClass(DetailContentHost, classInfo, this,
-            method => SelectMethodInTree(method), _explanationService);
+            method => ShowMethodDetails(method, BackToThisClass), _explanationService);
         PrependBackButton(onBack);
     }
 

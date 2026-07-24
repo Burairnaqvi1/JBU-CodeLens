@@ -347,24 +347,8 @@ internal static class DetailPanelRenderer
         // (Enter/Space) and exposed to screen readers / UI Automation as invokable — the Border
         // still carries all the visuals and the hover lift.
         tile.Margin = new Thickness(0);
-        var buttonTemplate = new ControlTemplate(typeof(Button))
-        {
-            VisualTree = new FrameworkElementFactory(typeof(ContentPresenter)),
-        };
-        var button = new Button
-        {
-            Template = buttonTemplate,
-            Content = tile,
-            Cursor = System.Windows.Input.Cursors.Hand,
-            Background = System.Windows.Media.Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(0),
-            Margin = new Thickness(0, 0, 10, 10),
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Stretch,
-        };
-        button.Click += (_, _) => onClick();
-        System.Windows.Automation.AutomationProperties.SetName(button, $"{label}: {value}. Show list.");
+        var button = WrapClickable(tile, onClick, $"{label}: {value}. Show list.");
+        button.Margin = new Thickness(0, 0, 10, 10);
         return button;
     }
 
@@ -491,23 +475,9 @@ internal static class DetailPanelRenderer
         row.MouseEnter += (_, _) => row.Background = hover;
         row.MouseLeave += (_, _) => row.Background = System.Windows.Media.Brushes.Transparent;
 
-        // A chromeless Button wrapper makes the row keyboard-operable and exposed to screen
-        // readers / UI Automation as invokable, while the Border keeps the visuals and hover.
-        var rowButton = new Button
-        {
-            Template = new ControlTemplate(typeof(Button)) { VisualTree = new FrameworkElementFactory(typeof(ContentPresenter)) },
-            Content = row,
-            Cursor = System.Windows.Input.Cursors.Hand,
-            Background = System.Windows.Media.Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(0),
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Stretch,
-        };
-        rowButton.Click += (_, _) => item.OnClick();
-        System.Windows.Automation.AutomationProperties.SetName(
-            rowButton, string.IsNullOrEmpty(item.Secondary) ? item.Primary : $"{item.Primary}, {item.Secondary}");
-        return rowButton;
+        return WrapClickable(
+            row, item.OnClick,
+            string.IsNullOrEmpty(item.Secondary) ? item.Primary : $"{item.Primary}, {item.Secondary}");
     }
 
     /// <summary>
@@ -1821,18 +1791,8 @@ internal static class DetailPanelRenderer
         return text;
     }
 
-    private static Border CreateMethodRow(MethodInfo method, FrameworkElement resourceRoot, Action onClick)
+    private static FrameworkElement CreateMethodRow(MethodInfo method, FrameworkElement resourceRoot, Action onClick)
     {
-        var row = new Border
-        {
-            Background = Brush(resourceRoot, "SurfaceBrush"),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(10, 8, 10, 8),
-            Margin = new Thickness(0, 0, 0, 6),
-            Cursor = System.Windows.Input.Cursors.Hand,
-        };
-        row.MouseLeftButtonUp += (_, _) => onClick();
-
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -1850,8 +1810,47 @@ internal static class DetailPanelRenderer
         Grid.SetColumn(paramCount, 2);
 
         grid.Children.Add(dot); grid.Children.Add(namePanel); grid.Children.Add(paramCount);
-        row.Child = grid;
-        return row;
+
+        // A 1px transparent-until-hover border keeps the accent hover from shifting the layout.
+        var row = new Border
+        {
+            Background = Brush(resourceRoot, "SurfaceBrush"),
+            BorderBrush = Brush(resourceRoot, "BorderBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(10, 8, 10, 8),
+            Margin = new Thickness(0, 0, 0, 6),
+            Child = grid,
+        };
+        var restBorder = Brush(resourceRoot, "BorderBrush");
+        var accentBorder = FindAccentBrush(resourceRoot);
+        row.MouseEnter += (_, _) => row.BorderBrush = accentBorder;
+        row.MouseLeave += (_, _) => row.BorderBrush = restBorder;
+
+        return WrapClickable(row, onClick, $"{method.Name}, returns {method.ReturnType}, {method.Parameters.Count} parameters");
+    }
+
+    /// <summary>
+    /// Wraps a visual in a chromeless <see cref="Button"/> so it is clickable, keyboard-operable
+    /// (Enter/Space), and exposed to screen readers / UI Automation as invokable — while the
+    /// wrapped element keeps its own appearance and hover behavior.
+    /// </summary>
+    private static Button WrapClickable(FrameworkElement visual, Action onClick, string automationName)
+    {
+        var button = new Button
+        {
+            Template = new ControlTemplate(typeof(Button)) { VisualTree = new FrameworkElementFactory(typeof(ContentPresenter)) },
+            Content = visual,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+        };
+        button.Click += (_, _) => onClick();
+        System.Windows.Automation.AutomationProperties.SetName(button, automationName);
+        return button;
     }
 
     private static Border CreatePropertyRow(PropertyInfo property, FrameworkElement resourceRoot)
