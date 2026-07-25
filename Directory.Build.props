@@ -5,8 +5,9 @@
 
     The build was warning-free before this file existed, but only because the analyzers were
     running at the SDK default mode, which enables a small subset of the CA rules. Turning the
-    mode up to All is what actually exercises the analyzer set; see
-    docs/quality/WarningRemediation.md for the baseline this produced and the per-rule decisions.
+    mode up to All is what actually exercises the analyzer set. Doing so produced a baseline of
+    473 warnings, all since cleared; the per-rule decisions are recorded in the Code Quality
+    Report kept outside this repository.
 
     AnalysisLevel is pinned to 8.0 rather than 'latest' so the rule set tracks the target
     framework and the measured baseline stays reproducible across SDK upgrades. The machine
@@ -39,7 +40,8 @@
     independent engines is the point, since each finds things the other does not.
 
     PrivateAssets="all" keeps it a build-time-only dependency; it is not published or referenced
-    transitively. See docs/quality/StaticAnalysis.md for the findings and their triage.
+    transitively. The findings and their triage are recorded in the Code Quality Report kept
+    outside this repository.
   -->
   <ItemGroup>
     <PackageReference Include="SonarAnalyzer.CSharp" Version="10.30.0.144632" PrivateAssets="all" />
