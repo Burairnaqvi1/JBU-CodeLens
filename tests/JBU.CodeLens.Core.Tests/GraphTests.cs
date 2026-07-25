@@ -1,6 +1,6 @@
 using JBU.CodeLens.Shared.Structural;
 
-namespace JBU.CodeLens.Tests;
+namespace JBU.CodeLens.Core.Tests;
 
 public class GraphTests
 {

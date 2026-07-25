@@ -3,7 +3,7 @@ using JBU.CodeLens.Core.Models;
 using JBU.CodeLens.Shared.Structural;
 using MethodInfo = JBU.CodeLens.Shared.Structural.MethodInfo;
 
-namespace JBU.CodeLens.Tests;
+namespace JBU.CodeLens.Core.Tests;
 
 public class AnalysisTests
 {
