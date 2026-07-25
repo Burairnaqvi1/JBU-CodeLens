@@ -251,9 +251,12 @@ internal static class DetailPanelRenderer
         AddSection(host, "Quality", resourceRoot);
         var qualityTiles = new WrapPanel { Margin = new Thickness(0, 2, 0, 4) };
         // Maintainability index: green ≥ 85, amber 65–84, red below (standard MI bands).
-        var miBrushKey = metrics.MaintainabilityIndex >= 85 ? "SecondaryBrush"
-            : metrics.MaintainabilityIndex >= 65 ? "WarningBrush"
-            : "ErrorBrush";
+        var miBrushKey = metrics.MaintainabilityIndex switch
+        {
+            >= 85 => "SecondaryBrush",
+            >= 65 => "WarningBrush",
+            _ => "ErrorBrush",
+        };
         qualityTiles.Children.Add(CreateStatTile(
             "Maintainability", metrics.MaintainabilityIndex.ToString("F0", CultureInfo.InvariantCulture), miBrushKey, resourceRoot));
         qualityTiles.Children.Add(CreateStatTile(

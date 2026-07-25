@@ -545,12 +545,11 @@ public class CppParser : ILanguageParser
                     ProcessBaseSpecifier(cursor, classInfo);
                     break;
 
+                // A class member (FieldDecl) and a static or namespace-scope variable (VarDecl)
+                // both become a field on the enclosing class, and are recorded identically.
                 case CXCursorKind.CXCursor_FieldDecl:
-                    ProcessFieldDecl(cursor, classInfo);
-                    break;
-
                 case CXCursorKind.CXCursor_VarDecl:
-                    ProcessVarDecl(cursor, classInfo);
+                    ProcessVariableDecl(cursor, classInfo);
                     break;
 
                 case CXCursorKind.CXCursor_CXXMethod:
@@ -796,21 +795,11 @@ public class CppParser : ILanguageParser
         }
     }
 
-    private static void ProcessFieldDecl(CXCursor cursor, ClassInfo classInfo)
-    {
-        var typeSpelling = GetTypeSpellingStr(clang_getCursorType(cursor));
-        classInfo.Fields.Add(new VariableInfo
-        {
-            Name = GetSpelling(cursor),
-            Type = typeSpelling,
-            IsField = true,
-            AccessModifier = MapAccessSpecifier(clang_getCXXAccessSpecifier(cursor)),
-        });
-
-        AddDependency(typeSpelling, classInfo.Dependencies);
-    }
-
-    private static void ProcessVarDecl(CXCursor cursor, ClassInfo classInfo)
+    /// <summary>
+    /// Records a declared variable as a field of <paramref name="classInfo"/>. Serves both
+    /// class members and static or namespace-scope variables, which are treated identically.
+    /// </summary>
+    private static void ProcessVariableDecl(CXCursor cursor, ClassInfo classInfo)
     {
         var typeSpelling = GetTypeSpellingStr(clang_getCursorType(cursor));
         classInfo.Fields.Add(new VariableInfo
@@ -1490,15 +1479,11 @@ public class CppParser : ILanguageParser
         foreach (var rawLine in rawComment.Split('\n'))
         {
             var line = rawLine.Trim();
-            if (line.StartsWith("/**", StringComparison.Ordinal))
-            {
-                line = line[3..].TrimStart();
-            }
-            else if (line.StartsWith("/*!", StringComparison.Ordinal))
-            {
-                line = line[3..].TrimStart();
-            }
-            else if (line.StartsWith("///", StringComparison.Ordinal))
+            // All three Doxygen comment openers are exactly three characters, so they are
+            // stripped identically.
+            if (line.StartsWith("/**", StringComparison.Ordinal) ||
+                line.StartsWith("/*!", StringComparison.Ordinal) ||
+                line.StartsWith("///", StringComparison.Ordinal))
             {
                 line = line[3..].TrimStart();
             }

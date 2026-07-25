@@ -135,9 +135,20 @@ public partial class VisualizationView : UserControl
 
     private void DepthButton_Click(object sender, RoutedEventArgs e)
     {
-        var target = ReferenceEquals(sender, DepthFilesButton) ? VizDepth.Files
-            : ReferenceEquals(sender, DepthMethodsButton) ? VizDepth.Methods
-            : VizDepth.Classes;
+        VizDepth target;
+        if (ReferenceEquals(sender, DepthFilesButton))
+        {
+            target = VizDepth.Files;
+        }
+        else if (ReferenceEquals(sender, DepthMethodsButton))
+        {
+            target = VizDepth.Methods;
+        }
+        else
+        {
+            target = VizDepth.Classes;
+        }
+
         if (target == _depth)
         {
             return;

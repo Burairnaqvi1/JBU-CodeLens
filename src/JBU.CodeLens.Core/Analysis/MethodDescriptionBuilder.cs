@@ -60,9 +60,15 @@ public static class MethodDescriptionBuilder
         if (BooleanPrefixes.Contains(verb) || (isBoolReturn && !IsActionVerb(verb)))
         {
             var subjectIsParams = string.IsNullOrEmpty(remainder) && paramNames.Count > 0;
-            var subject = string.IsNullOrEmpty(remainder)
-                ? (paramNames.Count > 0 ? JoinNames(paramNames) : "the current state")
-                : remainder;
+            string subject;
+            if (!string.IsNullOrEmpty(remainder))
+            {
+                subject = remainder;
+            }
+            else
+            {
+                subject = paramNames.Count > 0 ? JoinNames(paramNames) : "the current state";
+            }
             sb.Append(CultureInfo.InvariantCulture, $"Determines whether {subject}");
             if (BooleanPrefixes.Contains(verb) && !string.IsNullOrEmpty(remainder))
             {

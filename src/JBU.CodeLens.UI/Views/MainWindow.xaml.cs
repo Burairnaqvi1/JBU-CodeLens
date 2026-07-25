@@ -122,12 +122,14 @@ public partial class MainWindow : Window
         if (modelPath is null)
         {
             StatusBarText.Text = "Model not found — AI features disabled";
-            _explanationService = await Task.Run(() => new ExplanationService(string.Empty));
+            // Startup model load: there is nothing to cancel it with, and it must complete before
+            // the window is usable.
+            _explanationService = await Task.Run(() => new ExplanationService(string.Empty), CancellationToken.None);
             return;
         }
 
         StatusBarText.Text = $"Loading AI model… ({Path.GetFileName(modelPath)})";
-        _explanationService = await Task.Run(() => new ExplanationService(modelPath));
+        _explanationService = await Task.Run(() => new ExplanationService(modelPath), CancellationToken.None);
 
         StatusBarText.Text = _explanationService.IsReady
             ? $"AI model ready — {Path.GetFileName(_explanationService.ModelPath)}"
@@ -468,7 +470,9 @@ public partial class MainWindow : Window
 
             // Task.Run keeps the sequential post-parse work (relationships, graph, metrics) off
             // the dispatcher; the parse itself fans out on worker threads inside the engine.
-            var scanResult = await Task.Run(() => _projectAnalyzer.AnalyzeProjectAsync(folderPath, progress, cancellationToken));
+            var scanResult = await Task.Run(
+                () => _projectAnalyzer.AnalyzeProjectAsync(folderPath, progress, cancellationToken),
+                cancellationToken);
 
             if (!scanResult.Success)
             {
@@ -1159,7 +1163,8 @@ public partial class MainWindow : Window
                 useAi,
                 msg => Dispatcher.BeginInvoke(() => StatusBarText.Text = msg),
                 metrics,
-                cancellationToken));
+                cancellationToken),
+                cancellationToken);
 
             var exportedPath = dialog.FileName;
             ShowNotification("Documentation exported successfully.", NotificationKind.Success,
@@ -1215,7 +1220,7 @@ public partial class MainWindow : Window
         {
             var ir = _lastProjectIr;
             var results = _lastScanResults;
-            await Task.Run(() => _exportService.ExportMarkdown(ir, results, dialog.FileName));
+            await Task.Run(() => _exportService.ExportMarkdown(ir, results, dialog.FileName), CancellationToken.None);
 
             var exportedPath = dialog.FileName;
             ShowNotification("Markdown exported successfully.", NotificationKind.Success,
@@ -1264,7 +1269,7 @@ public partial class MainWindow : Window
         {
             var ir = _lastProjectIr;
             var results = _lastScanResults;
-            await Task.Run(() => _exportService.ExportJson(ir, results, dialog.FileName));
+            await Task.Run(() => _exportService.ExportJson(ir, results, dialog.FileName), CancellationToken.None);
 
             var exportedPath = dialog.FileName;
             ShowNotification("JSON exported successfully.", NotificationKind.Success,
@@ -1461,11 +1466,11 @@ public partial class MainWindow : Window
                 if (_explanationService is { IsReady: true } svc)
                 {
                     var projectContext = BuildProjectContext(ir);
-                    summary = await Task.Run(() => svc.GenerateProjectSummary(projectContext));
+                    summary = await Task.Run(() => svc.GenerateProjectSummary(projectContext), CancellationToken.None);
                 }
                 else
                 {
-                    summary = await Task.Run(() => _projectAnalyzer.GetProjectSummaryFallback(ir));
+                    summary = await Task.Run(() => _projectAnalyzer.GetProjectSummaryFallback(ir), CancellationToken.None);
                 }
 
                 summaryText.Text = summary;

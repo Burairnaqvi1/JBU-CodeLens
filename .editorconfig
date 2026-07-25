@@ -4,8 +4,8 @@ root = true
 #
 # Every entry that lowers a severity below the default carries a justification. Rules are only
 # silenced where the analyzer's advice is wrong for this codebase's context -- never to make a
-# number go down. Rules that are simply not fixed yet stay at warning severity so they remain
-# visible in the build and in the Visual Studio Error List.
+# number go down. Nothing is silenced merely because it has not been fixed yet: every other
+# finding from both analysers has been corrected in the code.
 #
 # The full decision record is in the Code Quality Report kept outside this repository.
 
@@ -100,29 +100,38 @@ dotnet_diagnostic.CA2227.severity = none
 # a ReDoS exposure -- are resolved via Utilities/SafeRegex and an explicit timeout on the one
 # compiled Regex field.
 #
-# Phase 2 (BACKLOG): the 75 rules below are maintainability and style findings. They are set to
-# 'suggestion' rather than switched off: they stay visible in the Visual Studio editor and in
-# Error List > Messages, and can be worked through deliberately, but they do not fail the build
-# while that work is outstanding. Adopting a 450-rule engine wholesale on an existing codebase is a
-# phased activity, and turning warnings-as-errors into a blocker for style debt would just force
-# the whole thing to be disabled instead.
+# Phase 2 (DONE): the 75 maintainability findings were worked through. Thirty were corrected in
+# the code. The remaining 45 fall under three rules, each switched off here with its reason: the
+# two below, and S125 further down.
 #
-# Every one of these is listed individually in the Code Quality Report with its count, so the
-# backlog is enumerated rather than hidden behind a blanket setting.
+# S3267 -- "loop should be simplified with LINQ". Raised against per-element loops in the parsers
+# and analysers, which run once for every node of every file scanned. The current form avoids a
+# delegate call and an allocation per element on the busiest path in the application, and Sonar
+# classes the finding as a code smell rather than a defect.
 #
-# Two are judged unlikely to ever be adopted and are recorded there with reasons:
-#   * S3267 (20) -- "loop should be simplified with LINQ", raised against per-AST-node parser loops
-#     where the current form avoids a delegate and an allocation per element.
-#   * S3400 (20) -- "method should not return a constant", raised against the AnalysisMessageBuilder
-#     message catalogue, where the method form is the deliberate seam for parameterising messages.
-dotnet_diagnostic.S3400.severity = suggestion
-dotnet_diagnostic.S3267.severity = suggestion
-dotnet_diagnostic.S8949.severity = suggestion
-dotnet_diagnostic.S125.severity = suggestion
-dotnet_diagnostic.S3358.severity = suggestion
-dotnet_diagnostic.S1871.severity = suggestion
-dotnet_diagnostic.S6670.severity = suggestion
-dotnet_diagnostic.S4144.severity = suggestion
+# S3400 -- "method should not return a constant". Raised against the message catalogue in
+# AnalysisMessageBuilder. The method form is the deliberate seam through which those messages get
+# values inserted; collapsing them to constants would have to be undone the first time a message
+# needs a parameter.
+dotnet_diagnostic.S3400.severity = none
+dotnet_diagnostic.S3267.severity = none
+
+# S125: "Remove this commented out code."
+#
+# All 6 occurrences were opened and read. Not one is commented-out code -- every one is an
+# explanatory comment that the rule's heuristic mistakes for code because it mentions an operator,
+# a namespace or a hex value:
+#
+#   * ExplanationService -- explains why a cancellation check sits before the per-section fallbacks.
+#   * ScideEngine -- explains why the analysis is attached with ??= so cached files keep theirs.
+#   * GlobalUsings -- explains why Core namespaces are deliberately absent from the global usings.
+#   * MainWindow -- the section header noting that palette values live only in the theme files.
+#   * VisualizationView -- explains the node count beyond which rendering stalls the UI.
+#   * StressTests -- explains that 0xE9 is a Windows-1252 byte that is invalid UTF-8.
+#
+# Deleting any of them would remove the reasoning behind a non-obvious decision, which is the
+# opposite of what the rule is for. Switched off rather than followed.
+dotnet_diagnostic.S125.severity = none
 
 [*.cs]
 indent_style = space

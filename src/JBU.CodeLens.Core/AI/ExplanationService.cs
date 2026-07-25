@@ -586,7 +586,9 @@ public sealed class ExplanationService : IExplanationService
 
         try
         {
-            return Task.Run(() => RunInstructionAsync(instruction, maxTokens, systemPrompt, cancellationToken, onPartial))
+            return Task.Run(
+                    () => RunInstructionAsync(instruction, maxTokens, systemPrompt, cancellationToken, onPartial),
+                    cancellationToken)
                 .GetAwaiter().GetResult();
         }
         catch (OperationCanceledException)
@@ -698,7 +700,7 @@ public sealed class ExplanationService : IExplanationService
             var keep = Math.Max(64, (int)(instruction.Length * ((double)MaxInputTokens / promptTokens)) - 32);
             if (keep < instruction.Length)
             {
-                System.Diagnostics.Trace.WriteLine(
+                System.Diagnostics.Trace.TraceWarning(
                     $"[JBU CodeLens] Prompt truncated: {promptTokens} tokens exceeded the {MaxInputTokens}-token input budget; " +
                     $"kept the first {keep} of {instruction.Length} instruction characters.");
                 instruction = instruction[..keep] + "…";
@@ -1129,11 +1131,19 @@ public sealed class ExplanationService : IExplanationService
     {
         var cleaned = text.Trim();
 
-        var markers = usesPhiTemplate
-            ? new[] { "<|end|>", "<|user|>", "<|system|>", "<|assistant|>" }
-            : usesChatMlTemplate
-                ? new[] { "<|im_end|>", "<|im_start|>" }
-                : new[] { "[INST]", "</s>" };
+        string[] markers;
+        if (usesPhiTemplate)
+        {
+            markers = ["<|end|>", "<|user|>", "<|system|>", "<|assistant|>"];
+        }
+        else if (usesChatMlTemplate)
+        {
+            markers = ["<|im_end|>", "<|im_start|>"];
+        }
+        else
+        {
+            markers = ["[INST]", "</s>"];
+        }
 
         foreach (var marker in markers)
         {
