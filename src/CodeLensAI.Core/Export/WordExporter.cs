@@ -460,7 +460,20 @@ public static class WordExporter
 
         if (aiDoc is { UsedAi: true } ai)
         {
-            prePostLines.AddRange(SplitBulletLines(ai.PrePostConditions));
+            // The AI conditions arrive with PRE:/POST: markers; qualify each bullet so the reader
+            // can tell the two apart, and so the raw markers never reach the document as bullets.
+            var groups = PrePostConditionText.Split(ai.PrePostConditions);
+            if (groups.IsGrouped)
+            {
+                prePostLines.AddRange(groups.Preconditions.Select(p => $"Precondition: {p}"));
+                prePostLines.AddRange(groups.Postconditions.Select(p => $"Postcondition: {p}"));
+                prePostLines.AddRange(groups.Ungrouped);
+            }
+            else
+            {
+                prePostLines.AddRange(SplitBulletLines(ai.PrePostConditions));
+            }
+
             designLines.AddRange(SplitBulletLines(ai.DesignConstraints));
         }
 

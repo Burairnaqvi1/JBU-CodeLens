@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -645,14 +646,20 @@ internal static class DetailPanelRenderer
         host.Children.Add(row1);
 
         // Row 2: Variables + Pre&Post Conditions + Design Constraints
-        var prePostHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
+        var prePostOrganicHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
+        var prePostAiHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
         var designOrganicHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
         var designAiHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
-        PopulatePrePostConditionsCard(prePostHost, organicAnalysis, resourceRoot);
+        PopulatePrePostConditionsCard(prePostOrganicHost, organicAnalysis, resourceRoot);
         PopulateScideStructuralSection(designOrganicHost, context, resourceRoot);
         PopulateExecutionStepsSection(designOrganicHost, organicAnalysis.ExecutionSteps, resourceRoot);
         PopulateInferenceDesignSection(designOrganicHost, organicAnalysis, resourceRoot);
+        prePostAiHost.Children.Add(CreateItalicPlaceholder("Click Generate Analysis to add an AI review of the pre & post conditions.", resourceRoot));
         designAiHost.Children.Add(CreateItalicPlaceholder("Click Generate Analysis to add an AI review of the design requirements.", resourceRoot));
+
+        var prePostHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
+        prePostHost.Children.Add(prePostOrganicHost);
+        prePostHost.Children.Add(prePostAiHost);
 
         var designHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
         designHost.Children.Add(designOrganicHost);
@@ -685,37 +692,95 @@ internal static class DetailPanelRenderer
         {
             if (explanationService is null || !explanationService.IsReady)
             {
-                designAiHost.Children.Clear();
-                designAiHost.Children.Add(CreateItalicPlaceholder(GetAiUnavailableMessage(explanationService), resourceRoot));
+                var unavailable = GetAiUnavailableMessage(explanationService);
+                ShowAnalysisPlaceholder(prePostAiHost, unavailable);
+                ShowAnalysisPlaceholder(designAiHost, unavailable);
                 return;
             }
 
             generateAnalysisBtn.IsEnabled = false;
             generateAnalysisBtn.Content = "Generating…";
-            designAiHost.Children.Clear();
-            designAiHost.Children.Add(CreateItalicPlaceholder("Generating design requirements…", resourceRoot));
+            ShowAnalysisPlaceholder(prePostAiHost, "Generating pre & post conditions…");
+            ShowAnalysisPlaceholder(designAiHost, "Generating design requirements…");
 
             var svc = explanationService;
             var m = method;
             Task.Run(() =>
             {
+                // Two sequential model calls on one worker — the service serializes inference
+                // anyway, so each card is filled the moment its own result lands rather than
+                // both sitting on a placeholder until the slower one finishes.
+                var prePost = svc.GeneratePrePostConditions(m);
+                Application.Current.Dispatcher.BeginInvoke(() => ShowPrePostAiResult(prePost));
+
                 var design = svc.GenerateDesignConstraints(m);
                 Application.Current.Dispatcher.BeginInvoke(() =>
                 {
                     designAiHost.Children.Clear();
-                    designAiHost.Children.Add(new Border
-                    {
-                        Height = 1,
-                        Background = Brush(resourceRoot, "BorderBrush"),
-                        Margin = new Thickness(0, 12, 0, 10),
-                    });
-                    designAiHost.Children.Add(CreateCapsLabel("AI ENHANCEMENT", resourceRoot));
-                    PopulateBulletList(designAiHost, design, resourceRoot);
+                    PopulateBulletList(
+                        CreateAiEnhancementBlock(designAiHost, "AI DESIGN REQUIREMENTS", resourceRoot),
+                        design,
+                        resourceRoot);
                     generateAnalysisBtn.Content = "Regenerate Analysis";
                     generateAnalysisBtn.IsEnabled = true;
                 });
             });
         };
+
+        void ShowAnalysisPlaceholder(StackPanel aiHost, string message)
+        {
+            aiHost.Children.Clear();
+            aiHost.Children.Add(CreateItalicPlaceholder(message, resourceRoot));
+        }
+
+        // Mirrors the deterministic PRECONDITIONS/POSTCONDITIONS labels above so a reader never
+        // has to work out which group an AI bullet belongs to. When the model ignored the marker
+        // format there is no trustworthy way to tell the two apart, so the bullets stay under one
+        // neutral label rather than being guessed into the wrong group.
+        void ShowPrePostAiResult(string prePost)
+        {
+            prePostAiHost.Children.Clear();
+
+            var groups = PrePostConditionText.Split(prePost);
+            if (!groups.IsGrouped)
+            {
+                PopulateBulletList(
+                    CreateAiEnhancementBlock(prePostAiHost, "AI ENHANCEMENT", resourceRoot),
+                    prePost,
+                    resourceRoot);
+                return;
+            }
+
+            var host = CreateAiEnhancementBlock(prePostAiHost, "AI PRECONDITIONS", resourceRoot);
+            PopulateGroupBullets(host, groups.Preconditions);
+
+            prePostAiHost.Children.Add(CreateCapsLabel("AI POSTCONDITIONS", resourceRoot, marginTop: 12));
+            var postHost = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            prePostAiHost.Children.Add(postHost);
+            PopulateGroupBullets(postHost, groups.Postconditions);
+
+            if (groups.Ungrouped.Count > 0)
+            {
+                prePostAiHost.Children.Add(CreateCapsLabel("AI ENHANCEMENT", resourceRoot, marginTop: 12));
+                var extraHost = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+                prePostAiHost.Children.Add(extraHost);
+                PopulateGroupBullets(extraHost, groups.Ungrouped);
+            }
+        }
+
+        void PopulateGroupBullets(StackPanel host, IReadOnlyList<string> bullets)
+        {
+            if (bullets.Count == 0)
+            {
+                host.Children.Add(CreateItalicPlaceholder("None identified.", resourceRoot));
+                return;
+            }
+
+            foreach (var bullet in bullets)
+            {
+                host.Children.Add(CreateBulletItem(bullet, resourceRoot));
+            }
+        }
 
         // Errors / Exceptions
         host.Children.Add(BuildErrorsCard(context, resourceRoot, explanationService));
@@ -1286,6 +1351,31 @@ internal static class DetailPanelRenderer
         return WrapInCard(stack, resourceRoot);
     }
 
+    /// <summary>
+    /// A method's chat thread, kept so navigating away and back restores it rather than silently
+    /// dropping the conversation. Everything shown in the transcript is rebuilt from
+    /// <see cref="IMethodConversationSession.History"/>, so this holds no view state.
+    /// </summary>
+    private sealed class MethodChatState
+    {
+        public IMethodConversationSession? Session;
+
+        /// <summary>
+        /// The generated explanation shown as the thread's opening message, or <c>null</c> when the
+        /// user went straight to a question. In that case the session is seeded implicitly from the
+        /// brief description, which already appears in its own card — repeating it as a chat
+        /// message would just be noise.
+        /// </summary>
+        public string? OpeningExplanation;
+    }
+
+    /// <summary>
+    /// Live chat threads, keyed by method. Weak keys on purpose: a rescan builds a whole new set of
+    /// <see cref="MethodInfo"/> objects, and the threads belonging to the discarded ones should go
+    /// with them instead of pinning stale conversations for the life of the process.
+    /// </summary>
+    private static readonly ConditionalWeakTable<MethodInfo, MethodChatState> ChatStates = new();
+
     private static Border BuildAiExplanationCard(
         MethodInfo method,
         FrameworkElement resourceRoot,
@@ -1293,75 +1383,59 @@ internal static class DetailPanelRenderer
         string? existingSummary,
         TextBlock? aiBriefText)
     {
+        var state = ChatStates.GetOrCreateValue(method);
+
         var stack = new StackPanel();
         AddCardHeader(stack, "AI Explanation", resourceRoot)
             .Children.Add(CreateBadge("AI", "WarningBrush", resourceRoot, marginLeft: 8));
 
-        var explanationText = new TextBlock
-        {
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
-            FontSize = 13,
-            LineHeight = 22,
-            Visibility = Visibility.Collapsed,
-            Margin = new Thickness(0, 12, 0, 0),
-        };
-        stack.Children.Add(explanationText);
+        var transcript = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+        stack.Children.Add(transcript);
 
-        var followUpHeader = new TextBlock
-        {
-            Text = "Follow-up Questions",
-            FontSize = 13,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
-            Margin = new Thickness(0, 16, 0, 8),
-        };
-        stack.Children.Add(followUpHeader);
+        var startersHost = new StackPanel();
+        stack.Children.Add(startersHost);
 
-        var questionButtonsPanel = new StackPanel();
-        stack.Children.Add(questionButtonsPanel);
+        var statusText = CreateItalicPlaceholder(string.Empty, resourceRoot, marginTop: 10);
+        statusText.Visibility = Visibility.Collapsed;
+        stack.Children.Add(statusText);
 
-        stack.Children.Add(new TextBlock
+        // Composer
+        var composer = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 14, 0, 0) };
+        var sendBtn = new Button
         {
-            Text = "Add your own question",
-            FontSize = 11,
-            Opacity = 0.55,
-            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
-            Margin = new Thickness(0, 10, 0, 4),
-        });
-
-        var addQuestionRow = new DockPanel { LastChildFill = true };
-        var addQuestionBox = new TextBox
-        {
-            FontSize = 12,
-            Padding = new Thickness(8, 6, 8, 6),
-            Background = Brush(resourceRoot, "SurfaceBrush"),
-            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
-            BorderBrush = Brush(resourceRoot, "BorderBrush"),
-            BorderThickness = new Thickness(1),
-        };
-        var addQuestionBtn = new Button
-        {
-            Content = "Add",
-            Padding = new Thickness(12, 6, 12, 6),
+            Content = "Send",
+            Padding = new Thickness(16, 7, 16, 7),
             Margin = new Thickness(8, 0, 0, 0),
             Background = Brush(resourceRoot, "PrimaryBrush"),
             Foreground = Brush(resourceRoot, "SurfaceBrush"),
             BorderThickness = new Thickness(0),
             Cursor = System.Windows.Input.Cursors.Hand,
         };
-        DockPanel.SetDock(addQuestionBtn, Dock.Right);
-        addQuestionRow.Children.Add(addQuestionBtn);
-        addQuestionRow.Children.Add(addQuestionBox);
-        stack.Children.Add(addQuestionRow);
+        var input = new TextBox
+        {
+            FontSize = 13,
+            Padding = new Thickness(10, 7, 10, 7),
+            Background = Brush(resourceRoot, "SurfaceBrush"),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            BorderBrush = Brush(resourceRoot, "BorderBrush"),
+            BorderThickness = new Thickness(1),
+            VerticalContentAlignment = VerticalAlignment.Center,
+        };
+        DockPanel.SetDock(sendBtn, Dock.Right);
+        composer.Children.Add(sendBtn);
+        composer.Children.Add(input);
+        stack.Children.Add(composer);
 
-        var generateBtn = CreateRegenerateButton("Generate AI Explanation", () => { }, resourceRoot, marginTop: 12);
+        var generateBtn = CreateRegenerateButton("Generate AI Explanation", () => { }, resourceRoot, marginTop: 10);
         stack.Children.Add(generateBtn);
 
-        IMethodConversationSession? session = null;
+        var isBusy = false;
 
         string GetSeedExplanation()
         {
+            if (!string.IsNullOrWhiteSpace(state.OpeningExplanation))
+                return state.OpeningExplanation;
+
             if (!string.IsNullOrWhiteSpace(existingSummary))
                 return existingSummary;
 
@@ -1377,43 +1451,150 @@ internal static class DetailPanelRenderer
             return "No prior explanation available.";
         }
 
-        var isAsking = false;
-
-        void SetQuestionButtonsEnabled(bool enabled)
+        // Returns the body block so a streaming answer can keep writing into the message already
+        // on screen, the way a chat client fills in a reply in place.
+        //
+        // Position carries the speaker, as it does in a normal chat client: the user's turns sit
+        // right in a filled bubble, the model's run flush left across the full width. A small
+        // "YOU"/"AI" caption did not survive being read at a glance in a dense panel.
+        TextBlock AppendMessage(string text, bool isUser)
         {
-            foreach (var child in questionButtonsPanel.Children)
+            var body = new TextBlock
             {
-                if (child is Button btn)
+                Text = text,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brush(resourceRoot, isUser ? "SurfaceBrush" : "TextPrimaryBrush"),
+                FontSize = 13,
+                LineHeight = 22,
+            };
+
+            // The narrow first column caps a user bubble at roughly four fifths of the card, so it
+            // reads as a bubble instead of a full-width block; answers span both columns.
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4, GridUnitType.Star) });
+
+            if (isUser)
+            {
+                var bubble = new Border
                 {
-                    btn.IsEnabled = enabled;
-                }
+                    Background = Brush(resourceRoot, "PrimaryBrush"),
+                    CornerRadius = new CornerRadius(12),
+                    Padding = new Thickness(14, 10, 14, 10),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Child = body,
+                };
+                Grid.SetColumn(bubble, 1);
+                row.Children.Add(bubble);
             }
+            else
+            {
+                Grid.SetColumnSpan(body, 2);
+                row.Children.Add(body);
+            }
+
+            transcript.Children.Add(row);
+            transcript.Visibility = Visibility.Visible;
+            return body;
         }
 
-        void AskQuestion(string question, Button clickedButton)
+        void RebuildTranscript()
         {
-            // Guard against double-clicks/rapid re-clicks firing overlapping requests at the LLM.
-            if (isAsking) return;
+            transcript.Children.Clear();
 
-            if (explanationService is null || !explanationService.IsReady)
+            if (!string.IsNullOrWhiteSpace(state.OpeningExplanation))
+                AppendMessage(state.OpeningExplanation, isUser: false);
+
+            var history = state.Session?.History ?? (IReadOnlyList<ConversationTurn>)Array.Empty<ConversationTurn>();
+            foreach (var turn in history)
             {
-                explanationText.Text = GetAiUnavailableMessage(explanationService);
-                explanationText.Visibility = Visibility.Visible;
+                AppendMessage(turn.Question, isUser: true);
+                AppendMessage(turn.Answer, isUser: false);
+            }
+
+            transcript.Visibility = transcript.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // Starter prompts are scaffolding for an empty thread only. Once the conversation is under
+        // way they disappear, so the card reads as a chat rather than a menu of canned questions.
+        void RefreshStarters()
+        {
+            startersHost.Children.Clear();
+
+            if (transcript.Children.Count > 0)
+            {
+                startersHost.Visibility = Visibility.Collapsed;
                 return;
             }
 
-            session ??= explanationService.StartMethodConversation(method, GetSeedExplanation());
+            startersHost.Visibility = Visibility.Visible;
+            startersHost.Children.Add(CreateCapsLabel("ASK ABOUT THIS METHOD", resourceRoot, marginTop: 12));
 
-            isAsking = true;
-            SetQuestionButtonsEnabled(false);
-            generateBtn.IsEnabled = false;
-            var originalContent = clickedButton.Content;
-            clickedButton.Content = "Thinking…";
-            explanationText.Text = "Generating answer…";
-            explanationText.Foreground = Brush(resourceRoot, "TextSecondaryBrush");
-            explanationText.Visibility = Visibility.Visible;
+            foreach (var question in GetFollowUpQuestions(method).Concat(CustomFaqStore.Load()))
+            {
+                var chip = new Button
+                {
+                    Content = question,
+                    Padding = new Thickness(14, 8, 14, 8),
+                    Margin = new Thickness(0, 6, 0, 0),
+                    Background = Brush(resourceRoot, "SurfaceBrush"),
+                    Foreground = Brush(resourceRoot, "PrimaryBrush"),
+                    BorderBrush = Brush(resourceRoot, "BorderBrush"),
+                    BorderThickness = new Thickness(1),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    FontSize = 12,
+                };
+                var captured = question;
+                chip.Click += (_, _) => Send(captured);
+                startersHost.Children.Add(chip);
+            }
+        }
 
-            var activeSession = session;
+        void SetBusy(bool busy)
+        {
+            isBusy = busy;
+            sendBtn.IsEnabled = !busy;
+            input.IsEnabled = !busy;
+            generateBtn.IsEnabled = !busy;
+            foreach (var child in startersHost.Children)
+            {
+                if (child is Button chip) chip.IsEnabled = !busy;
+            }
+        }
+
+        void ShowStatus(string message)
+        {
+            statusText.Text = message;
+            statusText.Visibility = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        void Send(string rawQuestion)
+        {
+            if (isBusy) return;
+
+            var question = rawQuestion.Trim();
+            if (question.Length == 0) return;
+
+            if (explanationService is null || !explanationService.IsReady)
+            {
+                ShowStatus(GetAiUnavailableMessage(explanationService));
+                return;
+            }
+
+            ShowStatus(string.Empty);
+            state.Session ??= explanationService.StartMethodConversation(method, GetSeedExplanation());
+
+            input.Text = string.Empty;
+            AppendMessage(question, isUser: true);
+            var answerBlock = AppendMessage("Thinking…", isUser: false);
+            answerBlock.Opacity = 0.6;
+
+            // Hides the starter chips now that the thread has content.
+            RefreshStarters();
+            SetBusy(true);
+
+            var activeSession = state.Session;
             Task.Run(() =>
             {
                 string answer;
@@ -1422,8 +1603,8 @@ internal static class DetailPanelRenderer
                     answer = activeSession.Ask(question, partial =>
                         Application.Current.Dispatcher.BeginInvoke(() =>
                         {
-                            explanationText.Text = partial;
-                            explanationText.Foreground = Brush(resourceRoot, "TextPrimaryBrush");
+                            answerBlock.Text = partial;
+                            answerBlock.Opacity = 1.0;
                         }));
                 }
                 catch (Exception ex)
@@ -1433,78 +1614,48 @@ internal static class DetailPanelRenderer
 
                 Application.Current.Dispatcher.BeginInvoke(() =>
                 {
-                    explanationText.Text = answer;
-                    explanationText.Foreground = Brush(resourceRoot, "TextPrimaryBrush");
-                    clickedButton.Content = originalContent;
-                    generateBtn.IsEnabled = true;
-                    isAsking = false;
-                    SetQuestionButtonsEnabled(true);
+                    answerBlock.Text = answer;
+                    answerBlock.Opacity = 1.0;
+                    SetBusy(false);
                 });
             });
         }
 
-        void RefreshQuestionButtons()
-        {
-            questionButtonsPanel.Children.Clear();
-
-            var allQuestions = GetFollowUpQuestions(method).Concat(CustomFaqStore.Load());
-            foreach (var q in allQuestions)
-            {
-                var qBtn = new Button
-                {
-                    Content = q,
-                    Padding = new Thickness(14, 8, 14, 8),
-                    Margin = new Thickness(0, 4, 0, 0),
-                    Background = Brush(resourceRoot, "SurfaceBrush"),
-                    Foreground = Brush(resourceRoot, "PrimaryBrush"),
-                    BorderBrush = Brush(resourceRoot, "BorderBrush"),
-                    BorderThickness = new Thickness(1),
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                    Cursor = System.Windows.Input.Cursors.Hand,
-                    FontSize = 12,
-                };
-                var capturedQ = q;
-                qBtn.Click += (_, _) => AskQuestion(capturedQ, qBtn);
-                questionButtonsPanel.Children.Add(qBtn);
-            }
-        }
-
-        RefreshQuestionButtons();
-
-        void AddCustomQuestion()
-        {
-            var question = addQuestionBox.Text.Trim();
-            if (question.Length == 0) return;
-
-            CustomFaqStore.Add(question);
-            addQuestionBox.Text = string.Empty;
-            RefreshQuestionButtons();
-        }
-
-        addQuestionBtn.Click += (_, _) => AddCustomQuestion();
-        addQuestionBox.KeyDown += (_, e) =>
+        sendBtn.Click += (_, _) => Send(input.Text);
+        input.KeyDown += (_, e) =>
         {
             if (e.Key == System.Windows.Input.Key.Enter)
             {
-                AddCustomQuestion();
+                Send(input.Text);
+                e.Handled = true;
             }
         };
 
         generateBtn.Click += (_, _) =>
         {
-            if (isAsking) return;
+            if (isBusy) return;
 
             if (explanationService is null || !explanationService.IsReady)
             {
-                explanationText.Text = GetAiUnavailableMessage(explanationService);
-                explanationText.Visibility = Visibility.Visible;
+                ShowStatus(GetAiUnavailableMessage(explanationService));
                 return;
             }
 
-            isAsking = true;
-            SetQuestionButtonsEnabled(false);
-            generateBtn.IsEnabled = false;
+            ShowStatus(string.Empty);
+
+            // A new explanation reseeds the conversation, so the existing thread — whose answers
+            // were produced against the previous seed — is cleared rather than left on screen
+            // looking like it still applies. The transcript is visible, so the reset is too.
+            state.Session = null;
+            state.OpeningExplanation = null;
+            transcript.Children.Clear();
+            RefreshStarters();
+
+            var answerBlock = AppendMessage("Generating explanation…", isUser: false);
+            answerBlock.Opacity = 0.6;
             generateBtn.Content = "Generating…";
+            SetBusy(true);
+
             var svc = explanationService;
             var m = method;
             Task.Run(() =>
@@ -1512,23 +1663,32 @@ internal static class DetailPanelRenderer
                 var text = svc.ExplainMethod(m, partial =>
                     Application.Current.Dispatcher.BeginInvoke(() =>
                     {
-                        explanationText.Text = partial;
-                        explanationText.Foreground = Brush(resourceRoot, "TextPrimaryBrush");
-                        explanationText.Visibility = Visibility.Visible;
+                        answerBlock.Text = partial;
+                        answerBlock.Opacity = 1.0;
                     }));
+
                 Application.Current.Dispatcher.BeginInvoke(() =>
                 {
-                    explanationText.Text = text;
-                    explanationText.Foreground = Brush(resourceRoot, "TextPrimaryBrush");
-                    explanationText.Visibility = Visibility.Visible;
-                    generateBtn.Content = "Regenerate";
-                    generateBtn.IsEnabled = true;
-                    session = null;
-                    isAsking = false;
-                    SetQuestionButtonsEnabled(true);
+                    answerBlock.Text = text;
+                    answerBlock.Opacity = 1.0;
+
+                    // Only a genuine explanation seeds the thread; a bracketed message is an
+                    // error string and must not become the model's idea of the method.
+                    state.OpeningExplanation = text.StartsWith('[') ? null : text;
+
+                    generateBtn.Content = "Regenerate Explanation";
+                    SetBusy(false);
+                    RefreshStarters();
                 });
             });
         };
+
+        RebuildTranscript();
+        RefreshStarters();
+        if (!string.IsNullOrWhiteSpace(state.OpeningExplanation))
+        {
+            generateBtn.Content = "Regenerate Explanation";
+        }
 
         return WrapInCard(stack, resourceRoot);
     }
@@ -1567,6 +1727,29 @@ internal static class DetailPanelRenderer
             TextWrapping = TextWrapping.Wrap,
             FontSize = 13,
         });
+    }
+
+    /// <summary>
+    /// Appends an AI sub-block — divider, caps label, bullet host — under an organic card section,
+    /// and returns the host the bullets belong in. <paramref name="label"/> names what the block
+    /// contains ("AI DESIGN REQUIREMENTS", "AI PRECONDITIONS") so the bullets are never left for
+    /// the reader to classify. The divider and label deliberately live in <paramref name="parent"/>
+    /// rather than the returned host, because <see cref="PopulateBulletList"/> clears whatever
+    /// host it fills.
+    /// </summary>
+    private static StackPanel CreateAiEnhancementBlock(StackPanel parent, string label, FrameworkElement resourceRoot)
+    {
+        parent.Children.Add(new Border
+        {
+            Height = 1,
+            Background = Brush(resourceRoot, "BorderBrush"),
+            Margin = new Thickness(0, 12, 0, 10),
+        });
+        parent.Children.Add(CreateCapsLabel(label, resourceRoot));
+
+        var bulletHost = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        parent.Children.Add(bulletHost);
+        return bulletHost;
     }
 
     private static void PopulateBulletList(StackPanel host, string text, FrameworkElement resourceRoot)

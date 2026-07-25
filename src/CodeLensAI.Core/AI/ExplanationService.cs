@@ -323,10 +323,11 @@ public sealed class ExplanationService : IExplanationService
                 "List pre-conditions then post-conditions. Pre-conditions: only requirements the code enforces " +
                 "via guard clauses in the source. Post-conditions: what the return value means, using the verified " +
                 "return statements. Never invent checks absent from the source. " +
-                "Max 3 bullets per section. Format each line as '- text'.",
+                "Output a line 'PRE:' followed by up to 3 '- text' bullets, then a line 'POST:' followed by up to " +
+                "3 '- text' bullets. Emit both marker lines even when a section has no bullets.",
                 DescribeMethodCompact(methodInfo),
                 methodInfo);
-            return TruncateBullets(RunInstruction(prompt, MaxTokensBullets), maxBullets: 6, maxWordsPerBullet: 20);
+            return TruncateSectionedBullets(RunInstruction(prompt, MaxTokensBullets), maxBulletsPerSection: 3, maxWordsPerBullet: 20);
         });
     }
 
@@ -415,7 +416,7 @@ public sealed class ExplanationService : IExplanationService
             raw => TruncateProse(raw, maxSentences: 1, maxWords: 35),
             () => GenerateBriefDescription(methodInfo));
         var prePost = PostProcessSection(sections, "CONDITIONS",
-            raw => TruncateBullets(raw, maxBullets: 6, maxWordsPerBullet: 20),
+            raw => TruncateSectionedBullets(raw, maxBulletsPerSection: 3, maxWordsPerBullet: 20),
             () => GeneratePrePostConditions(methodInfo));
         var design = PostProcessSection(sections, "DESIGN",
             raw => TruncateBullets(raw, maxBullets: 4, maxWordsPerBullet: 20),
@@ -470,7 +471,7 @@ public sealed class ExplanationService : IExplanationService
         builder.AppendLine("### BRIEF");
         builder.AppendLine("One sentence describing what the method's code actually does — name its key logic; do not restate the Summary line.");
         builder.AppendLine("### CONDITIONS");
-        builder.AppendLine("Up to 3 precondition '- ' bullets stating only requirements the code enforces via guard clauses, then up to 3 postcondition '- ' bullets stating what the return value means, using the verified return statements. Never invent checks absent from the source.");
+        builder.AppendLine("A line 'PRE:' followed by up to 3 '- ' bullets stating only requirements the code enforces via guard clauses, then a line 'POST:' followed by up to 3 '- ' bullets stating what the return value means, using the verified return statements. Emit both marker lines even when a section has no bullets. Never invent checks absent from the source.");
         builder.AppendLine("### DESIGN");
         builder.AppendLine("Up to 4 design '- ' bullets naming the constructs the code actually uses (recursion, lock, async/await, loops, LINQ), plus state, dependencies, side effects. Cover every verified fact that applies; claim nothing the code does not do.");
         builder.AppendLine("### ERRORS");
@@ -1144,7 +1145,19 @@ public sealed class ExplanationService : IExplanationService
   /// Removes markdown emphasis the model leaks into plain-text output (e.g. 'State**:'),
   /// which otherwise survives into the rendered documentation verbatim.
   /// </summary>
-  private static string StripMarkdownEmphasis(string text) =>
+  /// <summary>
+  /// True for a line carrying no information — a bare quote marker, a dangling list number, or
+  /// stray punctuation. The model emits these when generation stops mid-item, and without this
+  /// they reach the panel as an empty bullet.
+  /// </summary>
+  private static bool IsDebrisLine(string line)
+  {
+    var t = line.Trim();
+    if (t.Length == 0) return true;
+    return t is ">" or "-" or "*" or "•" or "#" || Regex.IsMatch(t, @"^\d+[.)]?$");
+  }
+
+  internal static string StripMarkdownEmphasis(string text) =>
     text.Replace("**", string.Empty).Replace("__", string.Empty);
 
   private static string TruncateProse(string text, int maxSentences, int maxWords)
@@ -1178,6 +1191,42 @@ public sealed class ExplanationService : IExplanationService
     return result;
   }
 
+  /// <summary>
+  /// Truncates pre/post-condition output while preserving its <c>PRE:</c>/<c>POST:</c> markers, so
+  /// the UI and the Word export can present each group under its own label. Each section is capped
+  /// independently — a model that emits six preconditions and no postconditions loses the surplus
+  /// preconditions rather than crowding out the postconditions.
+  /// Falls back to a flat list when the model ignored the markers.
+  /// </summary>
+  private static string TruncateSectionedBullets(string text, int maxBulletsPerSection, int maxWordsPerBullet)
+  {
+    if (text.StartsWith('[')) return text;
+
+    var groups = PrePostConditionText.Split(text);
+    if (!groups.IsGrouped)
+    {
+      return TruncateBullets(text, maxBulletsPerSection * 2, maxWordsPerBullet);
+    }
+
+    var builder = new StringBuilder();
+    AppendSection(PrePostConditionText.PreMarker, groups.Preconditions);
+    AppendSection(PrePostConditionText.PostMarker, groups.Postconditions);
+    return builder.ToString().TrimEnd();
+
+    void AppendSection(string marker, IReadOnlyList<string> bullets)
+    {
+      builder.AppendLine(marker);
+      foreach (var bullet in bullets.Where(b => !IsDebrisLine(b)).Take(maxBulletsPerSection))
+      {
+        var words = bullet.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var line = words.Length > maxWordsPerBullet
+          ? string.Join(' ', words.Take(maxWordsPerBullet)) + "…"
+          : bullet;
+        builder.AppendLine($"- {StripMarkdownEmphasis(line)}");
+      }
+    }
+  }
+
   private static string TruncateBullets(string text, int maxBullets, int maxWordsPerBullet)
   {
     if (text.StartsWith('[')) return text;
@@ -1186,7 +1235,7 @@ public sealed class ExplanationService : IExplanationService
     foreach (var rawLine in text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
     {
       var line = StripMarkdownEmphasis(rawLine).TrimStart('-', '•', '*', '#', ' ');
-      if (string.IsNullOrWhiteSpace(line)) continue;
+      if (string.IsNullOrWhiteSpace(line) || IsDebrisLine(line)) continue;
 
       var words = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
       if (words.Length > maxWordsPerBullet)

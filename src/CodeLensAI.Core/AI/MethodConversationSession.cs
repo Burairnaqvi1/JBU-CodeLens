@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace CodeLensAI.Core.AI;
 
@@ -47,9 +48,35 @@ public sealed class MethodConversationSession : IMethodConversationSession
       : ExplanationService.MaxTokensFollowUpAnswer;
 
     var prompt = BuildConversationPrompt(question, wantsDetail);
-    var answer = _service.RunInstruction(prompt, maxTokens, onPartial);
+    var answer = CleanAnswer(_service.RunInstruction(prompt, maxTokens, onPartial));
     _history.Add(new ConversationTurn(question, answer));
     return answer;
+  }
+
+  /// <summary>
+  /// Tidies raw model output for display. Answers are the only generated text with no truncation
+  /// pass — every other section runs through TruncateProse/TruncateBullets — so without this the
+  /// literal "**" of markdown emphasis, and the debris left when generation stops mid-list (a
+  /// dangling "4", a lone "&gt;"), reach the transcript verbatim.
+  /// </summary>
+  private static string CleanAnswer(string answer)
+  {
+    // A bracketed string is an error/unavailable message, not prose to be tidied.
+    if (string.IsNullOrWhiteSpace(answer) || answer.TrimStart().StartsWith('[')) return answer;
+
+    var lines = answer.Replace("\r\n", "\n").Split('\n').ToList();
+
+    while (lines.Count > 0)
+    {
+      var last = lines[^1].Trim();
+      var isDebris = last.Length == 0
+                     || last is ">" or "-" or "*"
+                     || Regex.IsMatch(last, @"^\d+[.)]?$");
+      if (!isDebris) break;
+      lines.RemoveAt(lines.Count - 1);
+    }
+
+    return ExplanationService.StripMarkdownEmphasis(string.Join(Environment.NewLine, lines)).Trim();
   }
 
   private static bool WantsDetailedAnswer(string question) =>
