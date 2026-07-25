@@ -132,7 +132,7 @@ public sealed class CppParserTests : IDisposable
         var cls = Assert.Single(result.Classes, c => c.Name == "Sample");
         var method = Assert.Single(cls.Methods, m => m.Name == "GetValue");
         Assert.True(method.XmlDocTags.TryGetValue("sourceCode", out var source));
-        Assert.StartsWith("int GetValue", source!.Trim(), StringComparison.Ordinal);
+        Assert.StartsWith("int GetValue", source.Trim(), StringComparison.Ordinal);
         Assert.Contains("return 7;", source, StringComparison.Ordinal);
     }
 }

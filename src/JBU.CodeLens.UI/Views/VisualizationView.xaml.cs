@@ -69,8 +69,17 @@ public partial class VisualizationView : UserControl
         public SortedDictionary<string, FolderEntry> Folders { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<ParseResult> Files { get; } = [];
 
-        public FolderEntry GetOrAdd(string name) =>
-            Folders.TryGetValue(name, out var existing) ? existing : Folders[name] = new FolderEntry();
+        public FolderEntry GetOrAdd(string name)
+        {
+            if (Folders.TryGetValue(name, out var existing))
+            {
+                return existing;
+            }
+
+            var created = new FolderEntry();
+            Folders[name] = created;
+            return created;
+        }
     }
 
     /// <summary>Raised when the user asks to leave this page (Back button).</summary>
@@ -376,7 +385,7 @@ public partial class VisualizationView : UserControl
                 NavTag = classInfo,
                 Tip = string.IsNullOrWhiteSpace(classInfo.XmlSummary)
                     ? $"{classInfo.Name} — {classInfo.Methods.Count} methods, {classInfo.Properties.Count} properties"
-                    : classInfo.XmlSummary!.Trim(),
+                    : classInfo.XmlSummary.Trim(),
             };
 
             if (depth == VizDepth.Methods)

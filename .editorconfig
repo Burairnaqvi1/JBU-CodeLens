@@ -7,7 +7,7 @@ root = true
 # number go down. Rules that are simply not fixed yet stay at warning severity so they remain
 # visible in the build and in the Visual Studio Error List.
 #
-# See docs/quality/WarningRemediation.md for the full decision record.
+# The full decision record is in the Code Quality Report kept outside this repository.
 
 # ---------------------------------------------------------------------------------------------
 # Agreed suppressions -- solution-wide
@@ -107,8 +107,8 @@ dotnet_diagnostic.CA2227.severity = none
 # phased activity, and turning warnings-as-errors into a blocker for style debt would just force
 # the whole thing to be disabled instead.
 #
-# Every one of these is listed individually in docs/quality/StaticAnalysis.md with its count, so
-# the backlog is enumerated rather than hidden behind a blanket setting.
+# Every one of these is listed individually in the Code Quality Report with its count, so the
+# backlog is enumerated rather than hidden behind a blanket setting.
 #
 # Two are judged unlikely to ever be adopted and are recorded there with reasons:
 #   * S3267 (20) -- "loop should be simplified with LINQ", raised against per-AST-node parser loops
@@ -120,17 +120,9 @@ dotnet_diagnostic.S3267.severity = suggestion
 dotnet_diagnostic.S8949.severity = suggestion
 dotnet_diagnostic.S125.severity = suggestion
 dotnet_diagnostic.S3358.severity = suggestion
-dotnet_diagnostic.S8969.severity = suggestion
-dotnet_diagnostic.S1066.severity = suggestion
 dotnet_diagnostic.S1871.severity = suggestion
 dotnet_diagnostic.S6670.severity = suggestion
 dotnet_diagnostic.S4144.severity = suggestion
-dotnet_diagnostic.S3241.severity = suggestion
-dotnet_diagnostic.S2325.severity = suggestion
-dotnet_diagnostic.S1172.severity = suggestion
-dotnet_diagnostic.S1144.severity = suggestion
-dotnet_diagnostic.S1121.severity = suggestion
-dotnet_diagnostic.S108.severity = suggestion
 
 [*.cs]
 indent_style = space
@@ -170,7 +162,7 @@ dotnet_diagnostic.CA2007.severity = none
 #
 # All 77 occurrences are xUnit test method names following the Method_Scenario_ExpectedResult
 # convention, which is the documented naming pattern for this project's tests (see
-# docs/architecture/DeveloperGuide.md, "Code Conventions"). Renaming them would destroy the
+# the project's documented test convention). Renaming them would destroy the
 # readability of the test report output for no benefit -- the rule exists to police public API
 # surface, and test methods are not public API. Suppressed for the test project only; the rule
 # stays active for src/ so production identifiers are still checked.

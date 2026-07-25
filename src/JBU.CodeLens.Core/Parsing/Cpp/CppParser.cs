@@ -1087,15 +1087,13 @@ public class CppParser : ILanguageParser
                 }
             }
 
-            if (IsStringLikeType(normalizedType))
+            if (IsStringLikeType(normalizedType) &&
+                (methodSource.Contains("fopen(" + name, StringComparison.Ordinal) ||
+                 methodSource.Contains("open(" + name, StringComparison.Ordinal) ||
+                 methodSource.Contains("ifstream" + name, StringComparison.Ordinal) ||
+                 methodSource.Contains("ofstream" + name, StringComparison.Ordinal)))
             {
-                if (methodSource.Contains("fopen(" + name, StringComparison.Ordinal) ||
-                    methodSource.Contains("open(" + name, StringComparison.Ordinal) ||
-                    methodSource.Contains("ifstream" + name, StringComparison.Ordinal) ||
-                    methodSource.Contains("ofstream" + name, StringComparison.Ordinal))
-                {
-                    return "Expected to be a valid file path";
-                }
+                return "Expected to be a valid file path";
             }
         }
         catch

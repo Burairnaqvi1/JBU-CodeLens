@@ -131,10 +131,11 @@ public static class ScideMethodIndex
         ArgumentNullException.ThrowIfNull(index);
         ArgumentNullException.ThrowIfNull(lensClass);
 
-        if (scideMethod is not null && !string.IsNullOrEmpty(scideMethod.DeclaringType))
+        if (scideMethod is not null &&
+            !string.IsNullOrEmpty(scideMethod.DeclaringType) &&
+            index.TryGetValue(scideMethod.DeclaringType, out var byDeclaring))
         {
-            if (index.TryGetValue(scideMethod.DeclaringType, out var byDeclaring))
-                return byDeclaring;
+            return byDeclaring;
         }
 
         return index.TryGetValue(lensClass.Name, out var byName) ? byName : null;

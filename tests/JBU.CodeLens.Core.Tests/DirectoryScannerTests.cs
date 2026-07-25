@@ -16,12 +16,11 @@ public sealed class DirectoryScannerTests : IDisposable
         try { Directory.Delete(_root, recursive: true); } catch { /* best effort */ }
     }
 
-    private string Touch(string relativePath)
+    private void Touch(string relativePath)
     {
         var full = Path.Combine(_root, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         File.WriteAllText(full, "// test");
-        return full;
     }
 
     [Fact]

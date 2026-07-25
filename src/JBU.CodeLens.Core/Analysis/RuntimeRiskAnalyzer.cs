@@ -151,20 +151,18 @@ public sealed class RuntimeRiskAnalyzer
 
         foreach (var parameter in SourcePatternHelpers.ExtractParameterNames(context.Method))
         {
-            if (context.SourceBody.Contains(parameter + ".", StringComparison.Ordinal) ||
-                context.SourceBody.Contains(parameter + "->", StringComparison.Ordinal))
+            if ((context.SourceBody.Contains(parameter + ".", StringComparison.Ordinal) ||
+                 context.SourceBody.Contains(parameter + "->", StringComparison.Ordinal)) &&
+                !HasNullGuard(context.SourceBody, parameter))
             {
-                if (!HasNullGuard(context.SourceBody, parameter))
+                yield return new RuntimeRisk
                 {
-                    yield return new RuntimeRisk
-                    {
-                        Description = $"Possible null dereference on '{parameter}'.",
-                        ExceptionType = context.Language == "C++" ? "undefined behavior" : "NullReferenceException",
-                        Confidence = AnalysisConfidence.Low,
-                        Reason = "Member access on parameter without visible null guard.",
-                        RuleId = "null-dereference",
-                    };
-                }
+                    Description = $"Possible null dereference on '{parameter}'.",
+                    ExceptionType = context.Language == "C++" ? "undefined behavior" : "NullReferenceException",
+                    Confidence = AnalysisConfidence.Low,
+                    Reason = "Member access on parameter without visible null guard.",
+                    RuleId = "null-dereference",
+                };
             }
         }
     }

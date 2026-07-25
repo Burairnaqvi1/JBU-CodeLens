@@ -43,6 +43,7 @@ internal static class AtomicFileWriter
                 }
                 catch (UnauthorizedAccessException)
                 {
+                    // Cleanup only — the export outcome was already decided above.
                 }
             }
         }

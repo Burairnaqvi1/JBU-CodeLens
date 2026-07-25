@@ -60,7 +60,6 @@ public partial class MainWindow : Window
     private object? _currentDetailContext;
     private int _classCount;
     private int _methodCount;
-    private bool _suppressTreeSelectionChanged;
     private bool _isDarkTheme = true;
 
     // Persisted UI preferences (theme, last project). Loaded before the constructor body runs.
@@ -1055,8 +1054,6 @@ public partial class MainWindow : Window
 
     private void ProjectTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        if (_suppressTreeSelectionChanged) return;
-
         if (e.NewValue is not TreeViewItem item)
         {
             ShowPlaceholder();
@@ -1149,7 +1146,7 @@ public partial class MainWindow : Window
         try
         {
             var results = _lastScanResults;
-            var folder = _lastScannedFolder!;
+            var folder = _lastScannedFolder;
             var service = _explanationService;
             var useAi = includeAi;
             var metrics = ToMetricsSnapshot(_lastMetrics);
@@ -1713,57 +1710,6 @@ public partial class MainWindow : Window
         {
             DetailContentHost.Children.Insert(0, DetailPanelRenderer.CreateBackButton(onBack, this));
         }
-    }
-
-    private void SelectMethodInTree(LensMethod method)
-    {
-        if (ProjectTree.Items.Count == 0) { ShowMethodDetails(method); return; }
-
-        var root = ProjectTree.Items[0] as TreeViewItem;
-        if (root is null) { ShowMethodDetails(method); return; }
-
-        foreach (var fileObj in root.Items)
-        {
-            if (fileObj is not TreeViewItem fileItem) continue;
-
-            // Only the file that owns the method can contain its tree item; materialize its
-            // lazily-built children before searching them.
-            if (fileItem.Tag is not string filePath ||
-                !string.Equals(filePath, method.ParentClass?.SourceFilePath, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            PopulateFileChildren(fileItem);
-
-            foreach (var classObj in fileItem.Items)
-            {
-                if (classObj is not TreeViewItem classItem || classItem.Tag is not ClassInfo classInfo) continue;
-                if (!ReferenceEquals(classInfo, method.ParentClass)) continue;
-                foreach (var methodObj in classItem.Items)
-                {
-                    if (methodObj is TreeViewItem methodItem && ReferenceEquals(methodItem.Tag, method))
-                    {
-                        _suppressTreeSelectionChanged = true;
-                        try
-                        {
-                            fileItem.IsExpanded = true;
-                            classItem.IsExpanded = true;
-                            methodItem.IsSelected = true;
-                            methodItem.BringIntoView();
-                        }
-                        finally
-                        {
-                            _suppressTreeSelectionChanged = false;
-                        }
-                        ShowMethodDetails(method);
-                        return;
-                    }
-                }
-            }
-        }
-
-        ShowMethodDetails(method);
     }
 
     // ── Tree header builders ─────────────────────────────────────────────────

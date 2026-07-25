@@ -59,6 +59,10 @@ public sealed class ExecutionFlowAnalyzer
                         "this one static because it currently happens to hold no state would break " +
                         "that symmetry for no measurable gain — it runs once per method, not in a " +
                         "hot loop.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Minor Code Smell",
+        "S2325:Methods and properties that don't access instance data should be static",
+        Justification = "Sonar's equivalent of CA1822 above; suppressed for the same reason.")]
     public IReadOnlyList<ExecutionStep> Analyze(MethodAnalysisContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -222,7 +226,7 @@ public sealed class ExecutionFlowAnalyzer
             steps.Add(new RawStep(
                 position,
                 ExecutionStepKind.ReturnResult,
-                BuildReturnDescription(method.ReturnType, method.Name, expressionName)));
+                BuildReturnDescription(method.ReturnType, expressionName)));
         }
 
         return steps;
@@ -387,7 +391,7 @@ public sealed class ExecutionFlowAnalyzer
             steps.Add(new RawStep(
                 6,
                 ExecutionStepKind.ReturnResult,
-                BuildReturnDescription(method.ReturnType, method.Name, null)));
+                BuildReturnDescription(method.ReturnType, null)));
         }
 
         return steps;
@@ -596,7 +600,7 @@ public sealed class ExecutionFlowAnalyzer
         steps.Add(new RawStep(
             returnStatement.SpanStart,
             ExecutionStepKind.ReturnResult,
-            BuildReturnDescription(method.ReturnType, method.Name, expressionName)));
+            BuildReturnDescription(method.ReturnType, expressionName)));
     }
 
     private static (ExecutionStepKind Kind, string Description)? ClassifyInvocation(InvocationExpressionSyntax invocation)
@@ -672,7 +676,7 @@ public sealed class ExecutionFlowAnalyzer
         return null;
     }
 
-    private static string BuildReturnDescription(string returnType, string methodName, string? expressionName)
+    private static string BuildReturnDescription(string returnType, string? expressionName)
     {
         if (returnType.Equals("bool", StringComparison.OrdinalIgnoreCase))
         {
