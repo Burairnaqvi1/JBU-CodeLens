@@ -566,19 +566,8 @@ public static class WordExporter
         document.InsertParagraph(string.Empty).SpacingAfter(4d);
     }
 
-    private static string? FindExceptionDescription(MethodInfo method, string exceptionType)
-    {
-        foreach (var tag in method.XmlDocTags)
-        {
-            if (!tag.Key.StartsWith("exception:", StringComparison.OrdinalIgnoreCase)) continue;
-            var keyType = tag.Key["exception:".Length..];
-            if (string.Equals(keyType, exceptionType, StringComparison.OrdinalIgnoreCase)
-                || keyType.EndsWith(exceptionType, StringComparison.OrdinalIgnoreCase))
-                return tag.Value;
-        }
-
-        return null;
-    }
+    private static string? FindExceptionDescription(MethodInfo method, string exceptionType) =>
+        MethodDocumentation.FindExceptionDescription(method, exceptionType);
 
     private static void WriteBulletSection(DocX document, string heading, string content)
     {

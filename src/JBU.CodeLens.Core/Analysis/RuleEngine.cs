@@ -1,7 +1,5 @@
 using System.Text.RegularExpressions;
 
-using JBU.CodeLens.Core.Utilities;
-
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
@@ -225,7 +223,7 @@ internal static class SourcePatternHelpers
     internal static bool ContainsThrow(string source) =>
         SafeRegex.IsMatch(source, @"\bthrow\b");
 
-    internal static bool GuardFollowedByThrow(string source, int guardStart, int guardEnd)
+    internal static bool GuardFollowedByThrow(string source, int guardEnd)
     {
         if (guardEnd >= source.Length)
         {
@@ -348,7 +346,7 @@ internal static class SourcePatternHelpers
     {
         foreach (Match match in SafeRegex.Matches(source, pattern, RegexOptions.IgnoreCase | RegexOptions.Singleline))
         {
-            if (GuardFollowedByThrow(source, match.Index, match.Index + match.Length))
+            if (GuardFollowedByThrow(source, match.Index + match.Length))
             {
                 yield return match;
             }

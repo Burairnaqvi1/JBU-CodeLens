@@ -1,7 +1,3 @@
-using System.Text.RegularExpressions;
-
-using JBU.CodeLens.Core.Utilities;
-
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>

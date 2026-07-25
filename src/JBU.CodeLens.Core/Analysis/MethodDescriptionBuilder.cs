@@ -250,19 +250,7 @@ public static class MethodDescriptionBuilder
             simple = simple[..angle].Trim();
         }
 
-        var scope = simple.LastIndexOf("::", StringComparison.Ordinal);
-        if (scope >= 0)
-        {
-            simple = simple[(scope + 2)..];
-        }
-
-        var dot = simple.LastIndexOf('.');
-        if (dot >= 0)
-        {
-            simple = simple[(dot + 1)..];
-        }
-
-        return simple;
+        return TypeNames.StripQualifiers(simple);
     }
 
     private static bool IsVoidType(string type)

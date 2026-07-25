@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
-using JBU.CodeLens.Core.Utilities;
 using LLama;
 using LLama.Common;
 using LLama.Sampling;

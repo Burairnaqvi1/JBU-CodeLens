@@ -1,8 +1,5 @@
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
-
-using JBU.CodeLens.Core.Utilities;
 
 namespace JBU.CodeLens.Core.AI;
 

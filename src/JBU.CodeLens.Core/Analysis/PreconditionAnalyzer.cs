@@ -1,7 +1,5 @@
 using System.Text.RegularExpressions;
 
-using JBU.CodeLens.Core.Utilities;
-
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
@@ -556,23 +554,8 @@ public sealed class PreconditionAnalyzer
                "string" or "String" or "size_t" or "IntPtr" or "UIntPtr";
     }
 
-    private static string GetSimpleTypeName(string type)
-    {
-        var simple = type.Trim().TrimEnd('&', '*');
-        var scope = simple.LastIndexOf("::", StringComparison.Ordinal);
-        if (scope >= 0)
-        {
-            simple = simple[(scope + 2)..];
-        }
-
-        var dot = simple.LastIndexOf('.');
-        if (dot >= 0)
-        {
-            simple = simple[(dot + 1)..];
-        }
-
-        return simple;
-    }
+    private static string GetSimpleTypeName(string type) =>
+        TypeNames.StripQualifiers(type.Trim().TrimEnd('&', '*'));
 
     private static bool IsBodyWrappedInTryCatch(string source)
     {
