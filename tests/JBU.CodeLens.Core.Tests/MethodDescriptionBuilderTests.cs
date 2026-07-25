@@ -140,6 +140,6 @@ public class MethodDescriptionBuilderTests
         var text = MethodDescriptionBuilder.Build(Method(name));
 
         Assert.False(string.IsNullOrWhiteSpace(text));
-        Assert.EndsWith(".", text);
+        Assert.EndsWith(".", text, StringComparison.Ordinal);
     }
 }

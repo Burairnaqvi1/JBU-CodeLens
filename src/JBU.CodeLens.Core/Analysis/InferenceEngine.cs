@@ -19,6 +19,8 @@ public sealed class InferenceEngine
     /// </summary>
     public MethodAnalysis Analyze(MethodInfo method)
     {
+        ArgumentNullException.ThrowIfNull(method);
+
         var context = new MethodAnalysisContext(method);
 
         var analysis = new MethodAnalysis

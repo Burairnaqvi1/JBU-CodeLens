@@ -1,44 +1,47 @@
+using System.Globalization;
 using System.Text;
 
 using JBU.CodeLens.Shared.Structural;
 
 namespace JBU.CodeLens.Core.Export;
 
-public class MarkdownExporter
+public static class MarkdownExporter
 {
-    public string Export(ProjectIR ir)
+    public static string Export(ProjectIR ir)
     {
+        ArgumentNullException.ThrowIfNull(ir);
+
         var sb = new StringBuilder();
         var m = ir.Metrics;
 
-        sb.AppendLine($"# Project: {ir.ProjectName}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"# Project: {ir.ProjectName}");
         sb.AppendLine();
 
         sb.AppendLine("## Overview");
         sb.AppendLine();
         sb.AppendLine("| Metric | Value |");
         sb.AppendLine("|--------|-------|");
-        sb.AppendLine($"| Files | {ir.FilesAnalyzed} |");
-        sb.AppendLine($"| Classes | {m?.TotalClasses ?? 0} |");
-        sb.AppendLine($"| Methods | {m?.TotalMethods ?? 0} |");
-        sb.AppendLine($"| Properties | {m?.TotalProperties ?? 0} |");
-        sb.AppendLine($"| Namespaces | {m?.TotalNamespaces ?? 0} |");
-        sb.AppendLine($"| Relationships | {m?.TotalRelationships ?? 0} |");
-        sb.AppendLine($"| Avg Complexity | {m?.AverageComplexity:F2} |");
-        sb.AppendLine($"| Maintainability | {m?.MaintainabilityIndex:F0} |");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"| Files | {ir.FilesAnalyzed} |");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"| Classes | {m?.TotalClasses ?? 0} |");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"| Methods | {m?.TotalMethods ?? 0} |");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"| Properties | {m?.TotalProperties ?? 0} |");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"| Namespaces | {m?.TotalNamespaces ?? 0} |");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"| Relationships | {m?.TotalRelationships ?? 0} |");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"| Avg Complexity | {m?.AverageComplexity:F2} |");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"| Maintainability | {m?.MaintainabilityIndex:F0} |");
         sb.AppendLine();
 
         sb.AppendLine("## Namespaces");
         sb.AppendLine();
         foreach (var ns in ir.Namespaces)
         {
-            sb.AppendLine($"### {ns.Name}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"### {ns.Name}");
             sb.AppendLine();
             if (ns.Classes.Count > 0)
             {
                 sb.AppendLine("**Classes:**");
                 foreach (var cls in ns.Classes)
-                    sb.AppendLine($"- `{cls.Name}`");
+                    sb.AppendLine(CultureInfo.InvariantCulture, $"- `{cls.Name}`");
                 sb.AppendLine();
             }
         }
@@ -47,15 +50,15 @@ public class MarkdownExporter
         sb.AppendLine();
         foreach (var cls in ir.Classes)
         {
-            sb.AppendLine($"### {cls.FullName}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"### {cls.FullName}");
             sb.AppendLine();
-            sb.AppendLine($"- **Kind:** {cls.Kind}");
-            sb.AppendLine($"- **Access:** {cls.AccessModifier}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"- **Kind:** {cls.Kind}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"- **Access:** {cls.AccessModifier}");
             if (cls.BaseTypes.Count > 0)
-                sb.AppendLine($"- **Base types:** {string.Join(", ", cls.BaseTypes)}");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"- **Base types:** {string.Join(", ", cls.BaseTypes)}");
             if (cls.ImplementedInterfaces.Count > 0)
-                sb.AppendLine($"- **Interfaces:** {string.Join(", ", cls.ImplementedInterfaces)}");
-            sb.AppendLine($"- **File:** `{cls.FilePath}`");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"- **Interfaces:** {string.Join(", ", cls.ImplementedInterfaces)}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"- **File:** `{cls.FilePath}`");
             sb.AppendLine();
 
             if (cls.Methods.Count > 0)
@@ -67,7 +70,7 @@ public class MarkdownExporter
                 foreach (var method in cls.Methods)
                 {
                     var p = string.Join(", ", method.Parameters.Select(p => $"{p.TypeName} {p.Name}"));
-                    sb.AppendLine($"| `{method.Name}` | `{method.ReturnType}` | {p} | {method.CyclomaticComplexity} |");
+                    sb.AppendLine(CultureInfo.InvariantCulture, $"| `{method.Name}` | `{method.ReturnType}` | {p} | {method.CyclomaticComplexity} |");
                 }
                 sb.AppendLine();
             }
@@ -77,7 +80,7 @@ public class MarkdownExporter
                 sb.AppendLine("#### Properties");
                 sb.AppendLine();
                 foreach (var prop in cls.Properties)
-                    sb.AppendLine($"- `{prop.TypeName} {prop.Name}`");
+                    sb.AppendLine(CultureInfo.InvariantCulture, $"- `{prop.TypeName} {prop.Name}`");
                 sb.AppendLine();
             }
         }
@@ -89,12 +92,12 @@ public class MarkdownExporter
             sb.AppendLine("| Source | Kind | Target |");
             sb.AppendLine("|--------|------|--------|");
             foreach (var rel in ir.Relationships)
-                sb.AppendLine($"| {rel.SourceId} | {rel.Kind} | {rel.TargetId} |");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"| {rel.SourceId} | {rel.Kind} | {rel.TargetId} |");
             sb.AppendLine();
         }
 
         return sb.ToString();
     }
 
-    public void ExportToFile(ProjectIR ir, string outputPath) => File.WriteAllText(outputPath, Export(ir));
+    public static void ExportToFile(ProjectIR ir, string outputPath) => File.WriteAllText(outputPath, Export(ir));
 }

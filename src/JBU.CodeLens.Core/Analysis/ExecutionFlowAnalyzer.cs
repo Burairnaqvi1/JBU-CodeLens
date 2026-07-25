@@ -1,4 +1,7 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
+
+using JBU.CodeLens.Core.Utilities;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -46,8 +49,20 @@ public sealed class ExecutionFlowAnalyzer
         "result", "output", "total", "sum", "value",
     };
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = "Kept as an instance method deliberately. This analyser is one of seven " +
+                        "siblings composed as instance fields in InferenceEngine " +
+                        "(PreconditionAnalyzer, PostconditionAnalyzer, VariableAnalyzer, and so on) " +
+                        "and invoked through a uniform _analyzer.Analyze(context) call. Making only " +
+                        "this one static because it currently happens to hold no state would break " +
+                        "that symmetry for no measurable gain — it runs once per method, not in a " +
+                        "hot loop.")]
     public IReadOnlyList<ExecutionStep> Analyze(MethodAnalysisContext context)
     {
+        ArgumentNullException.ThrowIfNull(context);
+
         var rawSteps = AnalyzeRawSteps(context);
         var merged = MergeConsecutiveSteps(rawSteps);
         var sorted = SortByPhase(merged);
@@ -94,7 +109,7 @@ public sealed class ExecutionFlowAnalyzer
     {
         var steps = new List<RawStep>();
 
-        foreach (Match match in Regex.Matches(source, @"if\s*\(([^)]*)\)"))
+        foreach (Match match in SafeRegex.Matches(source, @"if\s*\(([^)]*)\)"))
         {
             var window = source.Substring(match.Index, Math.Min(160, source.Length - match.Index));
             if (!window.Contains("throw", StringComparison.Ordinal))
@@ -105,7 +120,7 @@ public sealed class ExecutionFlowAnalyzer
             steps.Add(new RawStep(match.Index, ExecutionStepKind.Validation, DescribeCppGuard(match.Groups[1].Value)));
         }
 
-        foreach (Match match in Regex.Matches(source, @"\bfor\s*\(|\bwhile\s*\("))
+        foreach (Match match in SafeRegex.Matches(source, @"\bfor\s*\(|\bwhile\s*\("))
         {
             steps.Add(new RawStep(
                 match.Index,
@@ -122,7 +137,7 @@ public sealed class ExecutionFlowAnalyzer
             steps.Add(new RawStep(index < 0 ? 0 : index, ExecutionStepKind.Initialization, description));
         }
 
-        foreach (Match match in Regex.Matches(source, @"([A-Za-z_]\w*)\s*(?:\+=|\-=|\*=|/=)"))
+        foreach (Match match in SafeRegex.Matches(source, @"([A-Za-z_]\w*)\s*(?:\+=|\-=|\*=|/=)"))
         {
             steps.Add(new RawStep(
                 match.Index,
@@ -130,7 +145,7 @@ public sealed class ExecutionFlowAnalyzer
                 $"Accumulate the running total into {match.Groups[1].Value}"));
         }
 
-        foreach (Match match in Regex.Matches(source, @"([A-Za-z_]\w*)\s*=\s*(?![=])[^;]*[-+*/](?!>)[^;]*;"))
+        foreach (Match match in SafeRegex.Matches(source, @"([A-Za-z_]\w*)\s*=\s*(?![=])[^;]*[-+*/](?!>)[^;]*;"))
         {
             steps.Add(new RawStep(
                 match.Index,
@@ -153,7 +168,7 @@ public sealed class ExecutionFlowAnalyzer
             break;
         }
 
-        foreach (Match match in Regex.Matches(source, @"std::cout|std::cerr|\bprintf\s*\("))
+        foreach (Match match in SafeRegex.Matches(source, @"std::cout|std::cerr|\bprintf\s*\("))
         {
             steps.Add(new RawStep(
                 match.Index,
@@ -161,7 +176,7 @@ public sealed class ExecutionFlowAnalyzer
                 "Output information to the console during execution"));
         }
 
-        foreach (Match match in Regex.Matches(source, @"\b(?:ifstream|ofstream|fstream)\b|\bfopen\s*\("))
+        foreach (Match match in SafeRegex.Matches(source, @"\b(?:ifstream|ofstream|fstream)\b|\bfopen\s*\("))
         {
             steps.Add(new RawStep(
                 match.Index,
@@ -169,7 +184,7 @@ public sealed class ExecutionFlowAnalyzer
                 "Perform the required file system operation"));
         }
 
-        foreach (Match match in Regex.Matches(source, @"([A-Za-z_]\w*)\s*(?:\.|->)\s*([A-Za-z_]\w*)\s*\("))
+        foreach (Match match in SafeRegex.Matches(source, @"([A-Za-z_]\w*)\s*(?:\.|->)\s*([A-Za-z_]\w*)\s*\("))
         {
             var invokedName = match.Groups[2].Value;
             if (PersistMethodNames.Contains(invokedName) ||
@@ -190,8 +205,8 @@ public sealed class ExecutionFlowAnalyzer
             }
         }
 
-        var tryMatch = Regex.Match(source, @"\btry\b\s*\{");
-        if (tryMatch.Success && Regex.IsMatch(source, @"\bcatch\b\s*\("))
+        var tryMatch = SafeRegex.Match(source, @"\btry\b\s*\{");
+        if (tryMatch.Success && SafeRegex.IsMatch(source, @"\bcatch\b\s*\("))
         {
             steps.Add(new RawStep(
                 tryMatch.Index,
@@ -201,7 +216,7 @@ public sealed class ExecutionFlowAnalyzer
 
         if (!IsVoidReturn(method.ReturnType))
         {
-            var returnMatch = Regex.Match(source, @"\breturn\b\s*([^;]*);");
+            var returnMatch = SafeRegex.Match(source, @"\breturn\b\s*([^;]*);");
             var expressionName = returnMatch.Success ? ExtractFirstIdentifier(returnMatch.Groups[1].Value) : null;
             var position = returnMatch.Success ? returnMatch.Index : source.Length;
             steps.Add(new RawStep(
@@ -228,12 +243,12 @@ public sealed class ExecutionFlowAnalyzer
             return $"Validate that {name} is not empty before proceeding";
         }
 
-        if (Regex.IsMatch(condition, @"<=\s*0") || Regex.IsMatch(condition, @"==\s*0"))
+        if (SafeRegex.IsMatch(condition, @"<=\s*0") || SafeRegex.IsMatch(condition, @"==\s*0"))
         {
             return $"Verify that {name} is non-zero to prevent invalid operations";
         }
 
-        if (Regex.IsMatch(condition, @"<\s*0"))
+        if (SafeRegex.IsMatch(condition, @"<\s*0"))
         {
             return $"Ensure that {name} is a positive value as required";
         }
@@ -243,7 +258,7 @@ public sealed class ExecutionFlowAnalyzer
 
     private static string? ExtractFirstIdentifier(string text)
     {
-        var match = Regex.Match(text, @"[A-Za-z_]\w*");
+        var match = SafeRegex.Match(text, @"[A-Za-z_]\w*");
         return match.Success ? match.Value : null;
     }
 
@@ -766,7 +781,7 @@ public sealed class ExecutionFlowAnalyzer
         return merged;
     }
 
-    private static IReadOnlyList<ExecutionStep> NumberSteps(List<RawStep> steps)
+    private static List<ExecutionStep> NumberSteps(List<RawStep> steps)
     {
         var numbered = new List<ExecutionStep>();
         for (var i = 0; i < steps.Count; i++)
@@ -778,6 +793,14 @@ public sealed class ExecutionFlowAnalyzer
                 Kind = steps[i].Kind,
             });
         }
+
+        // CapSteps guarantees at least one step even for an empty method, and the UI and the
+        // exporters both render this list as an ordered "1., 2., 3." sequence. An empty list or a
+        // gap in the numbering would silently produce a malformed execution-flow section.
+        Debug.Assert(numbered.Count > 0, "Execution flow must always contain at least one step.");
+        Debug.Assert(
+            numbered.Select((s, i) => s.StepNumber == i + 1).All(ok => ok),
+            "Execution step numbers must be contiguous and 1-based.");
 
         return numbered;
     }

@@ -2,7 +2,7 @@ using JBU.CodeLens.Core.AI;
 
 namespace JBU.CodeLens.Core.Tests;
 
-public class ModelPathResolverTests : IDisposable
+public sealed class ModelPathResolverTests : IDisposable
 {
     private readonly string _tempDir = Directory.CreateTempSubdirectory("codelens-model-tests").FullName;
 

@@ -2,6 +2,19 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
+// Constrains where the runtime may load native dependencies from when it falls back to the OS
+// loader. Without this, the default search order includes the current working directory, so a
+// libclang.dll planted in whatever folder the user happened to launch the app from would be loaded
+// in preference to the real one — arbitrary code execution in this process.
+//
+// SafeDirectories (LOAD_LIBRARY_SEARCH_DEFAULT_DIRS) covers the application directory and System32,
+// which is where the genuine libclang.dll lives: the UI build copies it next to the executable (see
+// JBU.CodeLens.UI.csproj, CopyLibClangToAppRoot). AssemblyDirectory would also work but CA5393
+// rejects it as unsafe, and SafeDirectories is the stricter option that still resolves correctly —
+// verified by the CppParserTests suite, which performs real native parses through these imports.
+// Applied assembly-wide because every P/Invoke in this assembly targets that app-local libclang.
+[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+
 namespace JBU.CodeLens.Core.Parsing.Cpp;
 
 /// <summary>
@@ -356,7 +369,9 @@ public class CppParser : ILanguageParser
         {
             var tuCursor = clang_getTranslationUnitCursor(translationUnit);
             CXCursorVisitor visitor = VisitTranslationUnitChild;
-            clang_visitChildren(tuCursor, visitor, GCHandle.ToIntPtr(handle));
+            // Non-zero only when a visitor returns CXChildVisit_Break; none of ours ever does,
+            // so the traversal always runs to completion and the result carries no information.
+            _ = clang_visitChildren(tuCursor, visitor, GCHandle.ToIntPtr(handle));
         }
         finally
         {
@@ -740,7 +755,8 @@ public class CppParser : ILanguageParser
         try
         {
             CXCursorVisitor visitor = VisitClassMember;
-            clang_visitChildren(classCursor, visitor, GCHandle.ToIntPtr(handle));
+            // See VisitTranslationUnitChild: no visitor breaks, so the result carries no information.
+            _ = clang_visitChildren(classCursor, visitor, GCHandle.ToIntPtr(handle));
         }
         finally
         {
@@ -826,7 +842,7 @@ public class CppParser : ILanguageParser
             name = name[(scopeIndex + 2)..];
         }
 
-        var parenIndex = name.IndexOf('(');
+        var parenIndex = name.IndexOf('(', StringComparison.Ordinal);
         if (parenIndex > 0)
         {
             name = name[..parenIndex];
@@ -932,7 +948,8 @@ public class CppParser : ILanguageParser
             try
             {
                 CXCursorVisitor visitor = VisitLocalVariable;
-                clang_visitChildren(methodCursor, visitor, GCHandle.ToIntPtr(handle));
+                // See VisitTranslationUnitChild: no visitor breaks, so the result carries no information.
+                _ = clang_visitChildren(methodCursor, visitor, GCHandle.ToIntPtr(handle));
             }
             finally
             {
@@ -1430,7 +1447,7 @@ public class CppParser : ILanguageParser
                         tags["summary"] = NormalizeWhitespace(value);
                         break;
                     case "param":
-                        var space = value.IndexOf(' ');
+                        var space = value.IndexOf(' ', StringComparison.Ordinal);
                         if (space > 0)
                         {
                             tags[$"param:{value[..space].Trim()}"] = NormalizeWhitespace(value[(space + 1)..]);
@@ -1443,7 +1460,7 @@ public class CppParser : ILanguageParser
                         break;
                     case "throws":
                     case "exception":
-                        var throwSpace = value.IndexOf(' ');
+                        var throwSpace = value.IndexOf(' ', StringComparison.Ordinal);
                         var exceptionType = throwSpace > 0 ? value[..throwSpace].Trim() : value.Trim();
                         var exceptionDesc = throwSpace > 0 ? value[(throwSpace + 1)..] : string.Empty;
                         if (!string.IsNullOrEmpty(exceptionType))
@@ -1524,9 +1541,12 @@ public class CppParser : ILanguageParser
         return true;
     }
 
+    // Matched against Doxygen comment lines from source files the user did not write; the timeout
+    // bounds a pathological input instead of letting it hang the parse. See SafeRegex.
     private static readonly Regex TagLineRegex = new(
         @"^[@\\](?<tag>brief|param|return|returns|throws|exception)\b\s*(?<value>.*)$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(2));
 
     private static string NormalizeWhitespace(string text)
     {
@@ -1566,11 +1586,11 @@ public class CppParser : ILanguageParser
             name = name[..^1].Trim();
         }
 
-        var angle = name.IndexOf('<');
+        var angle = name.IndexOf('<', StringComparison.Ordinal);
         if (angle > 0)
         {
             var inner = name[(angle + 1)..].TrimEnd('>').Trim();
-            var comma = inner.IndexOf(',');
+            var comma = inner.IndexOf(',', StringComparison.Ordinal);
             if (comma > 0)
             {
                 inner = inner[..comma].Trim();

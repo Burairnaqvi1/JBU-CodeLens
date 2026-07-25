@@ -14,7 +14,7 @@ namespace JBU.CodeLens.UI.Views;
 public partial class NodeDetailView : UserControl
 {
     /// <summary>Raised when the user asks to leave this page (Back button).</summary>
-    public event Action? BackRequested;
+    public event EventHandler? BackRequested;
 
     private Action? _renderAction;
 
@@ -23,7 +23,7 @@ public partial class NodeDetailView : UserControl
         InitializeComponent();
         // This control lives for the application's lifetime, so the static subscription
         // is intentionally never removed.
-        ThemeManager.ThemeChanged += _ => _renderAction?.Invoke();
+        ThemeManager.ThemeChanged += (_, _) => _renderAction?.Invoke();
     }
 
     /// <summary>
@@ -38,5 +38,5 @@ public partial class NodeDetailView : UserControl
         DetailScroll.ScrollToVerticalOffset(0);
     }
 
-    private void BackButton_Click(object sender, RoutedEventArgs e) => BackRequested?.Invoke();
+    private void BackButton_Click(object sender, RoutedEventArgs e) => BackRequested?.Invoke(this, EventArgs.Empty);
 }

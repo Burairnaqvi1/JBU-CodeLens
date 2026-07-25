@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 
+using JBU.CodeLens.Core.Utilities;
+
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
@@ -186,7 +188,7 @@ public sealed class PostconditionAnalyzer
             yield break;
         }
 
-        if (context.HasSourceBody && Regex.IsMatch(context.SourceBody, @"\breturn\b"))
+        if (context.HasSourceBody && SafeRegex.IsMatch(context.SourceBody, @"\breturn\b"))
         {
             yield return CreatePost(
                 $"Returns a computed {AnalysisMessageBuilder.NormalizeTypeName(returnType)} result based on the method inputs",
@@ -264,7 +266,7 @@ public sealed class PostconditionAnalyzer
             yield break;
         }
 
-        if (!Regex.IsMatch(context.SourceBody, @"\bforeach\b|\bfor\s*\(|\bwhile\s*\(", RegexOptions.IgnoreCase))
+        if (!SafeRegex.IsMatch(context.SourceBody, @"\bforeach\b|\bfor\s*\(|\bwhile\s*\(", RegexOptions.IgnoreCase))
         {
             yield break;
         }
@@ -308,7 +310,7 @@ public sealed class PostconditionAnalyzer
             yield break;
         }
 
-        if (!Regex.IsMatch(context.SourceBody, @"\bMath\.Pow\s*\(|\bMath\.Sqrt\s*\(|\bpow\s*\(|\bsqrt\s*\(|\bstd::pow\s*\(|\bstd::sqrt\s*\(", RegexOptions.IgnoreCase))
+        if (!SafeRegex.IsMatch(context.SourceBody, @"\bMath\.Pow\s*\(|\bMath\.Sqrt\s*\(|\bpow\s*\(|\bsqrt\s*\(|\bstd::pow\s*\(|\bstd::sqrt\s*\(", RegexOptions.IgnoreCase))
         {
             yield break;
         }
@@ -330,7 +332,7 @@ public sealed class PostconditionAnalyzer
         foreach (var field in fields)
         {
             var pattern = $@"\b{Regex.Escape(field.Name)}\s*(\+\+|--)|(\+\+|--)\s*{Regex.Escape(field.Name)}\b";
-            if (!Regex.IsMatch(context.SourceBody, pattern))
+            if (!SafeRegex.IsMatch(context.SourceBody, pattern))
             {
                 continue;
             }
@@ -358,7 +360,7 @@ public sealed class PostconditionAnalyzer
         foreach (var field in fields)
         {
             var pattern = $@"\b{Regex.Escape(field.Name)}\s*=(?!=)";
-            if (!Regex.IsMatch(context.SourceBody, pattern))
+            if (!SafeRegex.IsMatch(context.SourceBody, pattern))
             {
                 continue;
             }
@@ -394,7 +396,7 @@ public sealed class PostconditionAnalyzer
 
         foreach (var pattern in patterns)
         {
-            if (!Regex.IsMatch(context.SourceBody, pattern))
+            if (!SafeRegex.IsMatch(context.SourceBody, pattern))
             {
                 continue;
             }
@@ -464,7 +466,7 @@ public sealed class PostconditionAnalyzer
             yield break;
         }
 
-        if (Regex.IsMatch(context.SourceBody, @"\b(ExecuteNonQuery|SaveChanges|INSERT\s+INTO|UPDATE\s+\w+)\b", RegexOptions.IgnoreCase))
+        if (SafeRegex.IsMatch(context.SourceBody, @"\b(ExecuteNonQuery|SaveChanges|INSERT\s+INTO|UPDATE\s+\w+)\b", RegexOptions.IgnoreCase))
         {
             yield return new StateChange
             {

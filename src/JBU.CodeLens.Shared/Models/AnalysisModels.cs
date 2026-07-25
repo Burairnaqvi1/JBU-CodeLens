@@ -176,6 +176,8 @@ public sealed class MethodAnalysisContext
 
     public MethodAnalysisContext(MethodInfo method)
     {
+        ArgumentNullException.ThrowIfNull(method);
+
         Method = method;
         Method.XmlDocTags.TryGetValue("sourceCode", out var source);
         SourceBody = source?.Trim() ?? string.Empty;

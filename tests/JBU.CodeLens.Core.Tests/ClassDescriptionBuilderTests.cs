@@ -63,8 +63,8 @@ public class ClassDescriptionBuilderTests
         var classInfo = Class("MainWindow", methods: 2, category: CodeCategory.GuiLogic);
         classInfo.BaseClassName = "Window";
 
-        Assert.StartsWith("User-interface class with 2 methods", ClassDescriptionBuilder.Build(classInfo));
-        Assert.Contains("; extends Window.", ClassDescriptionBuilder.Build(classInfo));
+        Assert.StartsWith("User-interface class with 2 methods", ClassDescriptionBuilder.Build(classInfo), StringComparison.Ordinal);
+        Assert.Contains("; extends Window.", ClassDescriptionBuilder.Build(classInfo), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class ClassDescriptionBuilderTests
         var classInfo = Class("Hub", methods: 1);
         classInfo.Dependencies.AddRange(new[] { "A", "B", "C", "D", "E", "F" });
 
-        Assert.EndsWith("depends on A, B, C, D, and 2 more.", ClassDescriptionBuilder.Build(classInfo));
+        Assert.EndsWith("depends on A, B, C, D, and 2 more.", ClassDescriptionBuilder.Build(classInfo), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -90,6 +90,6 @@ public class ClassDescriptionBuilderTests
         var text = ClassDescriptionBuilder.Build(new ClassInfo());
 
         Assert.False(string.IsNullOrWhiteSpace(text));
-        Assert.EndsWith(".", text);
+        Assert.EndsWith(".", text, StringComparison.Ordinal);
     }
 }

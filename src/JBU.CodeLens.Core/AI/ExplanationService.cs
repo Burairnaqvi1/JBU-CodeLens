@@ -1,7 +1,10 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+
+using JBU.CodeLens.Core.Utilities;
 using LLama;
 using LLama.Common;
 using LLama.Sampling;
@@ -217,6 +220,8 @@ public sealed class ExplanationService : IExplanationService
     /// </summary>
     public string GenerateClassSummary(ClassInfo classInfo, Action<string>? onPartial = null)
     {
+        ArgumentNullException.ThrowIfNull(classInfo);
+
         if (!IsReady)
         {
             return LoadError ?? "The explanation model is not available.";
@@ -739,7 +744,7 @@ public sealed class ExplanationService : IExplanationService
             inferenceParams.AntiPrompts = new[] { "<|end|>", "<|user|>", "<|system|>" };
             var prompt = FormatPhiPrompt(systemPrompt, instruction);
             var executor = new InstructExecutor(context, string.Empty, string.Empty);
-            await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken))
+            await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken).ConfigureAwait(false))
             {
                 builder.Append(token);
                 ReportPartial();
@@ -750,7 +755,7 @@ public sealed class ExplanationService : IExplanationService
             inferenceParams.AntiPrompts = new[] { "<|im_end|>", "<|im_start|>" };
             var prompt = FormatChatMlPrompt(systemPrompt, instruction);
             var executor = new InstructExecutor(context, string.Empty, string.Empty);
-            await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken))
+            await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken).ConfigureAwait(false))
             {
                 builder.Append(token);
                 ReportPartial();
@@ -761,7 +766,7 @@ public sealed class ExplanationService : IExplanationService
             // CodeLlama-Instruct expects the "[INST] ... [/INST]" wrapper.
             inferenceParams.AntiPrompts = new[] { "[INST]", "</s>" };
             var executor = new InstructExecutor(context, "[INST] ", " [/INST]");
-            await foreach (var token in executor.InferAsync(instruction, inferenceParams, cancellationToken))
+            await foreach (var token in executor.InferAsync(instruction, inferenceParams, cancellationToken).ConfigureAwait(false))
             {
                 builder.Append(token);
                 ReportPartial();
@@ -782,8 +787,8 @@ public sealed class ExplanationService : IExplanationService
             return text;
         }
 
-        var cleaned = Regex.Replace(text, @"<\|[^|>]{0,32}\|>", " ");
-        return Regex.Replace(cleaned, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", " ");
+        var cleaned = SafeRegex.Replace(text, @"<\|[^|>]{0,32}\|>", " ");
+        return SafeRegex.Replace(cleaned, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", " ");
     }
 
     private static string FormatPhiPrompt(string systemMessage, string userMessage) =>
@@ -870,20 +875,20 @@ public sealed class ExplanationService : IExplanationService
     internal static string DescribeMethodCompact(MethodInfo methodInfo)
     {
         var builder = new StringBuilder();
-        builder.AppendLine($"Method: {methodInfo.ReturnType} {methodInfo.Name}({string.Join(", ", methodInfo.Parameters)})");
-        builder.AppendLine($"Class: {methodInfo.ParentClass?.Name ?? "unknown"}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Method: {methodInfo.ReturnType} {methodInfo.Name}({string.Join(", ", methodInfo.Parameters)})");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Class: {methodInfo.ParentClass?.Name ?? "unknown"}");
 
         if (!string.IsNullOrEmpty(methodInfo.XmlSummary))
-            builder.AppendLine($"Summary: {methodInfo.XmlSummary}");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"Summary: {methodInfo.XmlSummary}");
 
         if (methodInfo.OperationalLimits.Count > 0)
-            builder.AppendLine($"Guards: {string.Join("; ", methodInfo.OperationalLimits.Take(3))}");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"Guards: {string.Join("; ", methodInfo.OperationalLimits.Take(3))}");
 
         builder.Append(BuildVerifiedFacts(methodInfo));
 
         var source = GetMethodSourceSnippet(methodInfo);
         if (!string.IsNullOrEmpty(source))
-            builder.AppendLine($"Source: {source}");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"Source: {source}");
 
         return builder.ToString();
     }
@@ -926,18 +931,18 @@ public sealed class ExplanationService : IExplanationService
                 facts.Add("Asynchronous: awaits one or more operations.");
             }
 
-            if (Regex.IsMatch(source, @"\block\s*\(") || source.Contains("std::lock_guard", StringComparison.Ordinal))
+            if (SafeRegex.IsMatch(source, @"\block\s*\(") || source.Contains("std::lock_guard", StringComparison.Ordinal))
             {
                 facts.Add("Uses a lock for thread safety.");
             }
 
-            if (Regex.IsMatch(source, @"\bcatch\b"))
+            if (SafeRegex.IsMatch(source, @"\bcatch\b"))
             {
                 facts.Add(SourcePatternHelpers.HasCatchWithoutRethrow(source)
                     ? "Catches exceptions internally without rethrowing; callers get a normal return value instead of the exception."
                     : "Contains try/catch handling.");
 
-                if (Regex.IsMatch(source, @"\bfinally\b"))
+                if (SafeRegex.IsMatch(source, @"\bfinally\b"))
                 {
                     facts.Add("Has a finally block that always runs.");
                 }
@@ -964,7 +969,7 @@ public sealed class ExplanationService : IExplanationService
         builder.AppendLine("Verified facts from code analysis (authoritative — never contradict them):");
         foreach (var fact in facts)
         {
-            builder.AppendLine($"- {fact}");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"- {fact}");
         }
 
         return builder.ToString();
@@ -992,7 +997,7 @@ public sealed class ExplanationService : IExplanationService
 
         // The C# parser stores the body only, so any self-call matches; the C++ parser stores
         // the whole definition, whose signature contributes one non-call occurrence.
-        var selfCalls = Regex.Matches(source, $@"\b{Regex.Escape(name)}\s*\(").Count;
+        var selfCalls = SafeRegex.Matches(source, $@"\b{Regex.Escape(name)}\s*\(").Count;
         var isCSharp = LanguageFileExtensions.IsCSharpFile(methodInfo.ParentClass?.SourceFilePath ?? string.Empty);
         return isCSharp ? selfCalls >= 1 : selfCalls >= 2;
     }
@@ -1004,10 +1009,10 @@ public sealed class ExplanationService : IExplanationService
     /// deliberately conservative bar for claiming "modifies no state".
     /// </summary>
     private static bool HasAnyMutation(string source) =>
-        Regex.IsMatch(source, @"[+\-*/%|&^]=(?!=)") ||
-        Regex.IsMatch(source, @"(?<![=!<>+\-*/%|&^])=(?!=|>)") ||
-        Regex.IsMatch(source, @"\+\+|--") ||
-        Regex.IsMatch(source,
+        SafeRegex.IsMatch(source, @"[+\-*/%|&^]=(?!=)") ||
+        SafeRegex.IsMatch(source, @"(?<![=!<>+\-*/%|&^])=(?!=|>)") ||
+        SafeRegex.IsMatch(source, @"\+\+|--") ||
+        SafeRegex.IsMatch(source,
             @"\.\s*(Add|AddRange|Remove|RemoveAll|RemoveAt|Clear|Insert|Push|Pop|Enqueue|Dequeue|push_back|pop_back|erase|clear|insert)\s*\(");
 
     private static List<string> GetMutatedFields(MethodInfo methodInfo, string source)
@@ -1021,7 +1026,7 @@ public sealed class ExplanationService : IExplanationService
             }
 
             if (SourcePatternHelpers.IsWrittenInSource(source, field.Name) ||
-                Regex.IsMatch(source,
+                SafeRegex.IsMatch(source,
                     $@"\b{Regex.Escape(field.Name)}\s*\.\s*(Add|AddRange|Remove|RemoveAll|RemoveAt|Clear|Insert|Push|Pop|Enqueue|Dequeue|push_back|pop_back|erase|clear|insert)\s*\("))
             {
                 mutated.Add(field.Name);
@@ -1034,9 +1039,9 @@ public sealed class ExplanationService : IExplanationService
     private static List<string> ExtractReturnStatements(string source)
     {
         var results = new List<string>();
-        foreach (Match match in Regex.Matches(source, @"\breturn\b([^;]*);"))
+        foreach (Match match in SafeRegex.Matches(source, @"\breturn\b([^;]*);"))
         {
-            var expression = Regex.Replace(match.Groups[1].Value, @"\s+", " ").Trim();
+            var expression = SafeRegex.Replace(match.Groups[1].Value, @"\s+", " ").Trim();
             if (expression.Length > 70)
             {
                 expression = expression[..70] + "…";
@@ -1062,21 +1067,22 @@ public sealed class ExplanationService : IExplanationService
     internal static string DescribeMethod(MethodInfo methodInfo)
     {
         var builder = new StringBuilder();
-        builder.AppendLine($"Method name: {methodInfo.Name}");
-        builder.AppendLine($"Return type: {methodInfo.ReturnType}");
-        builder.AppendLine($"Access: {methodInfo.AccessModifier}");
-        builder.AppendLine($"Parent class: {methodInfo.ParentClass?.Name ?? "unknown"}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Method name: {methodInfo.Name}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Return type: {methodInfo.ReturnType}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Access: {methodInfo.AccessModifier}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Parent class: {methodInfo.ParentClass?.Name ?? "unknown"}");
         builder.AppendLine(
+            CultureInfo.InvariantCulture,
             $"Parameters: {(methodInfo.Parameters.Count > 0 ? string.Join(", ", methodInfo.Parameters) : "none")}");
 
         if (!string.IsNullOrEmpty(methodInfo.XmlSummary))
         {
-            builder.AppendLine($"Existing doc summary: {methodInfo.XmlSummary}");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"Existing doc summary: {methodInfo.XmlSummary}");
         }
 
         if (methodInfo.ThrownExceptions.Count > 0)
         {
-            builder.AppendLine($"Thrown exceptions: {string.Join(", ", methodInfo.ThrownExceptions)}");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"Thrown exceptions: {string.Join(", ", methodInfo.ThrownExceptions)}");
         }
 
         if (methodInfo.OperationalLimits.Count > 0)
@@ -1084,7 +1090,7 @@ public sealed class ExplanationService : IExplanationService
             builder.AppendLine("Operational limits from code:");
             foreach (var limit in methodInfo.OperationalLimits)
             {
-                builder.AppendLine($"  - {limit}");
+                builder.AppendLine(CultureInfo.InvariantCulture, $"  - {limit}");
             }
         }
 
@@ -1094,7 +1100,7 @@ public sealed class ExplanationService : IExplanationService
             builder.AppendLine("Class fields:");
             foreach (var field in globals)
             {
-                builder.AppendLine($"  {field.AccessModifier} {field.Type} {field.Name}");
+                builder.AppendLine(CultureInfo.InvariantCulture, $"  {field.AccessModifier} {field.Type} {field.Name}");
             }
         }
 
@@ -1103,14 +1109,14 @@ public sealed class ExplanationService : IExplanationService
             builder.AppendLine("Local variables:");
             foreach (var local in methodInfo.LocalVariables)
             {
-                builder.AppendLine($"  {local.Type} {local.Name}");
+                builder.AppendLine(CultureInfo.InvariantCulture, $"  {local.Type} {local.Name}");
             }
         }
 
         var source = GetMethodSourceSnippet(methodInfo);
         if (!string.IsNullOrEmpty(source))
         {
-            builder.AppendLine($"Source: {source}");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"Source: {source}");
         }
 
         return builder.ToString();
@@ -1154,11 +1160,11 @@ public sealed class ExplanationService : IExplanationService
   {
     var t = line.Trim();
     if (t.Length == 0) return true;
-    return t is ">" or "-" or "*" or "•" or "#" || Regex.IsMatch(t, @"^\d+[.)]?$");
+    return t is ">" or "-" or "*" or "•" or "#" || SafeRegex.IsMatch(t, @"^\d+[.)]?$");
   }
 
   internal static string StripMarkdownEmphasis(string text) =>
-    text.Replace("**", string.Empty).Replace("__", string.Empty);
+    text.Replace("**", string.Empty, StringComparison.Ordinal).Replace("__", string.Empty, StringComparison.Ordinal);
 
   private static string TruncateProse(string text, int maxSentences, int maxWords)
   {
@@ -1222,7 +1228,7 @@ public sealed class ExplanationService : IExplanationService
         var line = words.Length > maxWordsPerBullet
           ? string.Join(' ', words.Take(maxWordsPerBullet)) + "…"
           : bullet;
-        builder.AppendLine($"- {StripMarkdownEmphasis(line)}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"- {StripMarkdownEmphasis(line)}");
       }
     }
   }

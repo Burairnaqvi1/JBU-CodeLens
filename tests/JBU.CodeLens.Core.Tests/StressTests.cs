@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using JBU.CodeLens.Core.Analysis;
 using JBU.CodeLens.Core.Parsing.CSharp;
@@ -11,7 +12,7 @@ namespace JBU.CodeLens.Core.Tests;
 /// Adversarial and large-scale inputs: the app must complete or fail gracefully (errors reported
 /// per file), never crash or hang, on every one of these.
 /// </summary>
-public class StressTests : IDisposable
+public sealed class StressTests : IDisposable
 {
     private readonly string _tempDir = Directory.CreateTempSubdirectory("codelens-stress").FullName;
 
@@ -25,7 +26,7 @@ public class StressTests : IDisposable
     {
         for (var i = 0; i < 500; i++)
         {
-            File.WriteAllText(Path.Combine(_tempDir, $"Class{i:D3}.cs"), $$"""
+            await File.WriteAllTextAsync(Path.Combine(_tempDir, $"Class{i:D3}.cs"), $$"""
                 namespace Stress;
                 public class Class{{i:D3}}
                 {
@@ -54,7 +55,7 @@ public class StressTests : IDisposable
         var builder = new StringBuilder("namespace Big;\npublic class Huge\n{\n");
         for (var i = 0; i < 1200; i++)
         {
-            builder.AppendLine($$"""
+            builder.AppendLine(CultureInfo.InvariantCulture, $$"""
                 public int Method{{i}}(int input)
                 {
                     var value = input + {{i}};
@@ -106,7 +107,7 @@ public class StressTests : IDisposable
         var builder = new StringBuilder("public class Nested { public int Run(int x) {\n");
         for (var i = 0; i < 150; i++)
         {
-            builder.AppendLine($"if (x > {i}) {{");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"if (x > {i}) {{");
         }
         builder.AppendLine("x++;");
         for (var i = 0; i < 150; i++)
@@ -140,11 +141,11 @@ public class StressTests : IDisposable
     [Fact]
     public async Task Scan_AlreadyCanceled_ReturnsFailedResultInsteadOfThrowing()
     {
-        File.WriteAllText(Path.Combine(_tempDir, "One.cs"), "public class One {}");
+        await File.WriteAllTextAsync(Path.Combine(_tempDir, "One.cs"), "public class One {}");
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
-        var result = await new ScideEngine().AnalyzeProjectAsync(_tempDir, cts.Token);
+        var result = await new ScideEngine().AnalyzeProjectAsync(_tempDir, cancellationToken: cts.Token);
 
         Assert.False(result.Success);
         Assert.Equal("Scan canceled.", result.Error);
@@ -155,13 +156,13 @@ public class StressTests : IDisposable
     {
         for (var i = 0; i < 20; i++)
         {
-            File.WriteAllText(Path.Combine(_tempDir, $"P{i}.cs"), $"public class P{i} {{}}");
+            await File.WriteAllTextAsync(Path.Combine(_tempDir, $"P{i}.cs"), $"public class P{i} {{}}");
         }
 
         var reports = new List<ScanProgress>();
         var progress = new SynchronousProgress(reports.Add);
 
-        var result = await new ScideEngine().AnalyzeProjectAsync(_tempDir, default, progress);
+        var result = await new ScideEngine().AnalyzeProjectAsync(_tempDir, progress);
 
         Assert.True(result.Success, result.Error);
         Assert.Equal(20, reports.Count);

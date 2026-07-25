@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 
+using JBU.CodeLens.Core.Utilities;
+
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
@@ -27,9 +29,9 @@ public static class OperationalLimitFormatter
 
         var subject = string.Empty;
         var condition = text;
-        if (text.Contains(':'))
+        if (text.Contains(':', StringComparison.Ordinal))
         {
-            var colon = text.IndexOf(':');
+            var colon = text.IndexOf(':', StringComparison.Ordinal);
             subject = text[..colon].Trim();
             condition = text[(colon + 1)..].Trim();
         }
@@ -173,18 +175,18 @@ public static class OperationalLimitFormatter
             return string.Empty;
         }
 
-        return char.ToUpper(trimmed[0]) + trimmed[1..];
+        return char.ToUpperInvariant(trimmed[0]) + trimmed[1..];
     }
 
     private static string ExtractSubject(string text)
     {
-        var match = Regex.Match(text, @"\b([A-Za-z_][\w]*)\s*(==|<=|<|!=|>=|>)");
+        var match = SafeRegex.Match(text, @"\b([A-Za-z_][\w]*)\s*(==|<=|<|!=|>=|>)");
         return match.Success ? match.Groups[1].Value : string.Empty;
     }
 
     private static bool IsZeroCheck(string condition) =>
-        Regex.IsMatch(condition, @"\b[A-Za-z_][\w]*\s*==\s*0\b") ||
-        Regex.IsMatch(condition, @"\b0\s*==\s*[A-Za-z_][\w]*\b");
+        SafeRegex.IsMatch(condition, @"\b[A-Za-z_][\w]*\s*==\s*0\b") ||
+        SafeRegex.IsMatch(condition, @"\b0\s*==\s*[A-Za-z_][\w]*\b");
 
     private static bool IsNullCheck(string condition) =>
         condition.Contains("== null", StringComparison.OrdinalIgnoreCase) ||
@@ -198,10 +200,10 @@ public static class OperationalLimitFormatter
         condition.Contains(".empty()", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsNegativeCheck(string condition) =>
-        Regex.IsMatch(condition, @"\b[A-Za-z_][\w]*\s*<\s*0\b");
+        SafeRegex.IsMatch(condition, @"\b[A-Za-z_][\w]*\s*<\s*0\b");
 
     private static bool IsNonPositiveCheck(string condition) =>
-        Regex.IsMatch(condition, @"\b[A-Za-z_][\w]*\s*<=\s*0\b");
+        SafeRegex.IsMatch(condition, @"\b[A-Za-z_][\w]*\s*<=\s*0\b");
 
     private static bool LooksLikeCodeExpression(string text) =>
         text.Contains("==", StringComparison.Ordinal) ||

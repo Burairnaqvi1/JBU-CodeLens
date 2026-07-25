@@ -23,6 +23,8 @@ public class KnowledgeGraph
 
     public void AddNode(GraphNode node)
     {
+        ArgumentNullException.ThrowIfNull(node);
+
         if (!Nodes.ContainsKey(node.Id))
             Nodes[node.Id] = node;
     }
@@ -31,6 +33,8 @@ public class KnowledgeGraph
 
     public static KnowledgeGraph BuildFrom(ProjectIR ir)
     {
+        ArgumentNullException.ThrowIfNull(ir);
+
         var graph = new KnowledgeGraph { ProjectName = ir.ProjectName };
 
         foreach (var ns in ir.Namespaces)

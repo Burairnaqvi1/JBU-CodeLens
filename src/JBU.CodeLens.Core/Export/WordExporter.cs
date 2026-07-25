@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Xceed.Document.NET;
 using Xceed.Words.NET;
 
@@ -152,11 +154,11 @@ public static class WordExporter
         SetTableCell(table, 0, 0, "Category", bold: true);
         SetTableCell(table, 0, 1, "Count", bold: true);
         SetTableCell(table, 1, 0, "Business Logic");
-        SetTableCell(table, 1, 1, stats.BusinessLogicCount.ToString());
+        SetTableCell(table, 1, 1, stats.BusinessLogicCount.ToString(CultureInfo.InvariantCulture));
         SetTableCell(table, 2, 0, "GUI Logic");
-        SetTableCell(table, 2, 1, stats.GuiLogicCount.ToString());
+        SetTableCell(table, 2, 1, stats.GuiLogicCount.ToString(CultureInfo.InvariantCulture));
         SetTableCell(table, 3, 0, "Utility");
-        SetTableCell(table, 3, 1, stats.UtilityCount.ToString());
+        SetTableCell(table, 3, 1, stats.UtilityCount.ToString(CultureInfo.InvariantCulture));
 
         document.InsertTable(table);
     }

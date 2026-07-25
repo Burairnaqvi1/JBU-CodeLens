@@ -48,6 +48,8 @@ public static class CustomFaqStore
     /// <summary>Adds a question if non-empty and not already present. Returns the updated list.</summary>
     public static List<string> Add(string question)
     {
+        ArgumentNullException.ThrowIfNull(question);
+
         var trimmed = question.Trim();
         var questions = Load();
 

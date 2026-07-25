@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 
+using JBU.CodeLens.Core.Utilities;
+
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
@@ -118,8 +120,8 @@ internal static class SourcePatternHelpers
         }
 
         var escaped = Regex.Escape(identifier);
-        return Regex.IsMatch(source, $@"/\s*{escaped}\b|/\s*\(\s*{escaped}\s*\)|/\s*\(\s*[^)]*\b{escaped}\b") ||
-               Regex.IsMatch(source, $@"%\s*{escaped}\b");
+        return SafeRegex.IsMatch(source, $@"/\s*{escaped}\b|/\s*\(\s*{escaped}\s*\)|/\s*\(\s*[^)]*\b{escaped}\b") ||
+               SafeRegex.IsMatch(source, $@"%\s*{escaped}\b");
     }
 
     internal static bool HasNullGuard(string source, string identifier)
@@ -130,10 +132,10 @@ internal static class SourcePatternHelpers
         }
 
         var escaped = Regex.Escape(identifier);
-        return Regex.IsMatch(source, $@"\b{escaped}\s*==\s*null\b", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(source, $@"\b{escaped}\s*!=\s*null\b", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(source, $@"\b{escaped}\s*==\s*nullptr\b", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(source, $@"\b{escaped}\s*!=\s*nullptr\b", RegexOptions.IgnoreCase) ||
+        return SafeRegex.IsMatch(source, $@"\b{escaped}\s*==\s*null\b", RegexOptions.IgnoreCase) ||
+               SafeRegex.IsMatch(source, $@"\b{escaped}\s*!=\s*null\b", RegexOptions.IgnoreCase) ||
+               SafeRegex.IsMatch(source, $@"\b{escaped}\s*==\s*nullptr\b", RegexOptions.IgnoreCase) ||
+               SafeRegex.IsMatch(source, $@"\b{escaped}\s*!=\s*nullptr\b", RegexOptions.IgnoreCase) ||
                source.Contains($"ThrowIfNull({identifier}", StringComparison.Ordinal) ||
                source.Contains($"ArgumentNullException.ThrowIfNull({identifier}", StringComparison.Ordinal);
     }
@@ -146,7 +148,7 @@ internal static class SourcePatternHelpers
         }
 
         return source.Contains($"{identifier}[", StringComparison.Ordinal) ||
-               Regex.IsMatch(source, $@"\[\s*{Regex.Escape(identifier)}\s*\]");
+               SafeRegex.IsMatch(source, $@"\[\s*{Regex.Escape(identifier)}\s*\]");
     }
 
     internal static bool MethodIteratesParameter(string source, string identifier)
@@ -157,8 +159,8 @@ internal static class SourcePatternHelpers
         }
 
         var escaped = Regex.Escape(identifier);
-        return Regex.IsMatch(source, $@"\bforeach\s*\([^)]*\b{escaped}\b") ||
-               Regex.IsMatch(source, $@"\bfor\s*\([^)]*\b{escaped}\b") ||
+        return SafeRegex.IsMatch(source, $@"\bforeach\s*\([^)]*\b{escaped}\b") ||
+               SafeRegex.IsMatch(source, $@"\bfor\s*\([^)]*\b{escaped}\b") ||
                source.Contains($"foreach (var item in {identifier}", StringComparison.Ordinal) ||
                source.Contains($"foreach (auto", StringComparison.Ordinal) && source.Contains(identifier, StringComparison.Ordinal);
     }
@@ -215,13 +217,13 @@ internal static class SourcePatternHelpers
             return false;
         }
 
-        return Regex.IsMatch(source, $@"\bMath\.Sqrt\s*\(\s*{Regex.Escape(identifier)}\s*\)", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(source, $@"\bsqrt\s*\(\s*{Regex.Escape(identifier)}\s*\)", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(source, $@"\bstd::sqrt\s*\(\s*{Regex.Escape(identifier)}\s*\)", RegexOptions.IgnoreCase);
+        return SafeRegex.IsMatch(source, $@"\bMath\.Sqrt\s*\(\s*{Regex.Escape(identifier)}\s*\)", RegexOptions.IgnoreCase) ||
+               SafeRegex.IsMatch(source, $@"\bsqrt\s*\(\s*{Regex.Escape(identifier)}\s*\)", RegexOptions.IgnoreCase) ||
+               SafeRegex.IsMatch(source, $@"\bstd::sqrt\s*\(\s*{Regex.Escape(identifier)}\s*\)", RegexOptions.IgnoreCase);
     }
 
     internal static bool ContainsThrow(string source) =>
-        Regex.IsMatch(source, @"\bthrow\b");
+        SafeRegex.IsMatch(source, @"\bthrow\b");
 
     internal static bool GuardFollowedByThrow(string source, int guardStart, int guardEnd)
     {
@@ -231,10 +233,10 @@ internal static class SourcePatternHelpers
         }
 
         var afterGuard = source[guardEnd..];
-        var braceIndex = afterGuard.IndexOf('{');
+        var braceIndex = afterGuard.IndexOf('{', StringComparison.Ordinal);
         if (braceIndex < 0)
         {
-            return Regex.IsMatch(afterGuard[..Math.Min(afterGuard.Length, 120)], @"\bthrow\b");
+            return SafeRegex.IsMatch(afterGuard[..Math.Min(afterGuard.Length, 120)], @"\bthrow\b");
         }
 
         var block = ExtractBalancedBlock(afterGuard, braceIndex);
@@ -249,11 +251,11 @@ internal static class SourcePatternHelpers
         }
 
         var escaped = Regex.Escape(identifier);
-        return Regex.IsMatch(source, $@"\b{escaped}\s*=(?!=)", RegexOptions.None) ||
-               Regex.IsMatch(source, $@"\b{escaped}\s*(\+\+|--)", RegexOptions.None) ||
-               Regex.IsMatch(source, $@"(\+\+|--)\s*{escaped}\b", RegexOptions.None) ||
-               Regex.IsMatch(source, $@"\b{escaped}\s*\+=", RegexOptions.None) ||
-               Regex.IsMatch(source, $@"\b{escaped}\s*-=", RegexOptions.None);
+        return SafeRegex.IsMatch(source, $@"\b{escaped}\s*=(?!=)", RegexOptions.None) ||
+               SafeRegex.IsMatch(source, $@"\b{escaped}\s*(\+\+|--)", RegexOptions.None) ||
+               SafeRegex.IsMatch(source, $@"(\+\+|--)\s*{escaped}\b", RegexOptions.None) ||
+               SafeRegex.IsMatch(source, $@"\b{escaped}\s*\+=", RegexOptions.None) ||
+               SafeRegex.IsMatch(source, $@"\b{escaped}\s*-=", RegexOptions.None);
     }
 
     internal static bool IsReadInSource(string source, string identifier)
@@ -264,7 +266,7 @@ internal static class SourcePatternHelpers
         }
 
         return IsWrittenInSource(source, identifier) ||
-               Regex.IsMatch(source, $@"\b{Regex.Escape(identifier)}\b");
+               SafeRegex.IsMatch(source, $@"\b{Regex.Escape(identifier)}\b");
     }
 
     internal static VariableUsageKind ClassifyUsage(string source, string identifier, bool isDeclared)
@@ -297,7 +299,7 @@ internal static class SourcePatternHelpers
 
     internal static bool HasCatchWithoutRethrow(string source)
     {
-        foreach (Match match in Regex.Matches(source, @"catch\s*(?:\([^)]*\))?\s*\{", RegexOptions.IgnoreCase))
+        foreach (Match match in SafeRegex.Matches(source, @"catch\s*(?:\([^)]*\))?\s*\{", RegexOptions.IgnoreCase))
         {
             var openBrace = match.Index + match.Length - 1;
             var block = ExtractBalancedBlock(source, openBrace);
@@ -306,7 +308,7 @@ internal static class SourcePatternHelpers
                 continue;
             }
 
-            if (!Regex.IsMatch(block, @"\bthrow\b"))
+            if (!SafeRegex.IsMatch(block, @"\bthrow\b"))
             {
                 return true;
             }
@@ -344,7 +346,7 @@ internal static class SourcePatternHelpers
 
     internal static IEnumerable<Match> MatchGuardThrows(string source, string pattern)
     {
-        foreach (Match match in Regex.Matches(source, pattern, RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        foreach (Match match in SafeRegex.Matches(source, pattern, RegexOptions.IgnoreCase | RegexOptions.Singleline))
         {
             if (GuardFollowedByThrow(source, match.Index, match.Index + match.Length))
             {

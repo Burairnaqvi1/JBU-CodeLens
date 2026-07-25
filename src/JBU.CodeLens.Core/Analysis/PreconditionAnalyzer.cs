@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 
+using JBU.CodeLens.Core.Utilities;
+
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
@@ -154,7 +156,7 @@ public sealed class PreconditionAnalyzer
 
         const string pattern =
             @"\b(?:ArgumentNullException\.)?ThrowIfNull(?:OrEmpty|OrWhiteSpace)?\s*\(\s*([A-Za-z_][\w]*)\s*\)";
-        foreach (Match match in Regex.Matches(context.SourceBody, pattern))
+        foreach (Match match in SafeRegex.Matches(context.SourceBody, pattern))
         {
             var name = match.Groups[1].Value;
             var message = match.Value.Contains("OrEmpty", StringComparison.Ordinal) ||
@@ -512,7 +514,7 @@ public sealed class PreconditionAnalyzer
 
     private static string? ExtractSubjectFromDescription(string description)
     {
-        var match = Regex.Match(description, @"Parameter\s+(\w+)\s+");
+        var match = SafeRegex.Match(description, @"Parameter\s+(\w+)\s+");
         return match.Success ? match.Groups[1].Value : null;
     }
 
@@ -520,7 +522,7 @@ public sealed class PreconditionAnalyzer
     {
         var simple = GetSimpleTypeName(type);
         if (string.IsNullOrEmpty(simple) ||
-            simple.Contains('<') ||
+            simple.Contains('<', StringComparison.Ordinal) ||
             simple.EndsWith("[]", StringComparison.Ordinal) ||
             !char.IsUpper(simple[0]))
         {
@@ -536,7 +538,7 @@ public sealed class PreconditionAnalyzer
     {
         var simple = GetSimpleTypeName(type);
         if (string.IsNullOrEmpty(simple) ||
-            simple.Contains('<') ||
+            simple.Contains('<', StringComparison.Ordinal) ||
             simple.EndsWith("[]", StringComparison.Ordinal) ||
             !char.IsUpper(simple[0]))
         {
@@ -575,11 +577,11 @@ public sealed class PreconditionAnalyzer
     private static bool IsBodyWrappedInTryCatch(string source)
     {
         var trimmed = source.Trim();
-        if (!Regex.IsMatch(trimmed, @"^try\s*\{", RegexOptions.IgnoreCase))
+        if (!SafeRegex.IsMatch(trimmed, @"^try\s*\{", RegexOptions.IgnoreCase))
         {
             return false;
         }
 
-        return Regex.IsMatch(trimmed, @"\bcatch\s*\(", RegexOptions.IgnoreCase);
+        return SafeRegex.IsMatch(trimmed, @"\bcatch\s*\(", RegexOptions.IgnoreCase);
     }
 }

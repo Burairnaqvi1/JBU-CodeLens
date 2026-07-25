@@ -1,0 +1,189 @@
+root = true
+
+# Analyzer severity configuration for JBU.CodeLens.
+#
+# Every entry that lowers a severity below the default carries a justification. Rules are only
+# silenced where the analyzer's advice is wrong for this codebase's context -- never to make a
+# number go down. Rules that are simply not fixed yet stay at warning severity so they remain
+# visible in the build and in the Visual Studio Error List.
+#
+# See docs/quality/WarningRemediation.md for the full decision record.
+
+# ---------------------------------------------------------------------------------------------
+# Agreed suppressions -- solution-wide
+# ---------------------------------------------------------------------------------------------
+
+[*.cs]
+
+# CA1716: "Identifiers should not match keywords".
+#
+# All 5 occurrences are the JBU.CodeLens.Shared namespace and its children. The conflict is with
+# 'Shared', which is a reserved keyword in Visual Basic (VB's equivalent of C#'s 'static'); it is
+# not a C# keyword. The rule exists so that consumers writing in another .NET language can name the
+# namespace without escaping it.
+#
+# This solution is C#-only: three C# projects and a WPF UI, with no VB or F# project and no plan
+# for one. Satisfying the rule would mean renaming the Shared project, all five of its namespaces,
+# and every using directive across the solution -- a large, risky, repository-wide rename to serve
+# a consumer that does not exist. Flagged for supervisor review as a deliberate decision rather
+# than an oversight.
+dotnet_diagnostic.CA1716.severity = none
+
+# CA1031: "Do not catch general exception types".
+#
+# All 51 occurrences were reviewed individually. Every one is a deliberate resilience boundary, not
+# a lazy catch, and each already either surfaces the failure to the user or carries a comment
+# explaining why swallowing is safe:
+#
+#   * CppParser (22) and CSharpParser (3) -- the parsers run over arbitrary third-party source code
+#     through a native library. Failures are recorded into ParseResult.Errors and the scan
+#     continues. Two of these sit inside P/Invoke callbacks invoked by libclang
+#     (VisitTranslationUnitChild, VisitClassMember): letting an exception escape a native callback
+#     is undefined behaviour and would take the process down, so the broad catch is mandatory there.
+#   * MainWindow (5) -- scan and export handlers. Each writes the message to the status bar and
+#     raises a notification, so nothing is hidden from the user.
+#   * ExplanationService (4) -- model load and inference report through LoadError or an
+#     "[Inference failed: ...]" result rather than crashing the app.
+#   * UiSettings, CustomFaqStore, AiResultStore, AppPaths (7) -- best-effort persistence. A corrupt
+#     or unreadable settings/cache file must never block startup.
+#   * Tests (7) -- temp-directory cleanup in Dispose.
+#
+# The governing design principle is that this application analyses source code it did not write, so
+# no single malformed input may terminate the process mid-scan. Narrowing these catches would mean
+# guessing the complete exception set of Roslyn, libclang marshaling, LLamaSharp and the file
+# system; any type missed becomes a crash in front of the user, in exchange for no functional gain.
+# The regression risk is real and the benefit is nil.
+dotnet_diagnostic.CA1031.severity = none
+
+# CA1002 ("Do not expose generic lists") and CA2227 ("Collection properties should be read only").
+#
+# Both rules come from the Framework Design Guidelines, whose stated scope is the public surface of
+# a REUSABLE LIBRARY -- an assembly shipped to consumers who cannot be changed when the API changes.
+# That premise does not hold here, and it was checked rather than assumed:
+#
+#   * No project in the solution sets IsPackable, PackageId or GeneratePackageOnBuild. Nothing is
+#     published to NuGet or distributed. The solution builds one desktop application.
+#   * JBU.CodeLens.Shared is an internal contract assembly referenced only by Core and UI, both of
+#     which live in this repository and are recompiled together.
+#
+# The affected members are the structural data-transfer shapes (ProjectIR, TypeInfo, ClassInfo,
+# MethodAnalysis and friends). Their collection setters are used deliberately: the analysis pipeline
+# replaces whole collections in one assignment rather than mutating in place, e.g.
+#   ir.Relationships = RelationshipExtractor.Extract(ir);
+#   classInfo.Methods = DeduplicateMethods(classInfo.Methods);
+#
+# Satisfying the rules would mean converting every collection property to Collection<T> with a
+# get-only accessor, then rewriting each of those assignments as Clear()/AddRange() and giving up
+# the List<T> operations (Sort, AddRange, RemoveAll) the parsers and exporters use -- a change
+# reaching into every parser, analyser, exporter and renderer in the codebase. That is a large,
+# regression-prone refactor of the type every component depends on, in exchange for an
+# encapsulation guarantee that only matters for an API this project does not expose.
+#
+# NOTE ON AN EARLIER, WRONG RATIONALE: these were initially expected to be unfixable because WPF
+# data binding and System.Text.Json deserialisation both require settable properties. Investigation
+# showed that argument does not apply -- the UI builds every element in code and uses only
+# TemplateBinding, with no ItemsSource assignments, and the structural models are never passed to
+# JsonSerializer.Deserialize (only FileShape, UiSettings and List<string> are). The justification
+# above is the one that actually holds.
+dotnet_diagnostic.CA1002.severity = none
+dotnet_diagnostic.CA2227.severity = none
+
+# ---------------------------------------------------------------------------------------------
+# SonarAnalyzer.CSharp -- phased adoption
+# ---------------------------------------------------------------------------------------------
+#
+# Sonar is the second, independent analysis engine (see Directory.Build.props). Its first run over
+# this codebase produced 162 findings that the Microsoft CA rules did not report.
+#
+# Phase 1 (DONE): the security-class findings were fixed in code, not configured away. All 87
+# S6444 findings -- unbounded regular expressions running over source files the user did not write,
+# a ReDoS exposure -- are resolved via Utilities/SafeRegex and an explicit timeout on the one
+# compiled Regex field.
+#
+# Phase 2 (BACKLOG): the 75 rules below are maintainability and style findings. They are set to
+# 'suggestion' rather than switched off: they stay visible in the Visual Studio editor and in
+# Error List > Messages, and can be worked through deliberately, but they do not fail the build
+# while that work is outstanding. Adopting a 450-rule engine wholesale on an existing codebase is a
+# phased activity, and turning warnings-as-errors into a blocker for style debt would just force
+# the whole thing to be disabled instead.
+#
+# Every one of these is listed individually in docs/quality/StaticAnalysis.md with its count, so
+# the backlog is enumerated rather than hidden behind a blanket setting.
+#
+# Two are judged unlikely to ever be adopted and are recorded there with reasons:
+#   * S3267 (20) -- "loop should be simplified with LINQ", raised against per-AST-node parser loops
+#     where the current form avoids a delegate and an allocation per element.
+#   * S3400 (20) -- "method should not return a constant", raised against the AnalysisMessageBuilder
+#     message catalogue, where the method form is the deliberate seam for parameterising messages.
+dotnet_diagnostic.S3400.severity = suggestion
+dotnet_diagnostic.S3267.severity = suggestion
+dotnet_diagnostic.S8949.severity = suggestion
+dotnet_diagnostic.S125.severity = suggestion
+dotnet_diagnostic.S3358.severity = suggestion
+dotnet_diagnostic.S8969.severity = suggestion
+dotnet_diagnostic.S1066.severity = suggestion
+dotnet_diagnostic.S1871.severity = suggestion
+dotnet_diagnostic.S6670.severity = suggestion
+dotnet_diagnostic.S4144.severity = suggestion
+dotnet_diagnostic.S3241.severity = suggestion
+dotnet_diagnostic.S2325.severity = suggestion
+dotnet_diagnostic.S1172.severity = suggestion
+dotnet_diagnostic.S1144.severity = suggestion
+dotnet_diagnostic.S1121.severity = suggestion
+dotnet_diagnostic.S108.severity = suggestion
+
+[*.cs]
+indent_style = space
+indent_size = 4
+end_of_line = crlf
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# ---------------------------------------------------------------------------------------------
+# Agreed suppressions -- WPF UI project only
+# ---------------------------------------------------------------------------------------------
+
+[src/JBU.CodeLens.UI/**/*.cs]
+
+# CA2007: "Do not directly await a Task" (i.e. call ConfigureAwait).
+#
+# Following this rule in WPF event handlers and view code would be a defect, not an improvement.
+# Every awaited call in this project resumes by touching UI elements -- MainWindow.xaml.cs line
+# 1462 assigns summaryText.Text immediately after its await, for example. WPF controls have thread
+# affinity, so ConfigureAwait(false) would resume on a thread-pool thread and throw
+# InvalidOperationException at runtime. Capturing the synchronisation context is precisely the
+# behaviour required here.
+#
+# The rule remains ACTIVE for Core and Shared, which are libraries: the three occurrences there
+# (ExplanationService) were fixed with ConfigureAwait(false) rather than suppressed, because a
+# library consumed by a UI app should not capture the caller's context.
+dotnet_diagnostic.CA2007.severity = none
+
+# ---------------------------------------------------------------------------------------------
+# Agreed suppressions -- test project only
+# ---------------------------------------------------------------------------------------------
+
+[tests/**/*.cs]
+
+# CA1707: "Identifiers should not contain underscores".
+#
+# All 77 occurrences are xUnit test method names following the Method_Scenario_ExpectedResult
+# convention, which is the documented naming pattern for this project's tests (see
+# docs/architecture/DeveloperGuide.md, "Code Conventions"). Renaming them would destroy the
+# readability of the test report output for no benefit -- the rule exists to police public API
+# surface, and test methods are not public API. Suppressed for the test project only; the rule
+# stays active for src/ so production identifiers are still checked.
+dotnet_diagnostic.CA1707.severity = none
+
+# CA1861: "Avoid constant arrays as arguments" -- hoist them to static readonly fields.
+#
+# The rule's own justification is conditional: it applies "if the called method is called
+# repeatedly". An xUnit [Fact] runs exactly once per test run, so the allocation the rule targets
+# happens once and the optimisation is worthless here. All 20 occurrences are inline expected
+# values in assertions, e.g. Assert.Equal(new[] { "Returns the total." }, groups.Postconditions).
+# Hoisting them into static readonly fields would move each expected value away from the assertion
+# that checks it, which is a real and permanent readability cost paid for no measurable gain.
+#
+# The rule stays ACTIVE for src/, where hot paths do exist.
+dotnet_diagnostic.CA1861.severity = none

@@ -18,8 +18,7 @@ public class AnalysisTests
             BaseTypes = new List<string> { "Animals.Animal" },
         });
 
-        var extractor = new RelationshipExtractor();
-        var rels = extractor.Extract(ir);
+        var rels = RelationshipExtractor.Extract(ir);
 
         Assert.Contains(rels, r => r.Kind == "INHERITS" && r.SourceId == "Animals.Dog" && r.TargetId == "Animals.Animal");
     }
@@ -32,8 +31,7 @@ public class AnalysisTests
         ir.Classes.Add(new TypeInfo { Name = "B", FullName = "B", Methods = { new MethodInfo { Name = "Bar", FullName = "B.Bar", CyclomaticComplexity = 1 } } });
         ir.Methods = ir.Classes.SelectMany(c => c.Methods).ToList();
 
-        var calculator = new MetricsCalculator();
-        var metrics = calculator.Calculate(ir);
+        var metrics = MetricsCalculator.Calculate(ir);
 
         Assert.Equal(2, metrics.TotalClasses);
         Assert.Equal(2, metrics.TotalMethods);

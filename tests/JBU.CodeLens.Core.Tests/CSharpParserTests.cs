@@ -8,7 +8,7 @@ namespace JBU.CodeLens.Core.Tests;
 /// summaries are shown verbatim in the UI and exports, so dropped inline tags leave visible
 /// holes mid-sentence.
 /// </summary>
-public class CSharpParserTests : IDisposable
+public sealed class CSharpParserTests : IDisposable
 {
     private readonly string _tempDir = Directory.CreateTempSubdirectory("codelens-cs-tests").FullName;
 

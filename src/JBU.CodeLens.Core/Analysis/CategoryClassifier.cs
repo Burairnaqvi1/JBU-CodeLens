@@ -68,6 +68,8 @@ public static class CategoryClassifier
     /// <returns>The category the class falls into.</returns>
     public static CodeCategory Classify(ClassInfo classInfo)
     {
+        ArgumentNullException.ThrowIfNull(classInfo);
+
         if (IsGuiLogic(classInfo))
         {
             return CodeCategory.GuiLogic;

@@ -33,7 +33,7 @@ public class JsonExporterTests
             SourceFile = "C:\\src\\file.cs",
         });
 
-        var json = new JsonExporter().Export(ir);
+        var json = JsonExporter.Export(ir);
 
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -46,7 +46,7 @@ public class JsonExporterTests
     [Fact]
     public void Export_EmptyProject_ProducesValidJsonWithNullMetrics()
     {
-        var json = new JsonExporter().Export(new ProjectIR());
+        var json = JsonExporter.Export(new ProjectIR());
 
         using var document = JsonDocument.Parse(json);
         Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("metrics").ValueKind);

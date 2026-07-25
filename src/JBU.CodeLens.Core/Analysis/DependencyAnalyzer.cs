@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 
+using JBU.CodeLens.Core.Utilities;
+
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
@@ -37,7 +39,7 @@ public sealed class DependencyAnalyzer
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
         const string pattern = @"\b([A-Za-z_][\w]*)\s*\(";
-        foreach (Match match in Regex.Matches(context.SourceBody, pattern))
+        foreach (Match match in SafeRegex.Matches(context.SourceBody, pattern))
         {
             var name = match.Groups[1].Value;
             if (IgnoredCallTargets.Contains(name) || name == context.Method.Name || !seen.Add(name))
@@ -78,7 +80,7 @@ public sealed class DependencyAnalyzer
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (pattern, name) in apiPatterns)
         {
-            if (!Regex.IsMatch(context.SourceBody, pattern) || !seen.Add(name))
+            if (!SafeRegex.IsMatch(context.SourceBody, pattern) || !seen.Add(name))
             {
                 continue;
             }
@@ -119,7 +121,7 @@ public sealed class DependencyAnalyzer
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
         const string pattern = @"\b([A-Za-z_][\w]*)\s*::\s*([A-Za-z_][\w]*)";
-        foreach (Match match in Regex.Matches(context.SourceBody, pattern))
+        foreach (Match match in SafeRegex.Matches(context.SourceBody, pattern))
         {
             var qualifier = match.Groups[1].Value;
             if (!seen.Add(qualifier))
@@ -139,7 +141,7 @@ public sealed class DependencyAnalyzer
         }
 
         const string dottedPattern = @"\b([A-Za-z_][\w]*)\.([A-Za-z_][\w]*)\s*\(";
-        foreach (Match match in Regex.Matches(context.SourceBody, dottedPattern))
+        foreach (Match match in SafeRegex.Matches(context.SourceBody, dottedPattern))
         {
             var qualifier = match.Groups[1].Value;
             if (qualifier == "this" || !seen.Add(qualifier))

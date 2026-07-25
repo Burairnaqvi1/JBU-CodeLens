@@ -19,9 +19,6 @@ public sealed class ScideEngine : IProjectAnalyzer
     private readonly CppParser _cppParser = new();
     private readonly InferenceEngine _inferenceEngine = new();
     private readonly SymbolTable _symbolTable = new();
-    private readonly RelationshipExtractor _relationshipExtractor = new();
-    private readonly CallGraphBuilder _callGraphBuilder = new();
-    private readonly MetricsCalculator _metricsCalculator = new();
 
     // Cross-scan parse cache keyed on file path; entries are valid while the file's last-write
     // time is unchanged. Entries for files that leave the scanned set are evicted at scan end.
@@ -30,8 +27,8 @@ public sealed class ScideEngine : IProjectAnalyzer
 
     public async Task<AnalysisResult> AnalyzeProjectAsync(
         string path,
-        CancellationToken cancellationToken = default,
-        IProgress<ScanProgress>? progress = null)
+        IProgress<ScanProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         var result = new AnalysisResult();
 
@@ -146,9 +143,9 @@ public sealed class ScideEngine : IProjectAnalyzer
             }
 
             _symbolTable.BuildFrom(ir);
-            ir.Relationships = _relationshipExtractor.Extract(ir);
-            ir.CallGraph = _callGraphBuilder.Build(ir);
-            var metrics = _metricsCalculator.Calculate(ir);
+            ir.Relationships = RelationshipExtractor.Extract(ir);
+            ir.CallGraph = CallGraphBuilder.Build(ir);
+            var metrics = MetricsCalculator.Calculate(ir);
             ir.Metrics = metrics;
 
             var graph = KnowledgeGraph.BuildFrom(ir);
@@ -241,6 +238,8 @@ public sealed class ScideEngine : IProjectAnalyzer
     /// </summary>
     public string GetProjectSummaryFallback(ProjectIR ir)
     {
+        ArgumentNullException.ThrowIfNull(ir);
+
         var m = ir.Metrics;
         return m != null
             ? $"## Project Summary: {ir.ProjectName}\n\n**Metrics:** {m.TotalClasses} classes, {m.TotalMethods} methods, {m.TotalNamespaces} namespaces, MI={m.MaintainabilityIndex:F0}"
@@ -258,6 +257,8 @@ public sealed class ScideEngine : IProjectAnalyzer
         IReadOnlyDictionary<string, JBU.CodeLens.Shared.Structural.MethodInfo> methodIndex,
         IReadOnlyDictionary<string, TypeInfo> typeIndex)
     {
+        ArgumentNullException.ThrowIfNull(method);
+
         var parent = method.ParentClass;
         var scideMethod = parent is not null
             ? ScideMethodIndex.Lookup(methodIndex, parent, method)

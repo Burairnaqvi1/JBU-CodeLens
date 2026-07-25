@@ -92,6 +92,8 @@ public sealed class AiResultStore
     /// </summary>
     public void Save(IEnumerable<KeyValuePair<string, string>> results)
     {
+        ArgumentNullException.ThrowIfNull(results);
+
         try
         {
             var now = DateTime.UtcNow.Ticks;

@@ -19,8 +19,8 @@ public interface IProjectAnalyzer
     /// </summary>
     Task<AnalysisResult> AnalyzeProjectAsync(
         string path,
-        CancellationToken cancellationToken = default,
-        IProgress<Models.ScanProgress>? progress = null);
+        IProgress<Models.ScanProgress>? progress = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Metrics-based project summary used when the AI model is unavailable.</summary>
     string GetProjectSummaryFallback(ProjectIR ir);

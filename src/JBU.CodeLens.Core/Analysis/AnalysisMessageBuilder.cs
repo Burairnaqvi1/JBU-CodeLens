@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 
+using JBU.CodeLens.Core.Utilities;
+
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
@@ -108,7 +110,7 @@ internal static class AnalysisMessageBuilder
     internal static string NormalizeTypeName(string returnType)
     {
         var simple = returnType.Trim();
-        var angle = simple.IndexOf('<');
+        var angle = simple.IndexOf('<', StringComparison.Ordinal);
         if (angle > 0)
         {
             simple = simple[..angle].Trim();
@@ -134,9 +136,9 @@ internal static class AnalysisMessageBuilder
             text = text[5..].Trim();
         }
 
-        if (text.Contains(':'))
+        if (text.Contains(':', StringComparison.Ordinal))
         {
-            var colon = text.IndexOf(':');
+            var colon = text.IndexOf(':', StringComparison.Ordinal);
             var name = text[..colon].Trim();
             var remainder = text[(colon + 1)..].Trim();
             var translated = TranslateConditionFragment(name, remainder, context);
@@ -163,30 +165,30 @@ internal static class AnalysisMessageBuilder
 
         var usedAsDivisor = context.HasSourceBody && SourcePatternHelpers.IsUsedAsDivisor(context.SourceBody, name);
 
-        if (Regex.IsMatch(condition, @"\b" + Regex.Escape(name) + @"\s*==\s*0\b") ||
+        if (SafeRegex.IsMatch(condition, @"\b" + Regex.Escape(name) + @"\s*==\s*0\b") ||
             condition.Contains("Must not be zero", StringComparison.OrdinalIgnoreCase) ||
             condition.Contains("used as a divisor", StringComparison.OrdinalIgnoreCase))
         {
             return GuardZero(name, usedAsDivisor);
         }
 
-        if (Regex.IsMatch(condition, @"\b" + Regex.Escape(name) + @"\s*==\s*null\b", RegexOptions.IgnoreCase) ||
+        if (SafeRegex.IsMatch(condition, @"\b" + Regex.Escape(name) + @"\s*==\s*null\b", RegexOptions.IgnoreCase) ||
             condition.Contains("nullptr", StringComparison.OrdinalIgnoreCase))
         {
             return GuardNull(name);
         }
 
-        if (Regex.IsMatch(condition, @"\b" + Regex.Escape(name) + @"\s*<=\s*0\b"))
+        if (SafeRegex.IsMatch(condition, @"\b" + Regex.Escape(name) + @"\s*<=\s*0\b"))
         {
             return GuardNonPositive(name);
         }
 
-        if (Regex.IsMatch(condition, @"\b" + Regex.Escape(name) + @"\s*<\s*0\b"))
+        if (SafeRegex.IsMatch(condition, @"\b" + Regex.Escape(name) + @"\s*<\s*0\b"))
         {
             return GuardPositive(name);
         }
 
-        if (Regex.IsMatch(condition, @"\b" + Regex.Escape(name) + @"\s*==\s*""""") ||
+        if (SafeRegex.IsMatch(condition, @"\b" + Regex.Escape(name) + @"\s*==\s*""""") ||
             condition.Contains("null or empty", StringComparison.OrdinalIgnoreCase) ||
             condition.Contains("must not be empty", StringComparison.OrdinalIgnoreCase))
         {
@@ -228,7 +230,7 @@ internal static class AnalysisMessageBuilder
 
     private static string ExtractNameFromText(string text)
     {
-        var match = Regex.Match(text, @"\b([A-Za-z_][\w]*)\s*(==|<=|<|!=)");
+        var match = SafeRegex.Match(text, @"\b([A-Za-z_][\w]*)\s*(==|<=|<|!=)");
         return match.Success ? match.Groups[1].Value : string.Empty;
     }
 

@@ -1,0 +1,48 @@
+<Project>
+
+  <!--
+    Solution-wide code-analysis configuration.
+
+    The build was warning-free before this file existed, but only because the analyzers were
+    running at the SDK default mode, which enables a small subset of the CA rules. Turning the
+    mode up to All is what actually exercises the analyzer set; see
+    docs/quality/WarningRemediation.md for the baseline this produced and the per-rule decisions.
+
+    AnalysisLevel is pinned to 8.0 rather than 'latest' so the rule set tracks the target
+    framework and the measured baseline stays reproducible across SDK upgrades. The machine
+    building this today has SDK 10.0.301, which would otherwise silently pull in newer rules.
+  -->
+  <PropertyGroup>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>8.0</AnalysisLevel>
+    <AnalysisMode>All</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!--
+    The measured baseline of 473 analyser warnings has been cleared. This makes the clean state
+    enforceable rather than aspirational: any new warning now fails the build instead of joining a
+    backlog nobody reads. Every rule that is switched off is switched off in .editorconfig with a
+    written justification, so silencing a rule is a visible, reviewable act rather than a side
+    effect of noise.
+  -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <!--
+    Second, independent static-analysis engine (work item 3). This is SonarSource's C# rule set,
+    the same engine SonarQube runs, packaged as Roslyn analysers so it executes as part of the
+    normal build with no server, no license and no separate scan step to remember.
+
+    It is deliberately a different vendor from the Microsoft CA rules enabled above: running two
+    independent engines is the point, since each finds things the other does not.
+
+    PrivateAssets="all" keeps it a build-time-only dependency; it is not published or referenced
+    transitively. See docs/quality/StaticAnalysis.md for the findings and their triage.
+  -->
+  <ItemGroup>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.30.0.144632" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

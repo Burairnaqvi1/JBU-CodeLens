@@ -2,10 +2,12 @@ using JBU.CodeLens.Shared.Structural;
 
 namespace JBU.CodeLens.Core.Analysis;
 
-public class CallGraphBuilder
+public static class CallGraphBuilder
 {
-    public Dictionary<string, List<string>> Build(ProjectIR ir)
+    public static Dictionary<string, List<string>> Build(ProjectIR ir)
     {
+        ArgumentNullException.ThrowIfNull(ir);
+
         var callGraph = new Dictionary<string, List<string>>();
 
         foreach (var cls in ir.Classes)

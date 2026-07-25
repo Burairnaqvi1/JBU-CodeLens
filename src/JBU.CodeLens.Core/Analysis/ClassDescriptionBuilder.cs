@@ -16,6 +16,8 @@ public static class ClassDescriptionBuilder
     /// </summary>
     public static string Build(ClassInfo classInfo)
     {
+        ArgumentNullException.ThrowIfNull(classInfo);
+
         var name = classInfo.Name ?? string.Empty;
         var isInterface = LooksLikeInterface(name);
 
@@ -87,7 +89,7 @@ public static class ClassDescriptionBuilder
         _ => "Business-logic",
     };
 
-    private static string JoinNames(IReadOnlyList<string> names, int max)
+    private static string JoinNames(List<string> names, int max)
     {
         var shown = names.Take(max).ToList();
         var remaining = names.Count - shown.Count;

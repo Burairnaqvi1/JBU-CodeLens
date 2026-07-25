@@ -4,7 +4,7 @@ using Xceed.Words.NET;
 
 namespace JBU.CodeLens.Core.Tests;
 
-public class WordExportTests : IDisposable
+public sealed class WordExportTests : IDisposable
 {
     private readonly string _tempDir = Directory.CreateTempSubdirectory("codelens-word-tests").FullName;
 

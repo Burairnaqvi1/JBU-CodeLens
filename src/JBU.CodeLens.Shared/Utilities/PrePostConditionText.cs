@@ -61,7 +61,7 @@ public static class PrePostConditionText
 
                 // "POST: the method returns true" — the model put content on the marker line
                 // itself instead of the line below, so keep the remainder as the first bullet.
-                var inline = line[(line.IndexOf(':') + 1)..].Trim();
+                var inline = line[(line.IndexOf(':', StringComparison.Ordinal) + 1)..].Trim();
                 if (inline.Length > 0) current.Add(inline);
                 continue;
             }
@@ -78,14 +78,15 @@ public static class PrePostConditionText
     /// </summary>
     private static string? MatchMarker(string line)
     {
-        var colon = line.IndexOf(':');
+        var colon = line.IndexOf(':', StringComparison.Ordinal);
         if (colon <= 0) return null;
 
         var head = line[..colon].Trim();
 
         // "Preconditions" / "Post-conditions" — strip separators so one comparison covers each
         // spelling the model reaches for.
-        head = head.Replace("-", string.Empty).Replace(" ", string.Empty);
+        head = head.Replace("-", string.Empty, StringComparison.Ordinal)
+                   .Replace(" ", string.Empty, StringComparison.Ordinal);
 
         if (head.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             head.Equals("POSTCONDITION", StringComparison.OrdinalIgnoreCase) ||

@@ -18,6 +18,15 @@ namespace JBU.CodeLens.UI.Views;
 /// Every element is built in code, so brushes are attached with <c>SetResourceReference</c>
 /// and the page survives theme switches without a rebuild.
 /// </summary>
+/// <summary>
+/// Carries the clicked node's payload — a file path, <c>ClassInfo</c>, or <c>MethodInfo</c> —
+/// to <see cref="VisualizationView.NodeClicked"/> subscribers.
+/// </summary>
+public sealed class NodeClickedEventArgs(object payload) : EventArgs
+{
+    public object Payload { get; } = payload;
+}
+
 public partial class VisualizationView : UserControl
 {
     private const double RowHeight = 34;
@@ -65,10 +74,10 @@ public partial class VisualizationView : UserControl
     }
 
     /// <summary>Raised when the user asks to leave this page (Back button).</summary>
-    public event Action? BackRequested;
+    public event EventHandler? BackRequested;
 
     /// <summary>Raised with the clicked node's payload: file path, ClassInfo, or MethodInfo.</summary>
-    public event Action<object>? NodeClicked;
+    public event EventHandler<NodeClickedEventArgs>? NodeClicked;
 
     /// <summary>Whether a project has ever been loaded into this page (used to refresh after rescans).</summary>
     public bool HasProject => _results.Count > 0;
@@ -113,7 +122,7 @@ public partial class VisualizationView : UserControl
 
     // ── Toolbar ──────────────────────────────────────────────────────────────
 
-    private void BackButton_Click(object sender, RoutedEventArgs e) => BackRequested?.Invoke();
+    private void BackButton_Click(object sender, RoutedEventArgs e) => BackRequested?.Invoke(this, EventArgs.Empty);
 
     private void DepthButton_Click(object sender, RoutedEventArgs e)
     {
@@ -602,7 +611,7 @@ public partial class VisualizationView : UserControl
             button.SetResourceReference(BackgroundProperty, "SurfaceBrush");
             button.SetResourceReference(BorderBrushProperty, restBorderKey);
             AutomationProperties.SetName(button, node.Label);
-            button.Click += (_, _) => NodeClicked?.Invoke(navTag);
+            button.Click += (_, _) => NodeClicked?.Invoke(this, new NodeClickedEventArgs(navTag));
             nodeElement = button;
         }
         else

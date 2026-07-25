@@ -1,5 +1,8 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+
+using JBU.CodeLens.Core.Utilities;
 
 namespace JBU.CodeLens.Core.AI;
 
@@ -64,14 +67,14 @@ public sealed class MethodConversationSession : IMethodConversationSession
     // A bracketed string is an error/unavailable message, not prose to be tidied.
     if (string.IsNullOrWhiteSpace(answer) || answer.TrimStart().StartsWith('[')) return answer;
 
-    var lines = answer.Replace("\r\n", "\n").Split('\n').ToList();
+    var lines = answer.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n').ToList();
 
     while (lines.Count > 0)
     {
       var last = lines[^1].Trim();
       var isDebris = last.Length == 0
                      || last is ">" or "-" or "*"
-                     || Regex.IsMatch(last, @"^\d+[.)]?$");
+                     || SafeRegex.IsMatch(last, @"^\d+[.)]?$");
       if (!isDebris) break;
       lines.RemoveAt(lines.Count - 1);
     }
@@ -95,7 +98,7 @@ public sealed class MethodConversationSession : IMethodConversationSession
 
     builder.AppendLine();
     builder.AppendLine(_methodContext);
-    builder.AppendLine($"Initial explanation: {_initialExplanation}");
+    builder.AppendLine(CultureInfo.InvariantCulture, $"Initial explanation: {_initialExplanation}");
     builder.AppendLine();
 
     if (_history.Count > 0)
@@ -107,14 +110,14 @@ public sealed class MethodConversationSession : IMethodConversationSession
       builder.AppendLine("Conversation so far:");
       foreach (var turn in _history.Skip(Math.Max(0, _history.Count - maxHistoryTurns)))
       {
-        builder.AppendLine($"Q: {turn.Question}");
-        builder.AppendLine($"A: {turn.Answer}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Q: {turn.Question}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"A: {turn.Answer}");
       }
 
       builder.AppendLine();
     }
 
-    builder.AppendLine($"Question: {question}");
+    builder.AppendLine(CultureInfo.InvariantCulture, $"Question: {question}");
     builder.Append("Answer:");
     return builder.ToString();
   }

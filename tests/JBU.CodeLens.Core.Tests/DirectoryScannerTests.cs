@@ -7,7 +7,7 @@ namespace JBU.CodeLens.Core.Tests;
 /// generated/tooling folders at any depth, and never descend into an excluded tree (so a huge
 /// node_modules or .git costs nothing).
 /// </summary>
-public class DirectoryScannerTests : IDisposable
+public sealed class DirectoryScannerTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("codelens-scan-tests").FullName;
 

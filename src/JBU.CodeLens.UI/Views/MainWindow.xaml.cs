@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -14,13 +15,33 @@ using LensMethod = JBU.CodeLens.Shared.Models.MethodInfo;
 
 namespace JBU.CodeLens.UI.Views;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Design",
+    "CA1001:Types that own disposable fields should be disposable",
+    Justification = "_activeCts is a transient per-operation resource, not window-lifetime state: " +
+                    "each scan and each export creates it and disposes it in a finally block " +
+                    "before clearing the field, so it never outlives the operation that owns it. " +
+                    "WPF never calls Dispose on a Window, so implementing IDisposable here would " +
+                    "add an entry point nothing invokes while changing no actual behaviour.")]
 public partial class MainWindow : Window
 {
     // Structural analysis runs through a single ScideEngine parse pass, shared with the file/class
     // tree below (see ScanFolderAsync). AI runs exclusively through the single ExplanationService
     // instance below — there's no second LLM to disable anymore, that path was removed entirely.
+    // CA1859 suggests retyping these three fields to their Core concrete types (ScideEngine,
+    // ExportService, ExplanationService) to devirtualize the calls. That is deliberately not done:
+    // this file is the composition root, and the layering rule stated at the top of the class is
+    // that it constructs Core types once and then uses them exclusively through their Shared
+    // interfaces. Following the analyser here would spread concrete Core dependencies through the
+    // whole view and dissolve the boundary the architecture is built on, to save a virtual call
+    // made a handful of times per scan.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance", Justification = "Interface fields enforce the UI/Core layering boundary; see comment above.")]
     private readonly IProjectAnalyzer _projectAnalyzer = new ScideEngine();
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance", Justification = "Interface fields enforce the UI/Core layering boundary; see comment above.")]
     private readonly IExportService _exportService = new ExportService();
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance", Justification = "Interface fields enforce the UI/Core layering boundary; see comment above.")]
     private IExplanationService? _explanationService;
     private readonly Dictionary<string, ParseResult> _parseCache = new(StringComparer.OrdinalIgnoreCase);
     private List<ParseResult> _lastScanResults = [];
@@ -82,9 +103,9 @@ public partial class MainWindow : Window
         ResizeMode = ResizeMode.CanResize;
         ApplyTheme(_settings.Theme == "Light" ? AppTheme.Light : AppTheme.Dark);
 
-        VizView.BackRequested += () => ShowAppPage(AppPage.Dashboard);
+        VizView.BackRequested += (_, _) => ShowAppPage(AppPage.Dashboard);
         VizView.NodeClicked += NavigateToVisualizedNode;
-        NodeDetailPage.BackRequested += () => ShowAppPage(AppPage.Visualization);
+        NodeDetailPage.BackRequested += (_, _) => ShowAppPage(AppPage.Visualization);
 
         StatusBarText.Text = "Loading AI model…";
         Loaded += MainWindow_Loaded;
@@ -200,6 +221,11 @@ public partial class MainWindow : Window
 
     private const int DwmwaUseImmersiveDarkMode = 20;
 
+    // dwmapi.dll is a Windows system library, so restrict the search to System32: the default order
+    // would also probe the application and working directories, where a planted dwmapi.dll would be
+    // loaded into this process instead.
+    [System.Runtime.InteropServices.DefaultDllImportSearchPaths(
+        System.Runtime.InteropServices.DllImportSearchPath.System32)]
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
@@ -443,7 +469,7 @@ public partial class MainWindow : Window
 
             // Task.Run keeps the sequential post-parse work (relationships, graph, metrics) off
             // the dispatcher; the parse itself fans out on worker threads inside the engine.
-            var scanResult = await Task.Run(() => _projectAnalyzer.AnalyzeProjectAsync(folderPath, cancellationToken, progress));
+            var scanResult = await Task.Run(() => _projectAnalyzer.AnalyzeProjectAsync(folderPath, progress, cancellationToken));
 
             if (!scanResult.Success)
             {
@@ -674,9 +700,9 @@ public partial class MainWindow : Window
     /// rendered by the same <see cref="DetailPanelRenderer"/> the main detail panel uses —
     /// full headings for methods, member/relationship info for classes, parse info for files.
     /// </summary>
-    private void NavigateToVisualizedNode(object tag)
+    private void NavigateToVisualizedNode(object? sender, NodeClickedEventArgs e)
     {
-        switch (tag)
+        switch (e.Payload)
         {
             case LensMethod method:
                 NodeDetailPage.ShowDetail(
@@ -692,7 +718,7 @@ public partial class MainWindow : Window
                 NodeDetailPage.ShowDetail(
                     $"{classInfo.Name} — class",
                     host => DetailPanelRenderer.RenderClass(
-                        host, classInfo, NodeDetailPage, method => NavigateToVisualizedNode(method), _explanationService));
+                        host, classInfo, NodeDetailPage, method => NavigateToVisualizedNode(this, new NodeClickedEventArgs(method)), _explanationService));
                 break;
             case string filePath when !string.IsNullOrEmpty(filePath):
                 _parseCache.TryGetValue(filePath, out var parseResult);
@@ -770,7 +796,7 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private TreeViewItem BuildMetricsNode(MetricsResult metrics)
+    private static TreeViewItem BuildMetricsNode(MetricsResult metrics)
     {
         var item = new TreeViewItem
         {
@@ -782,7 +808,7 @@ public partial class MainWindow : Window
         return item;
     }
 
-    private TreeViewItem BuildNamespacesNode(ProjectIR ir)
+    private static TreeViewItem BuildNamespacesNode(ProjectIR ir)
     {
         var nsRoot = new TreeViewItem
         {
@@ -1468,13 +1494,15 @@ public partial class MainWindow : Window
     private string BuildProjectContext(ProjectIR ir)
     {
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"Project: {ir.ProjectName}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"Project: {ir.ProjectName}");
 
         if (_lastMetrics is { } m)
         {
             sb.AppendLine(
+                CultureInfo.InvariantCulture,
                 $"Metrics: {m.TotalClasses} classes, {m.TotalMethods} methods, {m.TotalNamespaces} namespaces.");
             sb.AppendLine(
+                CultureInfo.InvariantCulture,
                 $"Average cyclomatic complexity {m.AverageComplexity:F1} (max {m.MaxComplexity}); " +
                 $"maintainability index {m.MaintainabilityIndex:F0}.");
         }
@@ -1486,7 +1514,7 @@ public partial class MainWindow : Window
             .ToList();
         if (namespaces.Count > 0)
         {
-            sb.AppendLine($"Key namespaces: {string.Join(", ", namespaces)}.");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Key namespaces: {string.Join(", ", namespaces)}.");
         }
 
         var typeNames = ir.Classes
@@ -1496,7 +1524,7 @@ public partial class MainWindow : Window
             .ToList();
         if (typeNames.Count > 0)
         {
-            sb.AppendLine($"Notable types: {string.Join(", ", typeNames)}.");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Notable types: {string.Join(", ", typeNames)}.");
         }
 
         return sb.ToString();
@@ -1613,7 +1641,7 @@ public partial class MainWindow : Window
                 items = _lastProjectIr.Relationships
                     .GroupBy(r => r.Kind)
                     .OrderByDescending(g => g.Count())
-                    .Select(g => new DrillDownItem(DescribeRelationshipKind(g.Key), g.Count().ToString(), null))
+                    .Select(g => new DrillDownItem(DescribeRelationshipKind(g.Key), g.Count().ToString(CultureInfo.InvariantCulture), null))
                     .ToList();
                 break;
         }
@@ -1750,7 +1778,7 @@ public partial class MainWindow : Window
     // Tree headers live across theme switches (the tree is not rebuilt like the detail panel is),
     // so brushes must be resource *references* (SetResourceReference), not one-time FindResource
     // lookups — a held instance goes stale if the theme switch ends up replacing the brush.
-    private object CreateFileHeader(string fileName, bool isCpp)
+    private static StackPanel CreateFileHeader(string fileName, bool isCpp)
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(new TextBlock { Text = fileName, VerticalAlignment = VerticalAlignment.Center });
@@ -1774,7 +1802,7 @@ public partial class MainWindow : Window
         return panel;
     }
 
-    private object CreateClassHeader(ClassInfo classInfo)
+    private static StackPanel CreateClassHeader(ClassInfo classInfo)
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(new TextBlock { Text = classInfo.Name, VerticalAlignment = VerticalAlignment.Center });
@@ -1801,7 +1829,7 @@ public partial class MainWindow : Window
         return panel;
     }
 
-    private object CreateMethodHeader(LensMethod method)
+    private StackPanel CreateMethodHeader(LensMethod method)
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         var parameters = string.Join(", ", method.Parameters);
@@ -1816,7 +1844,7 @@ public partial class MainWindow : Window
         return panel;
     }
 
-    private static object CreateMutedHeader(string text) => new TextBlock
+    private static TextBlock CreateMutedHeader(string text) => new TextBlock
     {
         Text = text,
         Opacity = 0.55,

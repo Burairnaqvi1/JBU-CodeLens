@@ -8,6 +8,8 @@ public class SymbolTable
 
     public void Add(Symbol symbol)
     {
+        ArgumentNullException.ThrowIfNull(symbol);
+
         _symbols[symbol.FullName] = symbol;
         if (!_symbols.ContainsKey(symbol.Name))
             _symbols[symbol.Name] = symbol;
@@ -31,6 +33,8 @@ public class SymbolTable
 
     public void BuildFrom(ProjectIR ir)
     {
+        ArgumentNullException.ThrowIfNull(ir);
+
         // Rebuild from scratch each scan — without this, a long-lived table accumulates
         // symbols from every previous scan and grows unboundedly.
         Clear();

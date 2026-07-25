@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 
+using JBU.CodeLens.Core.Utilities;
+
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
@@ -60,7 +62,7 @@ public sealed class RuntimeRiskAnalyzer
             yield break;
         }
 
-        if (!Regex.IsMatch(context.SourceBody, @"\bint\.Parse\s*\("))
+        if (!SafeRegex.IsMatch(context.SourceBody, @"\bint\.Parse\s*\("))
         {
             yield break;
         }
@@ -170,7 +172,7 @@ public sealed class RuntimeRiskAnalyzer
     private static bool IsUsedAsDivisor(string source, string identifier)
     {
         var pattern = $@"/\s*{Regex.Escape(identifier)}\b|/\s*\(\s*{Regex.Escape(identifier)}\s*\)";
-        return Regex.IsMatch(source, pattern);
+        return SafeRegex.IsMatch(source, pattern);
     }
 
     private static bool HasVisibleDivisorGuard(string source, string identifier) =>

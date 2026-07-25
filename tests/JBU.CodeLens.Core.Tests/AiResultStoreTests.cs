@@ -7,7 +7,7 @@ namespace JBU.CodeLens.Core.Tests;
 /// model, refuse results from a different model or a corrupt file, and prune oldest-first —
 /// and never throw, because a broken cache file must not break the app.
 /// </summary>
-public class AiResultStoreTests : IDisposable
+public sealed class AiResultStoreTests : IDisposable
 {
     private readonly string _tempDir = Directory.CreateTempSubdirectory("codelens-store-tests").FullName;
 

@@ -7,7 +7,7 @@ namespace JBU.CodeLens.Core.Tests;
 /// End-to-end tests for the libclang-backed C++ parser. Each test writes a real file and runs
 /// the real native parse, so they also guard the P/Invoke marshaling contract.
 /// </summary>
-public class CppParserTests : IDisposable
+public sealed class CppParserTests : IDisposable
 {
     private readonly string _tempDir = Directory.CreateTempSubdirectory("codelens-cpp-tests").FullName;
 
@@ -112,7 +112,7 @@ public class CppParserTests : IDisposable
         var result = new CppParser().Parse(path);
 
         Assert.Empty(result.Errors);
-        var cls = Assert.Single(result.Classes, c => c.Name.StartsWith("N"));
+        var cls = Assert.Single(result.Classes, c => c.Name.StartsWith('N'));
         Assert.Single(cls.Methods, m => m.Name == "Compute");
     }
 
@@ -132,7 +132,7 @@ public class CppParserTests : IDisposable
         var cls = Assert.Single(result.Classes, c => c.Name == "Sample");
         var method = Assert.Single(cls.Methods, m => m.Name == "GetValue");
         Assert.True(method.XmlDocTags.TryGetValue("sourceCode", out var source));
-        Assert.StartsWith("int GetValue", source!.Trim());
-        Assert.Contains("return 7;", source);
+        Assert.StartsWith("int GetValue", source!.Trim(), StringComparison.Ordinal);
+        Assert.Contains("return 7;", source, StringComparison.Ordinal);
     }
 }

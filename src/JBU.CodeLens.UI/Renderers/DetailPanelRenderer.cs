@@ -240,12 +240,12 @@ internal static class DetailPanelRenderer
 
         AddSection(host, "Size", resourceRoot);
         var sizeTiles = new WrapPanel { Margin = new Thickness(0, 2, 0, 4) };
-        sizeTiles.Children.Add(CreateStatTile("Classes", metrics.TotalClasses.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Classes)));
-        sizeTiles.Children.Add(CreateStatTile("Methods", metrics.TotalMethods.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Methods)));
-        sizeTiles.Children.Add(CreateStatTile("Properties", metrics.TotalProperties.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Properties)));
-        sizeTiles.Children.Add(CreateStatTile("Fields", metrics.TotalFields.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Fields)));
-        sizeTiles.Children.Add(CreateStatTile("Namespaces", metrics.TotalNamespaces.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Namespaces)));
-        sizeTiles.Children.Add(CreateStatTile("Relationships", metrics.TotalRelationships.ToString(), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Relationships)));
+        sizeTiles.Children.Add(CreateStatTile("Classes", metrics.TotalClasses.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Classes)));
+        sizeTiles.Children.Add(CreateStatTile("Methods", metrics.TotalMethods.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Methods)));
+        sizeTiles.Children.Add(CreateStatTile("Properties", metrics.TotalProperties.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Properties)));
+        sizeTiles.Children.Add(CreateStatTile("Fields", metrics.TotalFields.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Fields)));
+        sizeTiles.Children.Add(CreateStatTile("Namespaces", metrics.TotalNamespaces.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Namespaces)));
+        sizeTiles.Children.Add(CreateStatTile("Relationships", metrics.TotalRelationships.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Relationships)));
         host.Children.Add(sizeTiles);
 
         AddSection(host, "Quality", resourceRoot);
@@ -259,11 +259,11 @@ internal static class DetailPanelRenderer
         qualityTiles.Children.Add(CreateStatTile(
             "Avg complexity", metrics.AverageComplexity.ToString("F1", CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot));
         qualityTiles.Children.Add(CreateStatTile(
-            "Max complexity", metrics.MaxComplexity.ToString(), metrics.MaxComplexity >= 15 ? "WarningBrush" : "PrimaryBrush", resourceRoot));
+            "Max complexity", metrics.MaxComplexity.ToString(CultureInfo.InvariantCulture), metrics.MaxComplexity >= 15 ? "WarningBrush" : "PrimaryBrush", resourceRoot));
         qualityTiles.Children.Add(CreateStatTile(
             "Avg coupling", metrics.AverageCoupling.ToString("F1", CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot));
         qualityTiles.Children.Add(CreateStatTile(
-            "Max inheritance", metrics.MaxInheritanceDepth.ToString(), "PrimaryBrush", resourceRoot));
+            "Max inheritance", metrics.MaxInheritanceDepth.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot));
         host.Children.Add(qualityTiles);
 
         var topMethods = (ir?.Methods ?? [])
@@ -572,7 +572,7 @@ internal static class DetailPanelRenderer
 
         var count = new TextBlock
         {
-            Text = method.CyclomaticComplexity.ToString(),
+            Text = method.CyclomaticComplexity.ToString(CultureInfo.InvariantCulture),
             FontWeight = FontWeights.Bold,
             Foreground = Brush(resourceRoot, method.CyclomaticComplexity >= 15 ? "WarningBrush" : "TextPrimaryBrush"),
             FontSize = 13,
@@ -1091,7 +1091,7 @@ internal static class DetailPanelRenderer
 
     private static void PopulateExecutionStepsSection(
         StackPanel host,
-        IReadOnlyList<ExecutionStep> steps,
+        List<ExecutionStep> steps,
         FrameworkElement resourceRoot)
     {
         host.Children.Clear();
@@ -1356,6 +1356,13 @@ internal static class DetailPanelRenderer
     /// dropping the conversation. Everything shown in the transcript is rebuilt from
     /// <see cref="IMethodConversationSession.History"/>, so this holds no view state.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1812:Avoid uninstantiated internal classes",
+        Justification = "False positive. Instances are created by ConditionalWeakTable's " +
+                        "GetOrCreateValue (see ChatStates below), which constructs the value type " +
+                        "through reflection rather than a visible 'new', so the analyser cannot see " +
+                        "the instantiation. Removing the type would break the method chat threads.")]
     private sealed class MethodChatState
     {
         public IMethodConversationSession? Session;
@@ -1990,7 +1997,7 @@ internal static class DetailPanelRenderer
         return text;
     }
 
-    private static FrameworkElement CreateMethodRow(MethodInfo method, FrameworkElement resourceRoot, Action onClick)
+    private static Button CreateMethodRow(MethodInfo method, FrameworkElement resourceRoot, Action onClick)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

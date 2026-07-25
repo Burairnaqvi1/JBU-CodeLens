@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 
+using JBU.CodeLens.Core.Utilities;
+
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
@@ -65,7 +67,7 @@ public sealed class DesignConstraintAnalyzer
             yield break;
         }
 
-        if (Regex.IsMatch(context.SourceBody, @"\b(SqlConnection|DbContext|ExecuteNonQuery|SaveChanges)\b"))
+        if (SafeRegex.IsMatch(context.SourceBody, @"\b(SqlConnection|DbContext|ExecuteNonQuery|SaveChanges)\b"))
         {
             yield return Create(DesignConstraintKind.UsesDatabase, "Uses database APIs.", "uses-database");
         }
@@ -93,7 +95,7 @@ public sealed class DesignConstraintAnalyzer
             yield break;
         }
 
-        if (Regex.IsMatch(context.SourceBody, @"\b[A-Z][A-Za-z0-9_]*\.[A-Z][A-Za-z0-9_]*\s*\("))
+        if (SafeRegex.IsMatch(context.SourceBody, @"\b[A-Z][A-Za-z0-9_]*\.[A-Z][A-Za-z0-9_]*\s*\("))
         {
             yield return Create(
                 DesignConstraintKind.UsesStaticMembers,
@@ -116,7 +118,7 @@ public sealed class DesignConstraintAnalyzer
             yield break;
         }
 
-        if (Regex.IsMatch(context.SourceBody, $@"\b{Regex.Escape(methodName)}\s*\("))
+        if (SafeRegex.IsMatch(context.SourceBody, $@"\b{Regex.Escape(methodName)}\s*\("))
         {
             yield return Create(DesignConstraintKind.UsesRecursion, "Calls itself recursively.", "uses-recursion");
         }
@@ -158,7 +160,7 @@ public sealed class DesignConstraintAnalyzer
             }
         }
 
-        if (Regex.IsMatch(context.SourceBody, @"\.(Add|Remove|Push_back|Insert|Erase)\s*\("))
+        if (SafeRegex.IsMatch(context.SourceBody, @"\.(Add|Remove|Push_back|Insert|Erase)\s*\("))
         {
             yield return Create(DesignConstraintKind.Stateful, "Mutates a collection.", "stateful");
         }
@@ -202,7 +204,7 @@ public sealed class DesignConstraintAnalyzer
             context.SourceBody.Contains("File.", StringComparison.Ordinal) ||
             context.SourceBody.Contains("fstream", StringComparison.Ordinal) ||
             context.SourceBody.Contains("HttpClient", StringComparison.Ordinal) ||
-            Regex.IsMatch(context.SourceBody, @"\b(SqlConnection|DbContext|ExecuteNonQuery|SaveChanges)\b"))
+            SafeRegex.IsMatch(context.SourceBody, @"\b(SqlConnection|DbContext|ExecuteNonQuery|SaveChanges)\b"))
         {
             return true;
         }
@@ -216,7 +218,7 @@ public sealed class DesignConstraintAnalyzer
             }
         }
 
-        return Regex.IsMatch(context.SourceBody, @"\.(Add|Remove|Push_back|Insert|Erase)\s*\(");
+        return SafeRegex.IsMatch(context.SourceBody, @"\.(Add|Remove|Push_back|Insert|Erase)\s*\(");
     }
 
     private static DesignConstraint Create(

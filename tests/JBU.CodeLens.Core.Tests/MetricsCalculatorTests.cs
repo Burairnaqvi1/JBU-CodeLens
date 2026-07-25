@@ -31,7 +31,7 @@ public class MetricsCalculatorTests
     public void MaxInheritanceDepth_LinearChain_CountsEveryLevel()
     {
         // D -> C -> B -> A  is four levels deep.
-        var metrics = new MetricsCalculator().Calculate(
+        var metrics = MetricsCalculator.Calculate(
             IrWith(("D", "C"), ("C", "B"), ("B", "A")));
 
         Assert.Equal(4, metrics.MaxInheritanceDepth);
@@ -43,14 +43,14 @@ public class MetricsCalculatorTests
         var ir = new ProjectIR();
         ir.Classes.Add(new TypeInfo { Name = "Solo", FullName = "Solo" });
 
-        Assert.Equal(1, new MetricsCalculator().Calculate(ir).MaxInheritanceDepth);
+        Assert.Equal(1, MetricsCalculator.Calculate(ir).MaxInheritanceDepth);
     }
 
     [Fact]
     public void MaxInheritanceDepth_CyclicInheritance_TerminatesInsteadOfHanging()
     {
         // A -> B -> A: a pathological cycle must not loop forever.
-        var metrics = new MetricsCalculator().Calculate(IrWith(("A", "B"), ("B", "A")));
+        var metrics = MetricsCalculator.Calculate(IrWith(("A", "B"), ("B", "A")));
 
         Assert.True(metrics.MaxInheritanceDepth >= 1);
     }
@@ -58,7 +58,7 @@ public class MetricsCalculatorTests
     [Fact]
     public void MaxInheritanceDepth_TakesDeepestOfSeveralChains()
     {
-        var metrics = new MetricsCalculator().Calculate(
+        var metrics = MetricsCalculator.Calculate(
             IrWith(("B", "A"), ("Z", "Y"), ("Y", "X"), ("X", "W")));
 
         Assert.Equal(4, metrics.MaxInheritanceDepth);
@@ -74,6 +74,6 @@ public class MetricsCalculatorTests
             ir.Relationships.Add(new Relationship { SourceId = "B", TargetId = $"m{i}", Kind = "CALLS" });
         }
 
-        Assert.Equal(2, new MetricsCalculator().Calculate(ir).MaxInheritanceDepth);
+        Assert.Equal(2, MetricsCalculator.Calculate(ir).MaxInheritanceDepth);
     }
 }

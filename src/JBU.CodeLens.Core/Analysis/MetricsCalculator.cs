@@ -1,11 +1,15 @@
+using System.Diagnostics;
+
 using JBU.CodeLens.Shared.Structural;
 
 namespace JBU.CodeLens.Core.Analysis;
 
-public class MetricsCalculator
+public static class MetricsCalculator
 {
-    public MetricsResult Calculate(ProjectIR ir)
+    public static MetricsResult Calculate(ProjectIR ir)
     {
+        ArgumentNullException.ThrowIfNull(ir);
+
         var result = new MetricsResult
         {
             TotalClasses = ir.Classes.Count,
@@ -39,6 +43,15 @@ public class MetricsCalculator
 
         result.MaxInheritanceDepth = CalculateMaxInheritanceDepth(ir);
         result.MaintainabilityIndex = CalculateMaintainabilityIndex(ir);
+
+        // The maximum of a set can never be below its mean. This holds by construction today, but
+        // both figures are aggregated separately over ir.Methods, so a future change to either
+        // aggregation that silently disagrees with the other would surface here rather than as
+        // quietly wrong numbers in the exported report.
+        Debug.Assert(
+            ir.Methods.Count == 0 || result.MaxComplexity >= result.AverageComplexity,
+            $"MaxComplexity ({result.MaxComplexity}) is below AverageComplexity " +
+            $"({result.AverageComplexity}) over {ir.Methods.Count} methods.");
 
         return result;
     }
@@ -76,6 +89,10 @@ public class MetricsCalculator
                 depth = currentDepth;
         }
 
+        // Every type sits at depth 1 even with no base type, and the cycle guard above bounds the
+        // walk. A zero or negative depth would mean the seed value or the guard had been broken.
+        Debug.Assert(depth >= 1, $"Inheritance depth must be at least 1, got {depth}.");
+
         return depth;
     }
 
@@ -92,6 +109,12 @@ public class MetricsCalculator
         var documentedRatio = ir.Classes.Count > 0
             ? ir.Classes.Count(c => c.Documentation is not null) / (double)ir.Classes.Count
             : 0;
+
+        // A count of matching classes divided by the total can only land in [0, 1]. If it ever does
+        // not, the numerator and denominator have drifted apart and the index below is meaningless.
+        Debug.Assert(
+            documentedRatio is >= 0 and <= 1,
+            $"Documented-class ratio out of range: {documentedRatio}.");
 
         var mi = 171
             - 5.2 * Math.Log(Math.Max(1, avgComplexity))

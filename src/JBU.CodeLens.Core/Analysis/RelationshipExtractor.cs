@@ -2,10 +2,12 @@ using JBU.CodeLens.Shared.Structural;
 
 namespace JBU.CodeLens.Core.Analysis;
 
-public class RelationshipExtractor
+public static class RelationshipExtractor
 {
-    public List<Relationship> Extract(ProjectIR ir)
+    public static List<Relationship> Extract(ProjectIR ir)
     {
+        ArgumentNullException.ThrowIfNull(ir);
+
         var relationships = new List<Relationship>();
 
         foreach (var cls in ir.Classes)

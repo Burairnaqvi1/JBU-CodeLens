@@ -9,6 +9,12 @@ public enum AppTheme
     Light,
 }
 
+/// <summary>Carries the newly applied theme to <see cref="ThemeManager.ThemeChanged"/> subscribers.</summary>
+public sealed class ThemeChangedEventArgs(AppTheme theme) : EventArgs
+{
+    public AppTheme Theme { get; } = theme;
+}
+
 /// <summary>
 /// Switches between the Dark/Light palettes defined in <c>Theme/*.xaml</c>. Every
 /// <c>*Color</c> resource in the selected dictionary is applied to the matching app-level
@@ -23,7 +29,7 @@ public static class ThemeManager
     public static AppTheme Current { get; private set; } = AppTheme.Dark;
 
     /// <summary>Raised after a theme has been applied, so views can re-render themed content.</summary>
-    public static event Action<AppTheme>? ThemeChanged;
+    public static event EventHandler<ThemeChangedEventArgs>? ThemeChanged;
 
     public static void Apply(AppTheme theme)
     {
@@ -71,6 +77,7 @@ public static class ThemeManager
         }
 
         Current = theme;
-        ThemeChanged?.Invoke(theme);
+        // Static event: there is no instance to act as sender.
+        ThemeChanged?.Invoke(null, new ThemeChangedEventArgs(theme));
     }
 }

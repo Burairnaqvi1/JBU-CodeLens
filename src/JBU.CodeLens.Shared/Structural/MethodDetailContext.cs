@@ -95,6 +95,10 @@ public static class ScideMethodIndex
         LensClass lensClass,
         LensMethod lensMethod)
     {
+        ArgumentNullException.ThrowIfNull(index);
+        ArgumentNullException.ThrowIfNull(lensClass);
+        ArgumentNullException.ThrowIfNull(lensMethod);
+
         var candidates = new[]
         {
             $"{lensClass.Name}.{lensMethod.Name}",
@@ -124,6 +128,9 @@ public static class ScideMethodIndex
         LensClass lensClass,
         MethodInfo? scideMethod)
     {
+        ArgumentNullException.ThrowIfNull(index);
+        ArgumentNullException.ThrowIfNull(lensClass);
+
         if (scideMethod is not null && !string.IsNullOrEmpty(scideMethod.DeclaringType))
         {
             if (index.TryGetValue(scideMethod.DeclaringType, out var byDeclaring))

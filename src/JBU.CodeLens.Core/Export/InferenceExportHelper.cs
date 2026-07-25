@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
@@ -18,7 +19,9 @@ public static class InferenceExportHelper
 
     public static string BuildMarkdown(ProjectIR ir, IReadOnlyList<ParseResult> parseResults)
     {
-        var baseMd = new MarkdownExporter().Export(ir);
+        ArgumentNullException.ThrowIfNull(parseResults);
+
+        var baseMd = MarkdownExporter.Export(ir);
         var sb = new StringBuilder(baseMd);
         sb.AppendLine();
         sb.AppendLine("## Deterministic Method Analysis");
@@ -35,7 +38,7 @@ public static class InferenceExportHelper
                         continue;
                     }
 
-                    sb.AppendLine($"### {classInfo.Name}.{method.Name}");
+                    sb.AppendLine(CultureInfo.InvariantCulture, $"### {classInfo.Name}.{method.Name}");
                     sb.AppendLine();
                     AppendAnalysisMarkdown(sb, analysis);
                     sb.AppendLine();
@@ -48,7 +51,9 @@ public static class InferenceExportHelper
 
     public static string BuildJson(ProjectIR ir, IReadOnlyList<ParseResult> parseResults)
     {
-        var baseJson = new JsonExporter().Export(ir);
+        ArgumentNullException.ThrowIfNull(parseResults);
+
+        var baseJson = JsonExporter.Export(ir);
         using var doc = JsonDocument.Parse(baseJson);
         var root = new Dictionary<string, object?>();
 
@@ -108,7 +113,7 @@ public static class InferenceExportHelper
         {
             foreach (var item in analysis.Preconditions)
             {
-                sb.AppendLine($"- {item.Description}");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"- {item.Description}");
             }
         }
 
@@ -122,12 +127,12 @@ public static class InferenceExportHelper
         {
             foreach (var item in analysis.Postconditions)
             {
-                sb.AppendLine($"- {item.Description}");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"- {item.Description}");
             }
 
             foreach (var item in analysis.StateChanges)
             {
-                sb.AppendLine($"- {item.Description}");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"- {item.Description}");
             }
         }
 
@@ -137,7 +142,7 @@ public static class InferenceExportHelper
             sb.AppendLine("**Execution flow**");
             foreach (var step in analysis.ExecutionSteps)
             {
-                sb.AppendLine($"{step.StepNumber}. {step.Description}");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"{step.StepNumber}. {step.Description}");
             }
         }
 
@@ -147,7 +152,7 @@ public static class InferenceExportHelper
             sb.AppendLine("**Design constraints**");
             foreach (var item in analysis.DesignConstraints)
             {
-                sb.AppendLine($"- {item.Description}");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"- {item.Description}");
             }
         }
     }

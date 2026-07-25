@@ -4,7 +4,7 @@ using JBU.CodeLens.Shared.Structural;
 
 namespace JBU.CodeLens.Core.Export;
 
-public class JsonExporter
+public static class JsonExporter
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -12,8 +12,10 @@ public class JsonExporter
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public string Export(ProjectIR ir)
+    public static string Export(ProjectIR ir)
     {
+        ArgumentNullException.ThrowIfNull(ir);
+
         var data = new Dictionary<string, object?>
         {
             ["projectName"] = ir.ProjectName,
@@ -51,5 +53,5 @@ public class JsonExporter
         return JsonSerializer.Serialize(data, JsonOptions);
     }
 
-    public void ExportToFile(ProjectIR ir, string outputPath) => File.WriteAllText(outputPath, Export(ir));
+    public static void ExportToFile(ProjectIR ir, string outputPath) => File.WriteAllText(outputPath, Export(ir));
 }

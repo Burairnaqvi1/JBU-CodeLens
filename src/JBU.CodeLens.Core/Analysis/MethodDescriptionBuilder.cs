@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Text;
 
 namespace JBU.CodeLens.Core.Analysis;
@@ -18,8 +20,17 @@ public static class MethodDescriptionBuilder
     /// Builds a single readable sentence describing what the method most likely does.
     /// Never throws and always returns a non-empty string.
     /// </summary>
+    [SuppressMessage(
+        "Globalization",
+        "CA1308:Normalize strings to uppercase",
+        Justification = "The lowercased text is rendered into an English prose description shown to " +
+                        "the user, not used for comparison or as a security decision. CA1308 exists " +
+                        "to prevent lossy round-trips in case-normalisation for lookups; upper-casing " +
+                        "here would produce visibly wrong output.")]
     public static string Build(MethodInfo method)
     {
+        ArgumentNullException.ThrowIfNull(method);
+
         var name = method.Name ?? string.Empty;
         var parentName = method.ParentClass?.Name;
 
@@ -52,18 +63,18 @@ public static class MethodDescriptionBuilder
             var subject = string.IsNullOrEmpty(remainder)
                 ? (paramNames.Count > 0 ? JoinNames(paramNames) : "the current state")
                 : remainder;
-            sb.Append($"Determines whether {subject}");
+            sb.Append(CultureInfo.InvariantCulture, $"Determines whether {subject}");
             if (BooleanPrefixes.Contains(verb) && !string.IsNullOrEmpty(remainder))
             {
                 sb.Clear();
-                sb.Append($"Determines whether the {remainder} condition holds");
+                sb.Append(CultureInfo.InvariantCulture, $"Determines whether the {remainder} condition holds");
             }
 
             // When the parameters already serve as the subject, a "based on" clause would just
             // repeat them ("Determines whether input, based on input").
             if (paramNames.Count > 0 && !subjectIsParams)
             {
-                sb.Append($", based on {JoinNames(paramNames)}");
+                sb.Append(CultureInfo.InvariantCulture, $", based on {JoinNames(paramNames)}");
             }
 
             sb.Append('.');
@@ -112,7 +123,7 @@ public static class MethodDescriptionBuilder
         return names;
     }
 
-    private static string JoinNames(IReadOnlyList<string> names)
+    private static string JoinNames(List<string> names)
     {
         if (names.Count == 0) return string.Empty;
         if (names.Count == 1) return names[0];
@@ -159,6 +170,11 @@ public static class MethodDescriptionBuilder
         return words;
     }
 
+    [SuppressMessage(
+        "Globalization",
+        "CA1308:Normalize strings to uppercase",
+        Justification = "Same as Build: the lowercased verb is conjugated into English prose for " +
+                        "display, never compared or used for a security decision.")]
     private static string Conjugate(string verb)
     {
         if (string.IsNullOrEmpty(verb))
@@ -169,12 +185,13 @@ public static class MethodDescriptionBuilder
         var lower = verb.ToLowerInvariant();
         string conjugated;
 
-        if (lower.EndsWith("y") && lower.Length > 1 && !"aeiou".Contains(lower[^2]))
+        if (lower.EndsWith('y') && lower.Length > 1 && !"aeiou".Contains(lower[^2], StringComparison.Ordinal))
         {
             conjugated = lower[..^1] + "ies";
         }
-        else if (lower.EndsWith("s") || lower.EndsWith("sh") || lower.EndsWith("ch") ||
-                 lower.EndsWith("x") || lower.EndsWith("z") || lower.EndsWith("o"))
+        else if (lower.EndsWith('s') || lower.EndsWith("sh", StringComparison.Ordinal) ||
+                 lower.EndsWith("ch", StringComparison.Ordinal) ||
+                 lower.EndsWith('x') || lower.EndsWith('z') || lower.EndsWith('o'))
         {
             conjugated = lower + "es";
         }
@@ -221,7 +238,7 @@ public static class MethodDescriptionBuilder
     private static string NormalizeType(string type)
     {
         var simple = type.Trim().TrimEnd('&', '*', '?');
-        var angle = simple.IndexOf('<');
+        var angle = simple.IndexOf('<', StringComparison.Ordinal);
         if (angle > 0)
         {
             simple = simple[..angle].Trim();
@@ -252,7 +269,7 @@ public static class MethodDescriptionBuilder
 
         // Task<T> produces a value; only the non-generic Task is void-like.
         return simple.Equals("Task", StringComparison.OrdinalIgnoreCase) &&
-               !type.Contains('<');
+               !type.Contains('<', StringComparison.Ordinal);
     }
 
     private static bool IsBooleanType(string type)
