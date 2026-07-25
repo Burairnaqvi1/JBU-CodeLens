@@ -1,12 +1,12 @@
-# CodeLensAI Deployment Script
+# JBU.CodeLens Deployment Script
 # Run from repo root: .\deploy.ps1
 
-Write-Host "Building CodeLensAI for deployment..." -ForegroundColor Cyan
+Write-Host "Building JBU.CodeLens for deployment..." -ForegroundColor Cyan
 
 $publishDir = ".\publish"
 if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
 
-dotnet publish src\CodeLensAI.UI\CodeLensAI.UI.csproj `
+dotnet publish src\JBU.CodeLens.UI\JBU.CodeLens.UI.csproj `
     --configuration Release `
     --runtime win-x64 `
     --self-contained true `

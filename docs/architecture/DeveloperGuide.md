@@ -17,29 +17,29 @@ dotnet test
 ## Run
 
 ```bash
-dotnet run --project src/CodeLensAI.UI
+dotnet run --project src/JBU.CodeLens.UI
 ```
 
 ## Project Structure
 
 ```
-CodeLensAI/
+JBU.CodeLens/
 ├── src/
-│   ├── CodeLensAI.Core/         # Parsers, scanner, ExplanationService (the shipping engine)
+│   ├── JBU.CodeLens.Core/         # Parsers, scanner, ExplanationService (the shipping engine)
 │   │   ├── Analysis/            # Deterministic per-method inference
 │   │   └── Structural/          # Project-wide IR, relationships, call graph, metrics,
 │   │                            # knowledge graph, Markdown/JSON export, ScideEngine
-│   └── CodeLensAI.UI/           # WPF desktop GUI (the shipping app)
+│   └── JBU.CodeLens.UI/           # WPF desktop GUI (the shipping app)
 ├── tests/
-│   └── CodeLensAI.Core.Tests/   # xUnit tests
+│   └── JBU.CodeLens.Core.Tests/   # xUnit tests
 ├── docs/                        # Documentation
 └── models/                      # Local GGUF model file (gitignored)
 ```
 
 ## Adding a New Language Parser
 
-1. Implement `ILanguageParser` in `CodeLensAI.Core` (see `CSharpParser`/`CppParser`)
-2. Wire it into `ScideEngine.AnalyzeProject`'s per-file parse step (`src/CodeLensAI.Core/Structural/ScideEngine.cs`)
+1. Implement `ILanguageParser` in `JBU.CodeLens.Core` (see `CSharpParser`/`CppParser`)
+2. Wire it into `ScideEngine.AnalyzeProject`'s per-file parse step (`src/JBU.CodeLens.Core/Structural/ScideEngine.cs`)
 3. `Structural/TypeInfoConverter` needs no changes — it converts from `ClassInfo`, which any language parser already produces
 
 ## Code Conventions

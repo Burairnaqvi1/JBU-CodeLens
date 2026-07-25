@@ -2,7 +2,7 @@
 
 ## MarkdownExporter
 
-**File:** `src/CodeLensAI.Core/Structural/MarkdownExporter.cs`
+**File:** `src/JBU.CodeLens.Core/Structural/MarkdownExporter.cs`
 
 Exports `ProjectIR` to a Markdown document with:
 
@@ -16,7 +16,7 @@ Exports `ProjectIR` to a Markdown document with:
 
 ## JsonExporter
 
-**File:** `src/CodeLensAI.Core/Structural/JsonExporter.cs`
+**File:** `src/JBU.CodeLens.Core/Structural/JsonExporter.cs`
 
 Exports `ProjectIR` as a JSON object using `System.Text.Json`:
 
@@ -26,7 +26,7 @@ Exports `ProjectIR` as a JSON object using `System.Text.Json`:
 
 ## InferenceExportHelper
 
-**File:** `src/CodeLensAI.Core/Structural/InferenceExportHelper.cs`
+**File:** `src/JBU.CodeLens.Core/Structural/InferenceExportHelper.cs`
 
 Wraps both exporters and appends deterministic per-method inference results
 (`MethodAnalysis` cached on each method during the scan). This is what the UI's

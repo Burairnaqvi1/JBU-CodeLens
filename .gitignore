@@ -23,10 +23,13 @@ x86/
 Thumbs.db
 
 ## LLamaSharp model files (large binaries, don't commit to Git)
+## Anchored with a leading slash: unanchored "models/" also matched the source folder
+## src/JBU.CodeLens.Shared/Models/, which silently kept two committed-nowhere .cs files
+## out of version control.
 *.gguf
 *.bin
-models/
-models_backup/
+/models/
+/models_backup/
 
 ## Build/publish output
 publish/

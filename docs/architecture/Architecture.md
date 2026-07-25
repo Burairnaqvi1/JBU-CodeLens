@@ -1,10 +1,10 @@
-# CodeLensAI Architecture
+# JBU.CodeLens Architecture
 
 ## System Overview
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                    CodeLensAI.UI (WPF)                        │
+│                    JBU.CodeLens.UI (WPF)                        │
 │  Views/       MainWindow (composition root: constructs the   │
 │               concrete Core services, then uses interfaces)  │
 │  Renderers/   DetailPanelRenderer (presentation only)        │
@@ -14,7 +14,7 @@
                │ depends on interfaces + DTOs only
                ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                     CodeLensAI.Shared                         │
+│                     JBU.CodeLens.Shared                         │
 │  Interfaces/  IProjectAnalyzer, IExplanationService,          │
 │               IMethodConversationSession, IExportService     │
 │  Models/      ClassInfo, MethodInfo, ParseResult,            │
@@ -25,7 +25,7 @@
 └──────────────▲───────────────────────────────────────────────┘
                │ implements
 ┌──────────────┴───────────────────────────────────────────────┐
-│                      CodeLensAI.Core                          │
+│                      JBU.CodeLens.Core                          │
 │  Parsing/     ILanguageParser; CSharp/ (Roslyn, syntax-only, │
 │               single-pass body walk); Cpp/ (libclang P/Invoke,│
 │               one TU per file)                               │
@@ -88,14 +88,14 @@ inference behind a semaphore, and caches results per session keyed on
 
 | Location | Responsibility |
 |---|---|
-| `CodeLensAI.Shared/Interfaces/` | The four service contracts the UI consumes |
-| `CodeLensAI.Shared/Models/` | Parser-facing DTOs (`ClassInfo`, `MethodInfo`, `ParseResult`, analysis models) |
-| `CodeLensAI.Shared/Structural/` | Project-wide IR DTOs (`ProjectIR`, `TypeInfo`, `KnowledgeGraph`, `AnalysisResult`, `MethodDetailContext`) |
-| `CodeLensAI.Core/Parsing/` | `ILanguageParser`, Roslyn C# parser, libclang C++ parser |
-| `CodeLensAI.Core/Analysis/` | `ScideEngine` (scan orchestration), deterministic inference, relationships/call graph/metrics, category classification |
-| `CodeLensAI.Core/AI/` | `ExplanationService`, conversation sessions, model path resolution |
-| `CodeLensAI.Core/Export/` | Word/Markdown/JSON exporters behind `ExportService` |
-| `CodeLensAI.UI` | WPF desktop GUI (views, renderers, theme, UI helpers) |
+| `JBU.CodeLens.Shared/Interfaces/` | The four service contracts the UI consumes |
+| `JBU.CodeLens.Shared/Models/` | Parser-facing DTOs (`ClassInfo`, `MethodInfo`, `ParseResult`, analysis models) |
+| `JBU.CodeLens.Shared/Structural/` | Project-wide IR DTOs (`ProjectIR`, `TypeInfo`, `KnowledgeGraph`, `AnalysisResult`, `MethodDetailContext`) |
+| `JBU.CodeLens.Core/Parsing/` | `ILanguageParser`, Roslyn C# parser, libclang C++ parser |
+| `JBU.CodeLens.Core/Analysis/` | `ScideEngine` (scan orchestration), deterministic inference, relationships/call graph/metrics, category classification |
+| `JBU.CodeLens.Core/AI/` | `ExplanationService`, conversation sessions, model path resolution |
+| `JBU.CodeLens.Core/Export/` | Word/Markdown/JSON exporters behind `ExportService` |
+| `JBU.CodeLens.UI` | WPF desktop GUI (views, renderers, theme, UI helpers) |
 
 ## Technology Stack
 
@@ -110,8 +110,8 @@ inference behind a semaphore, and caches results per session keyed on
 ## History
 
 The structural layer (`Analysis/` relationship/graph/metrics builders plus the exporters) used
-to be nine separate `SCIDE.*` projects that duplicated CodeLensAI's scanner and parsers and
-carried a fully-disabled second LLM stack. They were merged into `CodeLensAI.Core` (duplicates
+to be nine separate `SCIDE.*` projects that duplicated JBU.CodeLens's scanner and parsers and
+carried a fully-disabled second LLM stack. They were merged into `JBU.CodeLens.Core` (duplicates
 deleted — a project used to be parsed twice), and the 2026-07 restructure then dissolved the
-merged `Structural/` folder into `Analysis/`, `Export/`, and the `CodeLensAI.Shared` DTO
+merged `Structural/` folder into `Analysis/`, `Export/`, and the `JBU.CodeLens.Shared` DTO
 assembly.

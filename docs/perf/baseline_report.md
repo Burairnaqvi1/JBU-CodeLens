@@ -1,4 +1,4 @@
-# CodeLensAI — Performance Baseline Report (Section 1)
+# JBU.CodeLens — Performance Baseline Report (Section 1)
 
 **Date:** 2026-07-11
 **Machine:** Intel i5-1145G7 (4C/8T), 16 GB RAM, Windows 11 Pro

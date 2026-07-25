@@ -10,7 +10,7 @@ for transparency.
    under `Core/Models`, while the rules require "UI depends only on Shared interfaces, never on
    Core concrete types directly" — interfaces in Shared cannot be typed against Core models.
    Resolved in favor of the rule and of Shared's own description ("DTOs and interfaces shared
-   between Core and UI"): UI-facing DTOs live in `CodeLensAI.Shared` (`Models/`, `Structural/`),
+   between Core and UI"): UI-facing DTOs live in `JBU.CodeLens.Shared` (`Models/`, `Structural/`),
    and `Core/Models` holds Core-internal models (`SymbolTable`), matching the one model the
    diagram names there.
 

@@ -1,4 +1,4 @@
-# CodeLensAI — Efficiency Improvement Report (Section 2)
+# JBU.CodeLens — Efficiency Improvement Report (Section 2)
 
 **Date:** 2026-07-11 · Same machine/model as `baseline_report.md`.
 Baseline numbers are from `baseline_report.md`; "after" numbers were measured with the same

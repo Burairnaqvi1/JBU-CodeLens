@@ -1,6 +1,6 @@
 # ScideEngine API Reference
 
-The `ScideEngine` class in `CodeLensAI.Core.Structural` is the single entry point for project-wide structural analysis (relationships, call graph, metrics, knowledge graph).
+The `ScideEngine` class in `JBU.CodeLens.Core.Structural` is the single entry point for project-wide structural analysis (relationships, call graph, metrics, knowledge graph).
 
 ## Constructor
 
