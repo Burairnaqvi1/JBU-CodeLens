@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Tiled variant of the mark, used for the executable and taskbar icon.
+
+    The taskbar needs a defined silhouette, so the mark sits on a rounded square in the
+    application's own background colours rather than floating transparent. A faint stroke keeps
+    the tile's edge visible when it lands on a dark taskbar.
+
+    Source of truth for app.ico; see logo.svg for the transparent version used inside the UI.
+  -->
+  <defs>
+    <linearGradient id="tileBackground" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1B2740"/>
+      <stop offset="100%" stop-color="#0F1522"/>
+    </linearGradient>
+    <linearGradient id="tileMarkGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#33E0C4"/>
+      <stop offset="55%" stop-color="#2BB6E8"/>
+      <stop offset="100%" stop-color="#4AA3FF"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="496" height="496" rx="112" ry="112"
+        fill="url(#tileBackground)" stroke="#2D3B55" stroke-width="10"/>
+
+  <g fill="none" stroke="url(#tileMarkGradient)" stroke-width="42"
+     stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="204,168 124,256 204,344"/>
+    <polyline points="308,168 388,256 308,344"/>
+    <line x1="284" y1="152" x2="228" y2="360"/>
+  </g>
+</svg>

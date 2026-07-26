@@ -39,4 +39,24 @@
     <ApplicationDefinition Include="Theme\App.xaml" />
     <Page Remove="Theme\App.xaml" />
   </ItemGroup>
+
+  <!--
+    Embedded so the logo resolves from a pack URI at runtime rather than depending on a file
+    sitting beside the executable.
+
+    logo-tile.png is what the window uses. The tile carries its own background, so the same asset
+    reads correctly against both the near-black dark theme and the near-white light one; the
+    transparent mark alone washed out on light backgrounds. logo.png is that transparent variant,
+    kept for documents and reports where the background is already known.
+
+    The .svg files are the editable source for both raster assets and for app.ico. Nothing loads
+    them at runtime; they are here so the icons can be regenerated rather than redrawn.
+  -->
+  <ItemGroup>
+    <Resource Include="Assets\logo.png" />
+    <Resource Include="Assets\logo-tile.png" />
+    <Resource Include="Assets\app.ico" />
+    <None Include="Assets\logo.svg" />
+    <None Include="Assets\logo-tile.svg" />
+  </ItemGroup>
 </Project>
