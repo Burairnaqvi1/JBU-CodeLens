@@ -184,6 +184,32 @@ public sealed class EndToEndPipelineTests : IDisposable
     }
 
     [Fact]
+    public async Task FullPipeline_EveryMethodGetsDeterministicAnalysisAndKnowsItsClass()
+    {
+        var root = await WriteSourceTreeAsync();
+
+        var result = await new ScideEngine().AnalyzeProjectAsync(root);
+
+        Assert.True(result.Success, result.Error);
+
+        var methods = result.ParseResults
+            .SelectMany(p => p.Classes)
+            .SelectMany(c => c.Methods)
+            .ToList();
+
+        Assert.NotEmpty(methods);
+
+        // The analysis runs across cores before the sequential assembly pass. If a method were
+        // missed, or its declaring class were not attached before analysis ran, the detail panel
+        // and every export would silently lose that method's preconditions and execution flow.
+        Assert.All(methods, m =>
+        {
+            Assert.NotNull(m.ParentClass);
+            Assert.NotNull(m.CachedAnalysis);
+        });
+    }
+
+    [Fact]
     public async Task FullPipeline_UnparseableFile_IsReportedWithoutFailingTheScan()
     {
         await WriteSourceTreeAsync();

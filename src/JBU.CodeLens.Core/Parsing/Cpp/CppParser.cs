@@ -214,12 +214,18 @@ public class CppParser : ILanguageParser
         };
         thread.Start();
 
+        // The watchdog timer is tied to its own source so it can be stopped the moment the parse
+        // wins. Without that, every parsed file leaves a timer armed for the full timeout: a scan
+        // of a few hundred C++ files would hold hundreds of them alive at once for no reason.
+        using var watchdogCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
         var finished = await Task.WhenAny(
             completion.Task,
-            Task.Delay(NativeParseTimeout, cancellationToken)).ConfigureAwait(false);
+            Task.Delay(NativeParseTimeout, watchdogCts.Token)).ConfigureAwait(false);
 
         if (finished == completion.Task)
         {
+            await watchdogCts.CancelAsync().ConfigureAwait(false);
             return await completion.Task.ConfigureAwait(false);
         }
 
