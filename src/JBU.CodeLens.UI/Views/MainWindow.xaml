@@ -315,6 +315,7 @@
                             Background="{DynamicResource AccentGradientBrush}"
                             Foreground="{DynamicResource OnAccentBrush}"
                             ToolTip="Open a project folder (Ctrl+O)"
+                            AutomationProperties.Name="Open a project folder"
                             Margin="0,0,6,0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE8B7;" FontFamily="{DynamicResource IconFont}" FontSize="15" VerticalAlignment="Center"/>
@@ -328,6 +329,7 @@
                             Click="ScanButton_Click"
                             IsEnabled="False"
                             ToolTip="Rescan the current project (F5)"
+                            AutomationProperties.Name="Rescan the current project"
                             Margin="0,0,6,0"/>
 
                     <Button x:Name="VisualizeButton"
@@ -336,6 +338,7 @@
                             Click="VisualizeButton_Click"
                             IsEnabled="False"
                             ToolTip="Visualize the project structure as a tree diagram"
+                            AutomationProperties.Name="Visualize the project structure"
                             Margin="0,0,10,0"/>
 
                     <Border Width="1" Height="24" Background="{DynamicResource BorderBrush}" Margin="0,0,10,0"/>
@@ -362,23 +365,28 @@
                             ToolTip="Export project analysis to JSON (.json)"/>
                 </StackPanel>
 
-                <!-- Caption buttons, flush to the window edge -->
+                <!-- Caption buttons, flush to the window edge.
+                     Their Content is a Segoe MDL2 glyph from the private-use range, which carries
+                     no meaning to a screen reader, so each one states its name explicitly. -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal"
                             WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="MinimizeCaptionButton"
                             Style="{StaticResource CaptionButtonStyle}"
                             Content="&#xE921;"
                             Click="MinimizeCaption_Click"
-                            ToolTip="Minimize"/>
+                            ToolTip="Minimize"
+                            AutomationProperties.Name="Minimize"/>
                     <Button x:Name="MaximizeCaptionButton"
                             Style="{StaticResource CaptionButtonStyle}"
                             Content="&#xE922;"
                             Click="MaximizeCaption_Click"
-                            ToolTip="Maximize"/>
+                            ToolTip="Maximize"
+                            AutomationProperties.Name="Maximize"/>
                     <Button Style="{StaticResource CaptionCloseButtonStyle}"
                             Content="&#xE8BB;"
                             Click="CloseCaption_Click"
-                            ToolTip="Close"/>
+                            ToolTip="Close"
+                            AutomationProperties.Name="Close"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -426,7 +434,8 @@
                                          FontSize="12"
                                          Padding="8,5,24,5"
                                          TextChanged="FilterBox_TextChanged"
-                                         ToolTip="Filter files, classes, and methods (Ctrl+F)"/>
+                                         ToolTip="Filter files, classes, and methods (Ctrl+F)"
+                                         AutomationProperties.Name="Filter files, classes, and methods"/>
                                 <TextBlock x:Name="FilterHint"
                                            Text="Filter (Ctrl+F)"
                                            FontSize="12"
@@ -445,6 +454,7 @@
                                         Margin="0,0,4,0"
                                         Visibility="Collapsed"
                                         ToolTip="Clear the filter (Esc)"
+                                        AutomationProperties.Name="Clear the filter"
                                         Click="FilterClear_Click"/>
                             </Grid>
                         </StackPanel>
@@ -458,6 +468,7 @@
                                   Background="Transparent"
                                   BorderThickness="0"
                                   FontSize="13"
+                                  AutomationProperties.Name="Project explorer"
                                   SelectedItemChanged="ProjectTree_SelectedItemChanged">
                             <TreeView.Style>
                                 <Style TargetType="TreeView">
@@ -485,7 +496,8 @@
                         Width="18"
                         VerticalAlignment="Stretch"
                         Padding="0"
-                        ToolTip="Collapse or expand the project explorer">
+                        ToolTip="Collapse or expand the project explorer"
+                        AutomationProperties.Name="Collapse or expand the project explorer">
                     <TextBlock x:Name="SidebarToggleIcon"
                                Text="&#xE76B;"
                                FontFamily="{DynamicResource IconFont}"
@@ -525,7 +537,8 @@
                                     Padding="18,9"
                                     FontSize="13" FontWeight="SemiBold"
                                     Background="{DynamicResource AccentGradientBrush}"
-                                    Foreground="{DynamicResource OnAccentBrush}">
+                                    Foreground="{DynamicResource OnAccentBrush}"
+                                    AutomationProperties.Name="Open Project Folder">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE8B7;" FontFamily="{DynamicResource IconFont}" FontSize="14" VerticalAlignment="Center"/>
                                     <TextBlock Text="Open Project Folder" Margin="8,0,0,0" VerticalAlignment="Center"/>

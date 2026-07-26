@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using JBU.CodeLens.Shared.Structural;
@@ -868,6 +869,12 @@ public partial class MainWindow : Window
             IsExpanded = false,
         };
 
+        // A panel header carries no text of its own, so without this the node reports itself as
+        // "System.Windows.Controls.TreeViewItem Header: Items.Count:1" — the type name — to a
+        // screen reader and to any automation. The name is set explicitly wherever the header is
+        // built from elements rather than from a plain string.
+        AutomationProperties.SetName(fileItem, $"{fileName}, {(isCpp ? "C++" : "C#")} file");
+
         if (result.Errors.Count > 0)
         {
             fileItem.Items.Add(new TreeViewItem
@@ -932,14 +939,18 @@ public partial class MainWindow : Window
                 Tag = classInfo,
                 IsExpanded = false,
             };
+            AutomationProperties.SetName(classItem, $"{classInfo.Name}, class");
 
             foreach (var method in classInfo.Methods)
             {
-                classItem.Items.Add(new TreeViewItem
+                var methodItem = new TreeViewItem
                 {
                     Header = CreateMethodHeader(method),
                     Tag = method,
-                });
+                };
+                AutomationProperties.SetName(
+                    methodItem, $"{method.Name}, method, {classInfo.Name}");
+                classItem.Items.Add(methodItem);
             }
 
             fileItem.Items.Add(classItem);
@@ -1325,6 +1336,9 @@ public partial class MainWindow : Window
                 var name = Path.GetFileName(
                     _settings.LastProjectPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
                 PlaceholderReopenText.Text = $"Reopen {name}";
+                // The button's content is a panel, so its accessible name has to be stated
+                // alongside the label rather than inferred from it.
+                AutomationProperties.SetName(PlaceholderReopenButton, $"Reopen {name}");
                 PlaceholderReopenButton.Visibility = Visibility.Visible;
             }
             else
