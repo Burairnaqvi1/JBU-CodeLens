@@ -168,8 +168,8 @@ public sealed class ExplanationService : IExplanationService
         return RunCached("explain", methodInfo, () =>
         {
             var prompt = BuildExplainMethodPrompt(methodInfo);
-            static string Shape(string text) => TruncateProse(text, maxSentences: 3, maxWords: 80);
-            return Shape(RunInstruction(prompt, MaxTokensExplanation, ShapeStream(onPartial, Shape)));
+            return ShapeExplanation(RunInstruction(
+                prompt, MaxTokensExplanation, ShapeStream(onPartial, ShapeExplanation)));
         });
     }
 
@@ -198,8 +198,8 @@ public sealed class ExplanationService : IExplanationService
                 systemPrompt += " " + languageSuffix;
             }
 
-            static string Shape(string text) => TruncateProse(text, maxSentences: 1, maxWords: 35);
-            return Shape(RunInstruction(userPrompt, MaxTokensBrief, systemPrompt, ShapeStream(onPartial, Shape)));
+            return ShapeBriefDescription(RunInstruction(
+                userPrompt, MaxTokensBrief, systemPrompt, ShapeStream(onPartial, ShapeBriefDescription)));
         });
     }
 
@@ -246,14 +246,11 @@ public sealed class ExplanationService : IExplanationService
         var systemPrompt = "You are a concise technical writer. In 2-3 sentences, describe this " +
                            "class's responsibility using only the listed members and relationships. " +
                            "Stay factual; do not invent behavior the members do not show.";
-        var result = TruncateProse(
-            RunInstruction(DescribeClassCompact(classInfo), MaxTokensExplanation, systemPrompt, onPartial),
-            maxSentences: 3,
-            maxWords: 80);
-
-        // Small models sometimes tack markup fragments ("<", ">", "|", backticks) after the
-        // final sentence; no legitimate sentence ends with them.
-        result = result.TrimEnd().TrimEnd('>', '<', '|', '`', '#').TrimEnd();
+        var result = ShapeClassSummary(RunInstruction(
+            DescribeClassCompact(classInfo),
+            MaxTokensExplanation,
+            systemPrompt,
+            ShapeStream(onPartial, ShapeClassSummary)));
 
         if (IsCleanOutput(result))
         {
@@ -1203,6 +1200,26 @@ public sealed class ExplanationService : IExplanationService
   /// </remarks>
   private static Action<string>? ShapeStream(Action<string>? onPartial, Func<string, string> shape) =>
     onPartial is null ? null : partial => onPartial(shape(partial));
+
+  // The shaping each streaming entry point applies. Named rather than written inline at the call
+  // site so that the preview and the returned value provably use the same function, and so the
+  // convergence property can be tested without a loaded model.
+
+  /// <summary>Shaping for a one-line brief description.</summary>
+  internal static string ShapeBriefDescription(string text) =>
+    TruncateProse(text, maxSentences: 1, maxWords: 35);
+
+  /// <summary>Shaping for a method explanation.</summary>
+  internal static string ShapeExplanation(string text) =>
+    TruncateProse(text, maxSentences: 3, maxWords: 80);
+
+  /// <summary>
+  /// Shaping for a class summary: as an explanation, then with trailing markup fragments removed.
+  /// Small models sometimes tack "&lt;", "&gt;", "|" or backticks after the final sentence, and no
+  /// legitimate sentence ends with them.
+  /// </summary>
+  internal static string ShapeClassSummary(string text) =>
+    ShapeExplanation(text).TrimEnd().TrimEnd('>', '<', '|', '`', '#').TrimEnd();
 
   internal static string TruncateProse(string text, int maxSentences, int maxWords)
   {

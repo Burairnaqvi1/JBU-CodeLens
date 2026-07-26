@@ -87,6 +87,43 @@ public class StreamedTextShapingTests
         Assert.All(previews.Skip(settled), p => Assert.Equal(previews[settled], p));
     }
 
+    /// <summary>
+    /// Every shaping function a streaming entry point uses, with a sample long enough to overshoot
+    /// it. Adding a new streamed section means adding its shaper here.
+    /// </summary>
+    public static TheoryData<string, Func<string, string>> Shapers => new()
+    {
+        { "brief description", ExplanationService.ShapeBriefDescription },
+        { "method explanation", ExplanationService.ShapeExplanation },
+        { "class summary", ExplanationService.ShapeClassSummary },
+    };
+
+    [Theory]
+    [MemberData(nameof(Shapers))]
+    public void EveryShaper_ConvergesRatherThanOvershooting(string name, Func<string, string> shape)
+    {
+        ArgumentNullException.ThrowIfNull(shape);
+
+        var final = shape(LongAnswer);
+        var previews = CumulativeStream(LongAnswer).Select(shape).ToList();
+
+        Assert.Equal(final, previews[^1]);
+        Assert.All(previews, p => Assert.True(
+            p.Length <= final.Length,
+            $"{name}: a preview reached {p.Length} characters against a final {final.Length}, " +
+            "so the text would visibly shrink when generation ends."));
+    }
+
+    [Fact]
+    public void ClassSummaryShaper_RemovesTrailingMarkupFragments()
+    {
+        // Small models tack these on after the final sentence; the shaper strips them, and the
+        // streamed preview must strip them too rather than flashing them on screen.
+        Assert.Equal(
+            "Coordinates order processing.",
+            ExplanationService.ShapeClassSummary("Coordinates order processing. <|"));
+    }
+
     [Fact]
     public void BracketedMessages_AreLeftAlone()
     {
