@@ -35,6 +35,15 @@ public sealed class PreconditionAnalyzer
             .Register("guard-try-pattern", "Try/catch around full body", RuleTryCatchWrapped);
     }
 
+    /// <summary>
+    /// Runs every registered rule and returns the findings with duplicates removed.
+    /// </summary>
+    /// <remarks>
+    /// This is the single place duplicates are removed. Several rules match the same parameter more
+    /// than once — the range rule alone has five patterns, of which three fire on a typical bounds
+    /// check — and rules can also overlap with each other. Deduplicating here, keyed on subject and
+    /// description, covers both cases; individual rules deliberately do not filter their own output.
+    /// </remarks>
     public IReadOnlyList<MethodPrecondition> Analyze(MethodAnalysisContext context) =>
         AnalysisMessageBuilder.DeduplicatePreconditions(_engine.EvaluateAll(context));
 
@@ -323,7 +332,6 @@ public sealed class PreconditionAnalyzer
             yield break;
         }
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var patterns = new[]
         {
             @"if\s*\(\s*([A-Za-z_][\w]*)\s*<\s*[^)]+\)",
@@ -338,11 +346,6 @@ public sealed class PreconditionAnalyzer
             foreach (var match in SourcePatternHelpers.MatchGuardThrows(context.SourceBody, pattern))
             {
                 var name = match.Groups[1].Value;
-                if (!seen.Add(name))
-                {
-                    continue;
-                }
-
                 yield return CreatePrecondition(
                     name,
                     $"Parameter {name} must be within the valid range accepted by this method",
@@ -393,7 +396,6 @@ public sealed class PreconditionAnalyzer
             yield break;
         }
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var patterns = new[]
         {
             @"if\s*\(\s*([A-Za-z_][\w]*)\.Length\s*==\s*0\s*\)",
@@ -408,11 +410,6 @@ public sealed class PreconditionAnalyzer
             foreach (var match in SourcePatternHelpers.MatchGuardThrows(context.SourceBody, pattern))
             {
                 var name = match.Groups[1].Value;
-                if (!seen.Add(name))
-                {
-                    continue;
-                }
-
                 yield return CreatePrecondition(
                     name,
                     $"Parameter {name} must not be empty — minimum length is required",
