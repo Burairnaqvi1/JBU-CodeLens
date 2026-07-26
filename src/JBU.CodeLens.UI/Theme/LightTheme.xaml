@@ -5,12 +5,19 @@
     <Color x:Key="BackgroundColor">#F2F5FA</Color>
     <Color x:Key="SurfaceColor">#FFFFFF</Color>
     <Color x:Key="BorderColor">#DCE4F0</Color>
-    <Color x:Key="PrimaryColor">#2273E5</Color>
-    <Color x:Key="PrimaryHoverColor">#468CEF</Color>
-    <Color x:Key="AccentAltColor">#7B5BF5</Color>
-    <Color x:Key="SecondaryColor">#1E9E55</Color>
-    <Color x:Key="WarningColor">#C97514</Color>
-    <Color x:Key="ErrorColor">#D6494F</Color>
+    <Color x:Key="PrimaryColor">#1A5FC4</Color>
+    <Color x:Key="PrimaryHoverColor">#2273E5</Color>
+
+    <!-- Filled-accent pair; see the note in DarkTheme.xaml. -->
+    <Color x:Key="AccentDeepColor">#1A5FC4</Color>
+    <Color x:Key="AccentAltColor">#6E4CE8</Color>
+
+    <!-- The status colours are darker than their dark-theme counterparts because here they sit
+         as text on white, and as badge fills under white text. The lighter tones they replaced
+         (#1E9E55, #C97514, #D6494F) reached only 3.5:1, 3.5:1 and 4.3:1 against white. -->
+    <Color x:Key="SecondaryColor">#177F44</Color>
+    <Color x:Key="WarningColor">#A15E05</Color>
+    <Color x:Key="ErrorColor">#C8353C</Color>
     <Color x:Key="TextPrimaryColor">#17233B</Color>
     <Color x:Key="TextSecondaryColor">#5E6E86</Color>
     <Color x:Key="TreeSelectionColor">#D6E6FB</Color>

@@ -8,7 +8,14 @@
     <Color x:Key="BorderColor">#27334A</Color>
     <Color x:Key="PrimaryColor">#4AA3FF</Color>
     <Color x:Key="PrimaryHoverColor">#74BAFF</Color>
-    <Color x:Key="AccentAltColor">#8B76FF</Color>
+
+    <!-- Filled-accent pair, used only by AccentGradientBrush and always carrying white text.
+         Deliberately deeper than PrimaryColor: PrimaryColor is bright because it is read as
+         text ON the dark ground, whereas these are the ground themselves. At PrimaryColor's
+         brightness, white on top reaches only 2.6:1 — below the 4.5:1 needed to be legible.
+         These give 4.9:1 and 6.4:1, and read richer against the near-black background. -->
+    <Color x:Key="AccentDeepColor">#2A72C4</Color>
+    <Color x:Key="AccentAltColor">#6149C9</Color>
     <Color x:Key="SecondaryColor">#4FC97E</Color>
     <Color x:Key="WarningColor">#F5B45C</Color>
     <Color x:Key="ErrorColor">#F16A5E</Color>
