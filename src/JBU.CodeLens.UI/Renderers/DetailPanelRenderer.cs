@@ -1005,7 +1005,7 @@ internal static class DetailPanelRenderer
         if (context.ScideType?.Properties.Count > 0)
         {
             stack.Children.Add(new Border { Height = 1, Background = Brush(resourceRoot, "BorderBrush"), Margin = new Thickness(0, 12, 0, 10) });
-            stack.Children.Add(CreateCapsLabel("CLASS PROPERTIES (SCIDE)", resourceRoot));
+            stack.Children.Add(CreateCapsLabel("CLASS PROPERTIES", resourceRoot));
             foreach (var prop in context.ScideType.Properties)
                 stack.Children.Add(CreateVariableChip(prop.Name, prop.TypeName, "PROPERTY", resourceRoot));
         }
@@ -1157,7 +1157,7 @@ internal static class DetailPanelRenderer
             Background = Brush(resourceRoot, "BorderBrush"),
             Margin = new Thickness(0, 12, 0, 10),
         });
-        host.Children.Add(CreateCapsLabel("STRUCTURAL ANALYSIS (SCIDE)", resourceRoot));
+        host.Children.Add(CreateCapsLabel("STRUCTURAL ANALYSIS", resourceRoot));
 
         if (context.ScideComplexity > 0)
         {
@@ -1345,7 +1345,7 @@ internal static class DetailPanelRenderer
                 .ToList();
             if (inherits.Count > 0)
             {
-                stack.Children.Add(CreateLabeledRow("SCIDE inheritance",
+                stack.Children.Add(CreateLabeledRow("Inheritance",
                     string.Join(", ", inherits),
                     resourceRoot, marginTop: 6));
             }

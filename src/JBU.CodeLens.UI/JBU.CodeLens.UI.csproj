@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -41,22 +41,21 @@
   </ItemGroup>
 
   <!--
-    Embedded so the logo resolves from a pack URI at runtime rather than depending on a file
-    sitting beside the executable.
+    Brand assets live in the solution-level assets/ folder because the Word exporter in Core needs
+    the logo too; linking one copy from both projects keeps them from drifting apart. Embedded as
+    resources so they resolve from a pack URI rather than depending on files sitting beside the
+    executable.
 
     logo-tile.png is what the window uses. The tile carries its own background, so the same asset
     reads correctly against both the near-black dark theme and the near-white light one; the
-    transparent mark alone washed out on light backgrounds. logo.png is that transparent variant,
-    kept for documents and reports where the background is already known.
-
-    The .svg files are the editable source for both raster assets and for app.ico. Nothing loads
-    them at runtime; they are here so the icons can be regenerated rather than redrawn.
+    transparent mark alone washed out on light backgrounds.
   -->
   <ItemGroup>
-    <Resource Include="Assets\logo.png" />
-    <Resource Include="Assets\logo-tile.png" />
-    <Resource Include="Assets\app.ico" />
-    <None Include="Assets\logo.svg" />
-    <None Include="Assets\logo-tile.svg" />
+    <Resource Include="..\..\assets\logo-tile.png" Link="Assets\logo-tile.png" />
+    <Resource Include="..\..\assets\logo.png" Link="Assets\logo.png" />
+
+    <!-- Also embedded, not just set as ApplicationIcon: the window's Icon property resolves it
+         through a pack URI, and without the resource the window fails to construct at startup. -->
+    <Resource Include="..\..\assets\app.ico" Link="Assets\app.ico" />
   </ItemGroup>
 </Project>

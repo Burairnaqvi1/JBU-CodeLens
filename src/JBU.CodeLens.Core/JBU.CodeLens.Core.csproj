@@ -18,4 +18,17 @@
     <ProjectReference Include="..\JBU.CodeLens.Shared\JBU.CodeLens.Shared.csproj" />
   </ItemGroup>
 
+  <!--
+    The exported Word document carries the product logo, so the exporter needs the image at
+    runtime. Embedding it makes the export self-contained: it produces the same document whoever
+    calls it, with no file to deploy alongside. The tiled variant is used because the document
+    page is white and the transparent mark on its own washes out against it.
+
+    Linked from the solution-level assets/ folder, the same file the UI embeds, so the two cannot
+    drift apart.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\logo-tile.png" Link="Assets\logo-tile.png" LogicalName="JBU.CodeLens.Core.Assets.logo-tile.png" />
+  </ItemGroup>
+
 </Project>
