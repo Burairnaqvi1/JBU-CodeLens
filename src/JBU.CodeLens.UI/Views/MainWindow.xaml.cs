@@ -460,13 +460,21 @@ public partial class MainWindow : Window
 
         try
         {
-            // Progress<T> marshals reports back to the UI thread that created it.
-            var progress = new Progress<ScanProgress>(p =>
+            // Progress<T> marshals reports back to the UI thread that created it. The engine
+            // reports once per file, so on a large project that is thousands of dispatcher
+            // callbacks updating text faster than it can be read; throttle to ~10 a second and
+            // always let the final one through so the bar finishes full.
+            var uiProgress = new Progress<ScanProgress>(p =>
             {
                 ScanProgressBar.Maximum = p.TotalFiles;
                 ScanProgressBar.Value = p.FilesParsed;
                 StatusBarText.Text = $"Scanning… {p.FilesParsed}/{p.TotalFiles} — {p.CurrentFile}";
             });
+
+            var progress = new ThrottledProgress<ScanProgress>(
+                uiProgress,
+                TimeSpan.FromMilliseconds(100),
+                p => p.FilesParsed >= p.TotalFiles);
 
             // Task.Run keeps the sequential post-parse work (relationships, graph, metrics) off
             // the dispatcher; the parse itself fans out on worker threads inside the engine.

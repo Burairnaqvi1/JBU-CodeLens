@@ -70,7 +70,16 @@ public sealed class ExplanationService : IExplanationService
     private readonly AiResultStore? _persistentStore;
 
     private int _inferenceCallCount;
-    private bool _disposed;
+
+    // Volatile: set on the UI thread as the window closes, read by inference running on a
+    // background thread.
+    private volatile bool _disposed;
+
+    /// <summary>
+    /// How long <see cref="Dispose"/> waits for an in-flight inference to finish before giving up
+    /// on releasing the native context. Bounded because this runs while the window is closing.
+    /// </summary>
+    private static readonly TimeSpan ShutdownInferenceWait = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Number of actual model executions performed by this service instance. Cache hits do not
@@ -609,6 +618,11 @@ public sealed class ExplanationService : IExplanationService
         CancellationToken cancellationToken,
         Action<string>? onPartial = null)
     {
+        if (_disposed)
+        {
+            return "[The explanation service has been shut down.]";
+        }
+
         await _inferenceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -1273,12 +1287,38 @@ public sealed class ExplanationService : IExplanationService
             return;
         }
 
-        // Persist this session's inference results so the next run starts warm.
+        // Set first so a call arriving mid-shutdown is refused rather than reaching a context that
+        // is about to be released.
+        _disposed = true;
+
+        // Persist this session's inference results so the next run starts warm. Done before the
+        // wait below, so a long-running generation cannot cost the user their cache.
         _persistentStore?.Save(_resultCache);
 
-        _context?.Dispose();
-        _weights?.Dispose();
+        // An inference in flight owns the native context and the model weights. Releasing them
+        // underneath it is a use-after-free inside native code, which terminates the process
+        // instead of raising a catchable exception — so wait for the current call to finish.
+        //
+        // The wait is bounded: this runs while the window is closing, and hanging the shutdown
+        // would be its own bug. If a long generation is still going, the native memory is left to
+        // process exit, which is safe and costs nothing at that point.
+        var acquired = _inferenceLock.Wait(ShutdownInferenceWait);
+        try
+        {
+            if (acquired)
+            {
+                _context?.Dispose();
+                _weights?.Dispose();
+            }
+        }
+        finally
+        {
+            if (acquired)
+            {
+                _inferenceLock.Release();
+            }
+        }
+
         _inferenceLock.Dispose();
-        _disposed = true;
     }
 }
