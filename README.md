@@ -15,6 +15,13 @@ computer — the optional plain-English explanations come from a language model 
 - Optional: a GGUF model file in `models/` for AI explanations. Without it everything except
   those explanations works normally.
 
+The model file is not in this repository — it is around 1 GB, which is far past what a source
+repository should carry. Any `.gguf` file placed in `models/` is picked up automatically, but the
+prompts were written and tested against **`qwen2.5-coder-1.5b-instruct-q4_k_m.gguf`** (Qwen2.5-Coder
+1.5B Instruct, Q4_K_M quantisation), available from the `Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF`
+repository on Hugging Face. A different model will still work; the length and tone of the generated
+text may differ.
+
 ## Build and run
 
 ```
