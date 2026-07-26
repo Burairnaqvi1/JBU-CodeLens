@@ -937,7 +937,9 @@ internal static class DetailPanelRenderer
             Task.Run(() =>
             {
                 // The partial callback streams the model's words onto the panel as they are
-                // produced; the final assignment below swaps in the post-processed text.
+                // produced. Both the partials and the returned text are shaped by the same
+                // function inside the service, so the last partial already equals the final
+                // assignment below — the line settles instead of visibly snapping shorter.
                 var text = svc is { IsReady: true }
                     ? svc.GenerateBriefDescription(m, partial =>
                         Application.Current.Dispatcher.BeginInvoke(() => briefTextBlock.Text = partial))
