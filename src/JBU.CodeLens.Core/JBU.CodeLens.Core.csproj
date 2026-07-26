@@ -19,6 +19,17 @@
   </ItemGroup>
 
   <!--
+    Lets the test project reach internal helpers. Some behaviour worth pinning is not reachable
+    through the public surface without a loaded language model — the shaping applied to streamed
+    text, for instance, which has to match the shaping applied to the final result.
+  -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>JBU.CodeLens.Core.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!--
     The exported Word document carries the product logo, so the exporter needs the image at
     runtime. Embedding it makes the export self-contained: it produces the same document whoever
     calls it, with no file to deploy alongside. The tiled variant is used because the document

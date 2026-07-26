@@ -48,7 +48,12 @@ public sealed class MethodConversationSession : IMethodConversationSession
       : ExplanationService.MaxTokensFollowUpAnswer;
 
     var prompt = BuildConversationPrompt(question, wantsDetail);
-    var answer = CleanAnswer(_service.RunInstruction(prompt, maxTokens, onPartial));
+    // Shape the streamed text the same way the answer is shaped, so the transcript does not
+    // reflow when generation finishes.
+    var answer = CleanAnswer(_service.RunInstruction(
+      prompt,
+      maxTokens,
+      onPartial is null ? null : partial => onPartial(CleanAnswer(partial))));
     _history.Add(new ConversationTurn(question, answer));
     return answer;
   }

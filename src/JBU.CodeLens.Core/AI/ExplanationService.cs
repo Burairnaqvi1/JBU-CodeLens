@@ -168,7 +168,8 @@ public sealed class ExplanationService : IExplanationService
         return RunCached("explain", methodInfo, () =>
         {
             var prompt = BuildExplainMethodPrompt(methodInfo);
-            return TruncateProse(RunInstruction(prompt, MaxTokensExplanation, onPartial), maxSentences: 3, maxWords: 80);
+            static string Shape(string text) => TruncateProse(text, maxSentences: 3, maxWords: 80);
+            return Shape(RunInstruction(prompt, MaxTokensExplanation, ShapeStream(onPartial, Shape)));
         });
     }
 
@@ -197,7 +198,8 @@ public sealed class ExplanationService : IExplanationService
                 systemPrompt += " " + languageSuffix;
             }
 
-            return TruncateProse(RunInstruction(userPrompt, MaxTokensBrief, systemPrompt, onPartial), maxSentences: 1, maxWords: 35);
+            static string Shape(string text) => TruncateProse(text, maxSentences: 1, maxWords: 35);
+            return Shape(RunInstruction(userPrompt, MaxTokensBrief, systemPrompt, ShapeStream(onPartial, Shape)));
         });
     }
 
@@ -1189,7 +1191,20 @@ public sealed class ExplanationService : IExplanationService
   internal static string StripMarkdownEmphasis(string text) =>
     text.Replace("**", string.Empty, StringComparison.Ordinal).Replace("__", string.Empty, StringComparison.Ordinal);
 
-  private static string TruncateProse(string text, int maxSentences, int maxWords)
+  /// <summary>
+  /// Wraps a live-streaming callback so the text shown while generating is shaped exactly like the
+  /// value that will be returned.
+  /// </summary>
+  /// <remarks>
+  /// Without this the caller streams the model's raw output and then receives a trimmed version of
+  /// it, so the display grows to several lines and collapses to one the moment generation ends.
+  /// The streamed text is cumulative, so applying the same shaping to each update makes the preview
+  /// converge on the final result and stop, instead of overshooting and snapping back.
+  /// </remarks>
+  private static Action<string>? ShapeStream(Action<string>? onPartial, Func<string, string> shape) =>
+    onPartial is null ? null : partial => onPartial(shape(partial));
+
+  internal static string TruncateProse(string text, int maxSentences, int maxWords)
   {
     if (text.StartsWith('[')) return text;
 
