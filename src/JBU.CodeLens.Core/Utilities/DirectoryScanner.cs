@@ -70,7 +70,22 @@ public static class DirectoryScanner
                         continue;
                     }
 
-                    if ((File.GetAttributes(subDirectory) & FileAttributes.ReparsePoint) != 0)
+                    // Reading attributes can fail on its own — the folder may have been removed
+                    // since it was enumerated, or be readable as a name but not as an entry. That
+                    // must cost only this folder: handled by the outer catch it would abandon every
+                    // sibling still to come in this directory, quietly under-scanning the project
+                    // with nothing to show it happened.
+                    bool isReparsePoint;
+                    try
+                    {
+                        isReparsePoint = (File.GetAttributes(subDirectory) & FileAttributes.ReparsePoint) != 0;
+                    }
+                    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                    {
+                        continue;
+                    }
+
+                    if (isReparsePoint)
                     {
                         continue;
                     }

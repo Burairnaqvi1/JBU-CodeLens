@@ -81,7 +81,9 @@ public static class CustomFaqStore
                 Directory.CreateDirectory(dir);
             }
 
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(questions));
+            // Atomic: these are questions the user typed. A write interrupted part-way must leave
+            // the previous file intact rather than replacing it with a truncated one.
+            AtomicFileWriter.Write(FilePath, temp => File.WriteAllText(temp, JsonSerializer.Serialize(questions)));
             _cache = questions;
             _cacheFileTimeUtc = File.GetLastWriteTimeUtc(FilePath);
         }

@@ -40,9 +40,8 @@ public sealed class ScideEngine : IProjectAnalyzer
 
         try
         {
-            var filePaths = DirectoryScanner.ScanForSourceFiles(path)
-                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            // Already sorted by the scanner with the same comparer, so no second ordering here.
+            var filePaths = DirectoryScanner.ScanForSourceFiles(path);
             if (filePaths.Count == 0)
             {
                 result.Error = "No C# or C++ source files found";

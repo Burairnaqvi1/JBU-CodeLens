@@ -125,7 +125,7 @@ public sealed class AiResultStore
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            Export.AtomicFileWriter.Write(
+            AtomicFileWriter.Write(
                 _path,
                 tempPath => File.WriteAllText(tempPath, JsonSerializer.Serialize(shape)));
         }

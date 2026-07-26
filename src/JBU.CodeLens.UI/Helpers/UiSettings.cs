@@ -45,7 +45,10 @@ public sealed class UiSettings
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this));
+
+            // Atomic: an interrupted write leaves the previous settings rather than a truncated
+            // file, so a crash while saving cannot cost the user their theme and last project.
+            AtomicFileWriter.Write(FilePath, temp => File.WriteAllText(temp, JsonSerializer.Serialize(this)));
         }
         catch
         {
