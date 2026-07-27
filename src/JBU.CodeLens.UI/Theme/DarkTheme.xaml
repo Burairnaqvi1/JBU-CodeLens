@@ -32,6 +32,5 @@
     <Color x:Key="PressedOverlayColor">#33FFFFFF</Color>
     <Color x:Key="ScrollThumbColor">#33415C</Color>
     <Color x:Key="ScrollThumbHoverColor">#475877</Color>
-    <Color x:Key="ShadowColor">#000000</Color>
     <Color x:Key="CloseHoverColor">#E5484D</Color>
 </ResourceDictionary>

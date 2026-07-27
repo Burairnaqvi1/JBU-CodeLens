@@ -31,7 +31,6 @@
             <SolidColorBrush x:Key="PressedOverlayBrush" Color="{StaticResource PressedOverlayColor}" />
             <SolidColorBrush x:Key="ScrollThumbBrush" Color="{StaticResource ScrollThumbColor}" />
             <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="{StaticResource ScrollThumbHoverColor}" />
-            <SolidColorBrush x:Key="ShadowBrush" Color="{StaticResource ShadowColor}" />
             <SolidColorBrush x:Key="AccentAltBrush" Color="{StaticResource AccentAltColor}" />
             <SolidColorBrush x:Key="OnAccentBrush" Color="{StaticResource OnAccentColor}" />
             <SolidColorBrush x:Key="CloseHoverBrush" Color="{StaticResource CloseHoverColor}" />

@@ -499,6 +499,10 @@ internal static class DetailPanelRenderer
             ShadowDepth = 3,
             Direction = 270,
             Opacity = 0,
+            // Not a theme colour. A drop shadow is an absence of light rather than a hue, so it
+            // is black in both themes; the strength is carried by Opacity below, which is what
+            // the animation varies. A themed colour here would also be misleading, because
+            // DropShadowEffect ignores the alpha channel of the colour it is given.
             Color = Colors.Black,
         };
         card.Effect = shadow;
