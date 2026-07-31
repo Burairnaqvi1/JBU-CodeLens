@@ -520,6 +520,258 @@ public class VariableLimitTests
     }
 
     [Fact]
+    public void ComplementaryFactsAreCombined_NotChosenBetween()
+    {
+        // Being present and being short are both true at once. Reporting only one would hide
+        // half of what the method actually enforces.
+        var limits = Analyze(Context(
+            """
+            public void Operate(string name)
+            {
+                if (name == null) throw new ArgumentNullException(nameof(name));
+                if (name.Length > 50) throw new ArgumentException("too long");
+            }
+            """,
+            parameters: ["string name"]));
+
+        var limit = Assert.Single(limits, l => l.Name == "name");
+        Assert.Equal("must not be null, at most 50 characters", limit.Limit);
+    }
+
+    [Fact]
+    public void PresenceIsStatedBeforeRange()
+    {
+        // A value that may be absent has to be dealt with before its range is even a question.
+        var limits = Analyze(Context(
+            """
+            public void Operate(Order order, int count)
+            {
+                if (order == null) throw new ArgumentNullException(nameof(order));
+                if (count < 1 || count > 10) throw new ArgumentOutOfRangeException(nameof(count));
+            }
+            """,
+            parameters: ["Order order", "int count"]));
+
+        Assert.StartsWith("must not be null", Assert.Single(limits, l => l.Name == "order").Limit,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheTypeRangeIsDroppedOnceSomethingNarrowerIsKnown()
+    {
+        var limits = Analyze(Context(
+            """
+            public void Operate(byte channel)
+            {
+                if (channel > 15) throw new ArgumentOutOfRangeException(nameof(channel));
+            }
+            """,
+            parameters: ["byte channel"]));
+
+        // "0 to 255" would only dilute the real finding.
+        var limit = Assert.Single(limits, l => l.Name == "channel");
+        Assert.Equal("15 or less", limit.Limit);
+    }
+
+    [Fact]
+    public void ADivisorMustNotBeZero_EvenWithNoGuardInTheSource()
+    {
+        // Dividing by zero is a fault whether or not anyone checked for it, so the division is
+        // itself the evidence.
+        var limits = Analyze(Context(
+            """
+            public int Operate(int total, int divisor)
+            {
+                return total / divisor;
+            }
+            """,
+            parameters: ["int total", "int divisor"]));
+
+        Assert.Contains("must not be zero", Assert.Single(limits, l => l.Name == "divisor").Limit,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("must not be zero", Assert.Single(limits, l => l.Name == "total").Limit,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BoundsThatAreVariables_NameThemRatherThanFallingBackToTheType()
+    {
+        var limits = Analyze(Context(
+            """
+            public void Operate(int value, int min, int max)
+            {
+                if (value < min || value > max) throw new ArgumentOutOfRangeException(nameof(value));
+            }
+            """,
+            parameters: ["int value", "int min", "int max"]));
+
+        Assert.Equal("between min and max", Assert.Single(limits, l => l.Name == "value").Limit);
+    }
+
+    [Fact]
+    public void SymbolicBoundsWrittenAsSeparateStatements_AreStillOneRange()
+    {
+        // Taken from the project's own C++ fixture. The two ends are separate statements, and a
+        // rule expecting them joined by "||" would see neither.
+        var limits = Analyze(Context(
+            """
+            int clampValue(int value, int low, int high) {
+                if (value < low) return low;
+                if (value > high) return high;
+                return value;
+            }
+            """,
+            parameters: ["int value", "int low", "int high"],
+            fileName: "engine.cpp"));
+
+        Assert.Equal("between low and high", Assert.Single(limits, l => l.Name == "value").Limit);
+    }
+
+    [Fact]
+    public void ModernNullChecksAreRecognised()
+    {
+        // "is null" and ArgumentNullException.ThrowIfNull are how current C# is written; the
+        // project's own fixture uses the first of them.
+        var isNull = Analyze(Context(
+            """
+            public void Operate(Order order)
+            {
+                if (order is null) throw new ArgumentNullException(nameof(order));
+            }
+            """,
+            parameters: ["Order order"]));
+        Assert.Equal("must not be null", Assert.Single(isNull, l => l.Name == "order").Limit);
+
+        var throwIfNull = Analyze(Context(
+            """
+            public void Operate(Order order)
+            {
+                ArgumentNullException.ThrowIfNull(order);
+            }
+            """,
+            parameters: ["Order order"]));
+        Assert.Equal("must not be null", Assert.Single(throwIfNull, l => l.Name == "order").Limit);
+    }
+
+    [Fact]
+    public void BoundsNamingSomethingThatIsNotAVariable_AreIgnored()
+    {
+        // Without this the rule would read any two words either side of the operators as bounds.
+        var limits = Analyze(Context(
+            """
+            public void Operate(int value)
+            {
+                if (value < floor || value > ceiling) throw new ArgumentOutOfRangeException(nameof(value));
+            }
+            """,
+            parameters: ["int value"]));
+
+        Assert.DoesNotContain("between", Assert.Single(limits, l => l.Name == "value").Limit,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AGuardAdmittingOnlyAFewValues_ListsThem()
+    {
+        var limits = Analyze(Context(
+            """
+            public void Operate(int mode)
+            {
+                if (mode != 1 && mode != 2 && mode != 3) throw new ArgumentException("bad mode");
+            }
+            """,
+            parameters: ["int mode"]));
+
+        Assert.Equal("1, 2 or 3", Assert.Single(limits, l => l.Name == "mode").Limit);
+    }
+
+    [Fact]
+    public void ASingleRejectedValue_IsNotReportedAsASet()
+    {
+        // "not 5" is not a list of permitted values, and presenting it as one would invert it.
+        var limits = Analyze(Context(
+            """
+            public void Operate(int mode)
+            {
+                if (mode != 5) throw new ArgumentException("bad mode");
+            }
+            """,
+            parameters: ["int mode"]));
+
+        Assert.Equal("any whole number", Assert.Single(limits, l => l.Name == "mode").Limit);
+    }
+
+    [Fact]
+    public void TheSameValueRejectedTwice_IsNotTurnedIntoAPermittedValue()
+    {
+        // Two comparisons satisfy the pattern, but they name one value, and that value is the
+        // one being refused. Reporting it as permitted would state the exact opposite.
+        var limits = Analyze(Context(
+            """
+            public void Operate(int mode)
+            {
+                if (mode != 5 && mode != 5) throw new ArgumentException("bad mode");
+            }
+            """,
+            parameters: ["int mode"]));
+
+        var limit = Assert.Single(limits, l => l.Name == "mode");
+        Assert.NotEqual(VariableLimitKind.Membership, limit.Kind);
+        Assert.DoesNotContain("5", limit.Limit, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CommentedOutCode_IsNotReadAsIfItRan()
+    {
+        // A limit taken from a line that was deliberately disabled would be worse than no limit:
+        // it states a restriction the running code does not apply.
+        var limits = Analyze(Context(
+            """
+            public void Operate(int level)
+            {
+                // if (level < 0 || level > 100) throw new ArgumentOutOfRangeException(nameof(level));
+                Use(level);
+            }
+            """,
+            parameters: ["int level"]));
+
+        Assert.Equal("any whole number", Assert.Single(limits, l => l.Name == "level").Limit);
+    }
+
+    [Fact]
+    public void ABlockCommentIsIgnoredToo()
+    {
+        var limits = Analyze(Context(
+            """
+            public void Operate(int level)
+            {
+                /* if (level < 1 || level > 9) throw new ArgumentException("x"); */
+                Use(level);
+            }
+            """,
+            parameters: ["int level"]));
+
+        Assert.Equal("any whole number", Assert.Single(limits, l => l.Name == "level").Limit);
+    }
+
+    [Fact]
+    public void AMentionOfDivisionInACommentDoesNotMakeSomethingADivisor()
+    {
+        var limits = Analyze(Context(
+            """
+            public void Operate(int total)
+            {
+                // rate is computed elsewhere as amount / total
+                Use(total);
+            }
+            """,
+            parameters: ["int total"]));
+
+        Assert.DoesNotContain("zero", Assert.Single(limits, l => l.Name == "total").Limit,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OneVariableNeverProducesTwoCompetingLimits()
     {
         // The clamp and the comparisons both describe "score"; the reader must be given one answer.

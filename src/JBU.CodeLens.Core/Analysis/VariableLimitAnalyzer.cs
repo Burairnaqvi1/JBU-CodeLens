@@ -25,8 +25,14 @@ namespace JBU.CodeLens.Core.Analysis;
 /// the opposite reasoning. Getting these the same way round would invert half the results.
 /// </para>
 /// <para>
-/// Every rule reports the line it read the limit from, and where two rules describe the same
-/// variable the stronger evidence wins, so the reader is never asked to reconcile two claims.
+/// Every rule reports the line it read the limit from. Where two rules make rival claims about
+/// the same aspect of a variable, the better-evidenced one wins; where they describe different
+/// aspects — being present, and being short — both are true and are joined into one statement.
+/// </para>
+/// <para>
+/// Comments and string literals are blanked out before any of this. A limit read from a
+/// commented-out line is worse than no limit, because it states a restriction the running code
+/// does not apply.
 /// </para>
 /// </remarks>
 public sealed class VariableLimitAnalyzer
@@ -37,11 +43,14 @@ public sealed class VariableLimitAnalyzer
     {
         _engine = new RuleEngine<VariableLimit>()
             .Register("limit-range-guard", "Value rejected outside a range", RuleRangeGuard)
+            .Register("limit-allowed-values", "Only a few values admitted", RuleAllowedValues)
             .Register("limit-clamp", "Value forced into a range", RuleClamp)
             .Register("limit-character-range", "Character restricted to a span", RuleCharacterRange)
+            .Register("limit-symbolic-range", "Range bounded by other variables", RuleSymbolicRangeGuard)
             .Register("limit-length-guard", "Length rejected outside a bound", RuleLengthGuard)
             .Register("limit-single-guard", "Value rejected beyond one bound", RuleSingleBoundGuard)
             .Register("limit-not-null", "Value rejected when absent", RuleNotNull)
+            .Register("limit-divisor", "Value used as a divisor", RuleDivisor)
             .Register("limit-comparison", "Bounds the code relies on", RuleComparisonBounds)
             .Register("limit-loop-bound", "Counter bounded by its loop", RuleLoopBound)
             .Register("limit-declared-type", "Range the declared type permits", RuleDeclaredType);
@@ -50,27 +59,77 @@ public sealed class VariableLimitAnalyzer
     public IReadOnlyList<AnalysisRule<VariableLimit>> Rules => _engine.Rules;
 
     /// <summary>
-    /// Returns exactly one limit per variable, from the strongest evidence available.
+    /// Returns one limit per variable, combining everything known about it.
     /// </summary>
+    /// <remarks>
+    /// Two findings of the same kind are rival claims about one thing, so only the
+    /// better-evidenced survives — rules run strongest-first, so that is simply the first seen.
+    /// Findings of different kinds are complementary and are joined: a string required to be
+    /// present and no longer than fifty characters reads "must not be null, at most 50
+    /// characters", rather than the reader being shown half of what the code enforces.
+    /// </remarks>
     public IReadOnlyList<VariableLimit> Analyze(MethodAnalysisContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        // Rules are registered strongest-first and the engine preserves that order, so the first
-        // limit seen for a name is the best-evidenced one.
-        var best = new Dictionary<string, VariableLimit>(StringComparer.Ordinal);
+        var byVariable = new Dictionary<string, Dictionary<VariableLimitKind, VariableLimit>>(StringComparer.Ordinal);
         foreach (var limit in _engine.EvaluateAll(context))
         {
-            if (!string.IsNullOrEmpty(limit.Name) && !best.ContainsKey(limit.Name))
+            if (string.IsNullOrEmpty(limit.Name)) continue;
+
+            if (!byVariable.TryGetValue(limit.Name, out var kinds))
             {
-                best[limit.Name] = limit;
+                kinds = new Dictionary<VariableLimitKind, VariableLimit>();
+                byVariable[limit.Name] = kinds;
             }
+
+            kinds.TryAdd(limit.Kind, limit);
         }
 
-        return best.Values
+        return byVariable.Values
+            .Select(Combine)
             .OrderBy(l => l.Scope)
             .ThenBy(l => l.Name, StringComparer.Ordinal)
             .ToList();
+    }
+
+    /// <summary>
+    /// Folds everything known about one variable into a single statement. The type's own range is
+    /// dropped as soon as anything narrower is known, since it would only dilute a real finding.
+    /// </summary>
+    private static VariableLimit Combine(Dictionary<VariableLimitKind, VariableLimit> kinds)
+    {
+        var parts = kinds.Values.ToList();
+        if (parts.Count > 1)
+        {
+            parts.RemoveAll(p => p.Kind == VariableLimitKind.DeclaredType);
+        }
+
+        // Presence first ("must not be null, 1 to 10"): a value that may be absent has to be
+        // dealt with before any question of its range arises.
+        parts = parts
+            .OrderBy(p => p.Kind switch
+            {
+                VariableLimitKind.Presence => 0,
+                VariableLimitKind.Membership => 1,
+                VariableLimitKind.Range => 2,
+                VariableLimitKind.Size => 3,
+                _ => 4,
+            })
+            .ToList();
+
+        var strongest = parts.OrderBy(p => p.Confidence).First();
+        return new VariableLimit
+        {
+            Name = strongest.Name,
+            Type = strongest.Type,
+            Scope = strongest.Scope,
+            Kind = parts[0].Kind,
+            Limit = string.Join(", ", parts.Select(p => p.Limit)),
+            Evidence = string.Join("; ", parts.Select(p => p.Evidence).Distinct(StringComparer.Ordinal)),
+            Source = strongest.Source,
+            Confidence = strongest.Confidence,
+        };
     }
 
     // ── Rules: the code restricts the value ──────────────────────────────────
@@ -175,7 +234,7 @@ public sealed class VariableLimitAnalyzer
                 };
 
                 yield return Build(name, declared, text, match.Value,
-                    VariableLimitSource.Guard, AnalysisConfidence.High);
+                    VariableLimitSource.Guard, AnalysisConfidence.High, VariableLimitKind.Size);
             }
         }
     }
@@ -188,11 +247,26 @@ public sealed class VariableLimitAnalyzer
     {
         var known = BuildDeclaredVariables(context);
 
+        // ThrowIfNull is a statement in its own right rather than part of an "if", so it is read
+        // from the whole body; the rest are conditions and are read from the guard lines.
+        foreach (Match match in SafeRegex.Matches(
+            CodeOnly(context), @"ThrowIfNull\s*\(\s*([A-Za-z_]\w*)"))
+        {
+            var name = match.Groups[1].Value;
+            if (!known.TryGetValue(name, out var declared)) continue;
+
+            yield return Build(name, declared, "must not be null", match.Value,
+                VariableLimitSource.Guard, AnalysisConfidence.High, VariableLimitKind.Presence);
+        }
+
         foreach (var line in GuardLines(context))
         {
+            // "x == null" and "x is null" say the same thing; C# has largely moved to the second,
+            // so a rule that knows only the first misses most modern code.
             foreach (Match match in SafeRegex.Matches(
                 line,
-                @"\b([A-Za-z_]\w*)\s*==\s*(?:null|nullptr)\b|(?:IsNullOrEmpty|IsNullOrWhiteSpace)\s*\(\s*([A-Za-z_]\w*)\s*\)"))
+                @"\b([A-Za-z_]\w*)\s*(?:==\s*(?:null|nullptr)|is\s+null)\b"
+                    + @"|(?:IsNullOrEmpty|IsNullOrWhiteSpace)\s*\(\s*([A-Za-z_]\w*)\s*\)"))
             {
                 var name = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
                 if (string.IsNullOrEmpty(name) || !known.TryGetValue(name, out var declared)) continue;
@@ -202,7 +276,120 @@ public sealed class VariableLimitAnalyzer
                     : "must not be null";
 
                 yield return Build(name, declared, text, match.Value,
-                    VariableLimitSource.Guard, AnalysisConfidence.High);
+                    VariableLimitSource.Guard, AnalysisConfidence.High, VariableLimitKind.Presence);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A value the method divides by. Nothing in the source has to say so for this to be a real
+    /// limit: dividing by zero is a fault whether or not anyone guarded against it, so the
+    /// division itself is the evidence.
+    /// </summary>
+    private static IEnumerable<VariableLimit> RuleDivisor(MethodAnalysisContext context)
+    {
+        var known = BuildDeclaredVariables(context);
+
+        foreach (var (name, declared) in known)
+        {
+            // A literal divisor is not a variable anyone can get wrong, and "/=" and "%" divide
+            // just as surely as "/".
+            if (!SafeRegex.IsMatch(CodeOnly(context), $@"[/%]\s*{Regex.Escape(name)}\b")) continue;
+
+            // A comment or string mentioning a slash is not a division.
+            yield return Build(name, declared, "must not be zero",
+                $"used as a divisor: / {name}",
+                VariableLimitSource.Guard, AnalysisConfidence.Medium, VariableLimitKind.Range);
+        }
+    }
+
+    /// <summary>
+    /// A guard whose bounds are themselves variables: <c>if (value &lt; min || value &gt; max)
+    /// throw</c>. There is no number to show, but "between min and max" tells the reader where to
+    /// look, which is more use than falling back to the range of the type.
+    /// </summary>
+    private static IEnumerable<VariableLimit> RuleSymbolicRangeGuard(MethodAnalysisContext context)
+    {
+        var known = BuildDeclaredVariables(context);
+        var lower = new Dictionary<string, (string Bound, string Evidence)>(StringComparer.Ordinal);
+        var upper = new Dictionary<string, (string Bound, string Evidence)>(StringComparer.Ordinal);
+
+        // Accumulated across guard lines rather than matched on one, because the two ends are
+        // often written as separate statements — "if (v < low) return low;" on one line and
+        // "if (v > high) return high;" on the next is the same restriction as the pair joined
+        // by "||", and a one-line pattern would see neither.
+        foreach (var line in GuardLines(context))
+        {
+            foreach (Match match in SafeRegex.Matches(
+                line, @"\b([A-Za-z_]\w*)\s*(<=|>=|<|>)\s*([A-Za-z_]\w*)\b"))
+            {
+                var name = match.Groups[1].Value;
+                var other = match.Groups[3].Value;
+
+                // Both ends must be variables the method actually has, or this is a misread of
+                // some unrelated pair of words.
+                if (!known.ContainsKey(name) || !known.ContainsKey(other)) continue;
+                if (string.Equals(name, other, StringComparison.Ordinal)) continue;
+
+                // The guard names what it refuses, so refusing "below low" permits "low upwards".
+                var evidence = Condense(match.Value);
+                if (match.Groups[2].Value[0] == '<')
+                {
+                    lower.TryAdd(name, (other, evidence));
+                }
+                else
+                {
+                    upper.TryAdd(name, (other, evidence));
+                }
+            }
+        }
+
+        foreach (var (name, low) in lower)
+        {
+            if (!upper.TryGetValue(name, out var high)) continue;
+            if (string.Equals(low.Bound, high.Bound, StringComparison.Ordinal)) continue;
+
+            yield return Build(name, known[name], $"between {low.Bound} and {high.Bound}",
+                $"{low.Evidence}; {high.Evidence}",
+                VariableLimitSource.Guard, AnalysisConfidence.High);
+        }
+    }
+
+    /// <summary>
+    /// A guard admitting only a handful of values: <c>if (mode != 1 &amp;&amp; mode != 2) throw</c>
+    /// permits "1 or 2". A short list of permitted values is a stronger statement than any range
+    /// covering them, so it is reported as its own kind.
+    /// </summary>
+    private static IEnumerable<VariableLimit> RuleAllowedValues(MethodAnalysisContext context)
+    {
+        var known = BuildDeclaredVariables(context);
+
+        foreach (var line in GuardLines(context))
+        {
+            foreach (Match match in SafeRegex.Matches(
+                line,
+                @"\b([A-Za-z_]\w*)\s*!=\s*" + NumberPattern
+                    + @"(?:\s*&&\s*\1\s*!=\s*" + NumberPattern + @")+"))
+            {
+                var name = match.Groups[1].Value;
+                if (!known.TryGetValue(name, out var declared)) continue;
+
+                // The rejected values are every literal compared against the name on this match.
+                var values = new List<string>();
+                foreach (Match part in SafeRegex.Matches(
+                    match.Value, $@"{Regex.Escape(name)}\s*!=\s*" + NumberPattern))
+                {
+                    if (TryParse(part.Groups[1].Value, out var value))
+                    {
+                        var text = Number(value);
+                        if (!values.Contains(text, StringComparer.Ordinal)) values.Add(text);
+                    }
+                }
+
+                if (values.Count < 2) continue;
+
+                yield return Build(name, declared, JoinValues(values), match.Value,
+                    VariableLimitSource.Guard, AnalysisConfidence.High, VariableLimitKind.Membership);
             }
         }
     }
@@ -216,7 +403,7 @@ public sealed class VariableLimitAnalyzer
         var known = BuildDeclaredVariables(context);
 
         foreach (Match match in SafeRegex.Matches(
-            context.SourceBody,
+            CodeOnly(context),
             @"(?:Math\.Clamp|std::clamp|clamp)\s*\(\s*([A-Za-z_]\w*)\s*,\s*"
                 + NumberPattern + @"\s*,\s*" + NumberPattern + @"\s*\)"))
         {
@@ -242,7 +429,7 @@ public sealed class VariableLimitAnalyzer
         var known = BuildDeclaredVariables(context);
 
         foreach (Match match in SafeRegex.Matches(
-            context.SourceBody, @"\b([A-Za-z_]\w*)\s*>=\s*'(.)'\s*&&\s*\1\s*<=\s*'(.)'"))
+            CodeOnly(context), @"\b([A-Za-z_]\w*)\s*>=\s*'(.)'\s*&&\s*\1\s*<=\s*'(.)'"))
         {
             var name = match.Groups[1].Value;
             if (!known.TryGetValue(name, out var declared)) continue;
@@ -268,7 +455,7 @@ public sealed class VariableLimitAnalyzer
         var upper = new Dictionary<string, (Bound Bound, string Evidence)>(StringComparer.Ordinal);
 
         foreach (Match match in SafeRegex.Matches(
-            context.SourceBody, @"\b([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*" + NumberPattern + @"\b"))
+            CodeOnly(context), @"\b([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*" + NumberPattern + @"\b"))
         {
             var name = match.Groups[1].Value;
             if (!known.ContainsKey(name)) continue;
@@ -322,7 +509,7 @@ public sealed class VariableLimitAnalyzer
         var known = BuildDeclaredVariables(context);
 
         foreach (Match match in SafeRegex.Matches(
-            context.SourceBody,
+            CodeOnly(context),
             @"for\s*\(\s*(?:[A-Za-z_][\w:<>,\s\*&]*\s+)?([A-Za-z_]\w*)\s*=\s*" + NumberPattern
                 + @"\s*;\s*\1\s*(<=?)\s*" + NumberPattern + @"\s*;"))
         {
@@ -360,11 +547,34 @@ public sealed class VariableLimitAnalyzer
         {
             yield return Build(name, declared, DescribeTypeRange(declared.Type),
                 $"declared as {declared.Type}",
-                VariableLimitSource.DeclaredType, AnalysisConfidence.Low);
+                VariableLimitSource.DeclaredType, AnalysisConfidence.Low,
+                VariableLimitKind.DeclaredType);
         }
     }
 
     // ── Reading the source ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// The method body with comments and string literals blanked out.
+    /// </summary>
+    /// <remarks>
+    /// A limit read from a commented-out line is worse than no limit at all: it states a
+    /// restriction the running code does not apply, and the reader has no way to know. The same
+    /// goes for text inside a string. Both are replaced by spaces rather than removed, so every
+    /// remaining character keeps its position and quoted evidence still lines up with the source.
+    /// Cached per context because a dozen rules each need it.
+    /// </remarks>
+    private static string CodeOnly(MethodAnalysisContext context) =>
+        CodeOnlyCache.GetValue(context, static ctx => SafeRegex.Replace(
+            ctx.SourceBody,
+            @"//[^\n]*|/\*.*?\*/|""(?:\\.|[^""\\\n])*""|'(?:\\.|[^'\\\n])*'",
+            static match => match.Value[0] == '\''
+                // A character literal is meaningful to the character-range rule, so it stays.
+                ? match.Value
+                : new string(' ', match.Value.Length)));
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MethodAnalysisContext, string>
+        CodeOnlyCache = new();
 
     /// <summary>
     /// The lines that reject a value — those combining a test with a <c>throw</c> or an early
@@ -373,7 +583,7 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<string> GuardLines(MethodAnalysisContext context)
     {
-        foreach (var raw in context.SourceBody.Split('\n'))
+        foreach (var raw in CodeOnly(context).Split('\n'))
         {
             var line = raw.Trim();
             if (line.Contains("if", StringComparison.Ordinal) &&
@@ -421,7 +631,8 @@ public sealed class VariableLimitAnalyzer
         foreach (var field in context.Method.ParentClass?.Fields ?? [])
         {
             if (string.IsNullOrEmpty(field.Name) || map.ContainsKey(field.Name)) continue;
-            if (!context.SourceBody.Contains(field.Name, StringComparison.Ordinal)) continue;
+            // A field named only in a comment is not one this method uses.
+            if (!CodeOnly(context).Contains(field.Name, StringComparison.Ordinal)) continue;
             map[field.Name] = (field.Type, VariableScopeKind.Field);
         }
 
@@ -474,6 +685,12 @@ public sealed class VariableLimitAnalyzer
         type.Contains("Dictionary", StringComparison.Ordinal) ||
         type.Contains("map<", StringComparison.Ordinal) ||
         type.Contains("set<", StringComparison.Ordinal);
+
+    /// <summary>Renders a short list as "1, 2 or 3" rather than a bare comma-separated run.</summary>
+    private static string JoinValues(List<string> values) =>
+        values.Count == 2
+            ? $"{values[0]} or {values[1]}"
+            : $"{string.Join(", ", values.Take(values.Count - 1))} or {values[^1]}";
 
     private static string AtMost(decimal value, string unit) =>
         string.Create(CultureInfo.InvariantCulture, $"at most {Number(value)} {unit}");
@@ -545,12 +762,14 @@ public sealed class VariableLimitAnalyzer
         string limit,
         string evidence,
         VariableLimitSource source,
-        AnalysisConfidence confidence) =>
+        AnalysisConfidence confidence,
+        VariableLimitKind kind = VariableLimitKind.Range) =>
         new()
         {
             Name = name,
             Type = declared.Type,
             Scope = declared.Scope,
+            Kind = kind,
             Limit = limit,
             Evidence = Condense(evidence),
             Source = source,

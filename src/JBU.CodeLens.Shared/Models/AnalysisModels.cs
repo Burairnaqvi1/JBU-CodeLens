@@ -255,8 +255,18 @@ public sealed class VariableLimit
     /// <summary>Where the variable is declared, so the reader knows what they are looking at.</summary>
     public VariableScopeKind Scope { get; set; }
 
-    /// <summary>The allowed values, already written for a reader: "0 to 100", "'a' to 'z'", "true or false".</summary>
+    /// <summary>
+    /// The allowed values, already written for a reader: "0 to 100", "'a' to 'z'",
+    /// "must not be null, at most 50 characters".
+    /// </summary>
     public string Limit { get; set; } = string.Empty;
+
+    /// <summary>
+    /// What the limit constrains. A variable can be subject to several at once — a string may
+    /// have to be present <em>and</em> short — and those are merged into one statement rather
+    /// than competing, since they are complementary facts rather than rival claims.
+    /// </summary>
+    public VariableLimitKind Kind { get; set; }
 
     /// <summary>The line of code the limit was read from, so the claim can be checked.</summary>
     public string Evidence { get; set; } = string.Empty;
@@ -265,6 +275,29 @@ public sealed class VariableLimit
     public VariableLimitSource Source { get; set; }
 
     public AnalysisConfidence Confidence { get; set; }
+}
+
+/// <summary>
+/// What aspect of a variable a limit constrains. Two limits of different kinds describe different
+/// things and are both true at once; two of the same kind are rival claims, and only the
+/// better-evidenced one is kept.
+/// </summary>
+public enum VariableLimitKind
+{
+    /// <summary>The span of values permitted, such as "1 to 100" or "greater than 0".</summary>
+    Range,
+
+    /// <summary>How much the value may hold, in characters or items.</summary>
+    Size,
+
+    /// <summary>Whether the value may be absent.</summary>
+    Presence,
+
+    /// <summary>The specific values permitted, where only a few are.</summary>
+    Membership,
+
+    /// <summary>What the declared type permits, when nothing narrower was found.</summary>
+    DeclaredType,
 }
 
 /// <summary>
