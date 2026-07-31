@@ -9,6 +9,7 @@ public sealed class InferenceEngine
     private readonly PreconditionAnalyzer _preconditionAnalyzer = new();
     private readonly PostconditionAnalyzer _postconditionAnalyzer = new();
     private readonly VariableAnalyzer _variableAnalyzer = new();
+    private readonly VariableLimitAnalyzer _variableLimitAnalyzer = new();
     private readonly RuntimeRiskAnalyzer _runtimeRiskAnalyzer = new();
     private readonly DesignConstraintAnalyzer _designConstraintAnalyzer = new();
     private readonly DependencyAnalyzer _dependencyAnalyzer = new();
@@ -32,6 +33,7 @@ public sealed class InferenceEngine
             Postconditions = _postconditionAnalyzer.AnalyzePostconditions(context).ToList(),
             StateChanges = _postconditionAnalyzer.AnalyzeStateChanges(context).ToList(),
             Variables = _variableAnalyzer.Analyze(context).ToList(),
+            VariableLimits = _variableLimitAnalyzer.Analyze(context).ToList(),
             RuntimeRisks = _runtimeRiskAnalyzer.Analyze(context).ToList(),
             DesignConstraints = _designConstraintAnalyzer.Analyze(context).ToList(),
             Dependencies = _dependencyAnalyzer.Analyze(context).ToList(),
@@ -48,6 +50,7 @@ public sealed class InferenceEngine
         _preconditionAnalyzer,
         _postconditionAnalyzer,
         _variableAnalyzer,
+        _variableLimitAnalyzer,
         _runtimeRiskAnalyzer,
         _designConstraintAnalyzer,
         _dependencyAnalyzer);
@@ -61,6 +64,7 @@ public sealed class InferenceEngineCapabilities
     public PreconditionAnalyzer Preconditions { get; }
     public PostconditionAnalyzer Postconditions { get; }
     public VariableAnalyzer Variables { get; }
+    public VariableLimitAnalyzer VariableLimits { get; }
     public RuntimeRiskAnalyzer RuntimeRisks { get; }
     public DesignConstraintAnalyzer DesignConstraints { get; }
     public DependencyAnalyzer Dependencies { get; }
@@ -69,6 +73,7 @@ public sealed class InferenceEngineCapabilities
         PreconditionAnalyzer preconditions,
         PostconditionAnalyzer postconditions,
         VariableAnalyzer variables,
+        VariableLimitAnalyzer variableLimits,
         RuntimeRiskAnalyzer runtimeRisks,
         DesignConstraintAnalyzer designConstraints,
         DependencyAnalyzer dependencies)
@@ -76,6 +81,7 @@ public sealed class InferenceEngineCapabilities
         Preconditions = preconditions;
         Postconditions = postconditions;
         Variables = variables;
+        VariableLimits = variableLimits;
         RuntimeRisks = runtimeRisks;
         DesignConstraints = designConstraints;
         Dependencies = dependencies;

@@ -77,6 +77,7 @@ public sealed class MethodAnalysis
     public List<MethodPrecondition> Preconditions { get; set; } = new();
     public List<MethodPostcondition> Postconditions { get; set; } = new();
     public List<VariableAnalysis> Variables { get; set; } = new();
+    public List<VariableLimit> VariableLimits { get; set; } = new();
     public List<RuntimeRisk> RuntimeRisks { get; set; } = new();
     public List<DesignConstraint> DesignConstraints { get; set; } = new();
     public List<DependencyInfo> Dependencies { get; set; } = new();
@@ -233,4 +234,57 @@ public enum ExecutionStepKind
     DatabaseOperation,
     ReturnResult,
     Delegation,
+}
+
+/// <summary>
+/// The range of values a single variable is allowed to hold inside one method, as far as the
+/// method's own code reveals it — for example "0 to 100" from a guard clause, or "'a' to 'z'"
+/// from a character comparison.
+/// </summary>
+/// <remarks>
+/// This is deliberately narrower than <see cref="MethodPrecondition"/>. A precondition says what
+/// must be true before the method runs; a limit says which values the variable may take, so it
+/// can be shown beside the variable rather than as prose.
+/// </remarks>
+public sealed class VariableLimit
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string Type { get; set; } = string.Empty;
+
+    /// <summary>Where the variable is declared, so the reader knows what they are looking at.</summary>
+    public VariableScopeKind Scope { get; set; }
+
+    /// <summary>The allowed values, already written for a reader: "0 to 100", "'a' to 'z'", "true or false".</summary>
+    public string Limit { get; set; } = string.Empty;
+
+    /// <summary>The line of code the limit was read from, so the claim can be checked.</summary>
+    public string Evidence { get; set; } = string.Empty;
+
+    /// <summary>What kind of code established the limit.</summary>
+    public VariableLimitSource Source { get; set; }
+
+    public AnalysisConfidence Confidence { get; set; }
+}
+
+/// <summary>
+/// What established a <see cref="VariableLimit"/>. Ordered strongest first: a value rejected by a
+/// guard is a harder fact than one merely implied by the variable's type.
+/// </summary>
+public enum VariableLimitSource
+{
+    /// <summary>A check that throws or returns when the value falls outside the range.</summary>
+    Guard,
+
+    /// <summary>A call that forces the value into a range, such as Math.Clamp.</summary>
+    Clamp,
+
+    /// <summary>A comparison that the surrounding code depends on.</summary>
+    Comparison,
+
+    /// <summary>The start and end of a counting loop.</summary>
+    LoopBound,
+
+    /// <summary>The natural range of the declared type, with nothing narrower found.</summary>
+    DeclaredType,
 }

@@ -689,6 +689,10 @@ internal static class DetailPanelRenderer
         row2.Children.Add(designCard);
         host.Children.Add(row2);
 
+        // Full width rather than a fourth column: each row names a variable, its permitted range
+        // and the line of code that range was read from, and that does not fit a third of a row.
+        host.Children.Add(BuildVariableLimitsCard(context, resourceRoot));
+
         // Generate Analysis button
         var analysisRow = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 20) };
         var generateAnalysisBtn = CreateRegenerateButton("Generate Analysis", () => { }, resourceRoot);
@@ -965,6 +969,133 @@ internal static class DetailPanelRenderer
 
         return WrapInCard(stack, resourceRoot);
     }
+
+    /// <summary>
+    /// Lists the range of values each variable may hold, with the code the range was read from.
+    /// </summary>
+    /// <remarks>
+    /// The evidence column is the point of this card. A stated range the reader cannot check is
+    /// worse than no range at all, because they have no way to tell a certainty from a guess —
+    /// so the confidence is named and the originating line is quoted beside every row.
+    /// </remarks>
+    private static Border BuildVariableLimitsCard(MethodDetailContext context, FrameworkElement resourceRoot)
+    {
+        var stack = new StackPanel();
+        AddCardHeader(stack, "Variable Operation Limits", resourceRoot);
+
+        var limits = context.Analysis.VariableLimits;
+        if (limits.Count == 0)
+        {
+            stack.Children.Add(CreateMutedText(
+                "No value limits could be read from this method. Limits are found where the code " +
+                "checks a value, forces it into a range, or counts through a fixed loop.",
+                resourceRoot,
+                marginTop: 4));
+            return WrapInCard(stack, resourceRoot);
+        }
+
+        var grid = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // name
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // range
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // evidence
+
+        AddLimitHeaderRow(grid, resourceRoot);
+
+        for (var i = 0; i < limits.Count; i++)
+        {
+            AddLimitRow(grid, limits[i], i + 1, resourceRoot);
+        }
+
+        stack.Children.Add(grid);
+        return WrapInCard(stack, resourceRoot);
+    }
+
+    private static void AddLimitHeaderRow(Grid grid, FrameworkElement resourceRoot)
+    {
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        AddToGrid(grid, CreateCapsLabel("VARIABLE", resourceRoot), 0, 0);
+        AddToGrid(grid, CreateCapsLabel("ALLOWED VALUES", resourceRoot), 0, 2);
+        AddToGrid(grid, CreateCapsLabel("READ FROM", resourceRoot), 0, 4);
+    }
+
+    private static void AddLimitRow(Grid grid, VariableLimit limit, int row, FrameworkElement resourceRoot)
+    {
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var name = new TextBlock
+        {
+            Text = limit.Name,
+            FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont"),
+            FontSize = 12,
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 6, 0, 0),
+        };
+        name.ToolTip = $"{limit.Type} ({DescribeScope(limit.Scope)})";
+        AddToGrid(grid, name, row, 0);
+
+        var value = new TextBlock
+        {
+            Text = limit.Limit,
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brush(resourceRoot, LimitBrushKey(limit.Confidence)),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 6, 0, 0),
+        };
+        AddToGrid(grid, value, row, 2);
+
+        var evidence = new TextBlock
+        {
+            Text = limit.Evidence,
+            FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont"),
+            FontSize = 11,
+            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 6, 0, 0),
+            Opacity = 0.85,
+        };
+        evidence.ToolTip = $"{limit.Evidence}\n\n{DescribeLimitSource(limit)}";
+        AddToGrid(grid, evidence, row, 4);
+    }
+
+    private static void AddToGrid(Grid grid, UIElement element, int row, int column)
+    {
+        Grid.SetRow(element, row);
+        Grid.SetColumn(element, column);
+        grid.Children.Add(element);
+    }
+
+    /// <summary>
+    /// A range only a type implies is dimmer than one the code enforces, so the eye goes to the
+    /// limits that were actually checked.
+    /// </summary>
+    private static string LimitBrushKey(AnalysisConfidence confidence) => confidence switch
+    {
+        AnalysisConfidence.High => "SecondaryBrush",
+        AnalysisConfidence.Medium => "PrimaryBrush",
+        _ => "TextSecondaryBrush",
+    };
+
+    private static string DescribeScope(VariableScopeKind scope) => scope switch
+    {
+        VariableScopeKind.Parameter => "parameter",
+        VariableScopeKind.Local => "local variable",
+        VariableScopeKind.Field => "field",
+        _ => "property",
+    };
+
+    private static string DescribeLimitSource(VariableLimit limit) => limit.Source switch
+    {
+        VariableLimitSource.Guard => "The method rejects values outside this range.",
+        VariableLimitSource.Clamp => "The method forces the value into this range.",
+        VariableLimitSource.Comparison => "Implied by comparisons the method relies on.",
+        VariableLimitSource.LoopBound => "The counter's range in a fixed loop.",
+        _ => "The natural range of the declared type; no narrower check was found.",
+    };
 
     private static Border BuildVariablesCard(MethodDetailContext context, FrameworkElement resourceRoot)
     {

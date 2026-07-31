@@ -560,6 +560,24 @@ public static class WordExporter
         WriteMandatoryBulletSection(document, "Design Constraints", designLines,
             "None detected from source analysis.");
 
+        if (method.CachedAnalysis is { VariableLimits.Count: > 0 } withLimits)
+        {
+            document.InsertParagraph("Variable Operation Limits")
+                .Bold()
+                .SpacingBefore(8d)
+                .SpacingAfter(4d);
+
+            // The originating code is quoted alongside each range so a reader can check the
+            // claim against the source rather than having to take it on trust.
+            foreach (var limit in withLimits.VariableLimits)
+            {
+                document.InsertParagraph($"{limit.Name} — {limit.Limit}  (from: {limit.Evidence})")
+                    .SpacingAfter(2d);
+            }
+
+            document.InsertParagraph(string.Empty).SpacingAfter(4d);
+        }
+
         if (method.CachedAnalysis is { ExecutionSteps.Count: > 0 } withSteps)
         {
             document.InsertParagraph("Execution Flow (Deterministic)")

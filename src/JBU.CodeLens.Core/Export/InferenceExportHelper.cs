@@ -87,6 +87,18 @@ public static class InferenceExportHelper
                             .ToList(),
                         ["designConstraints"] = analysis.DesignConstraints.Select(c => c.Description).ToList(),
                         ["runtimeRisks"] = analysis.RuntimeRisks.Select(r => r.Description).ToList(),
+                        ["variableLimits"] = analysis.VariableLimits
+                            .Select(l => new Dictionary<string, object?>
+                            {
+                                ["name"] = l.Name,
+                                ["type"] = l.Type,
+                                ["scope"] = l.Scope.ToString(),
+                                ["allowedValues"] = l.Limit,
+                                ["readFrom"] = l.Evidence,
+                                ["source"] = l.Source.ToString(),
+                                ["confidence"] = l.Confidence.ToString(),
+                            })
+                            .ToList(),
                     });
                 }
             }
@@ -153,6 +165,23 @@ public static class InferenceExportHelper
             foreach (var item in analysis.DesignConstraints)
             {
                 sb.AppendLine(CultureInfo.InvariantCulture, $"- {item.Description}");
+            }
+        }
+
+        if (analysis.VariableLimits.Count > 0)
+        {
+            // The originating code travels with the range: a limit the reader cannot check
+            // against the source is not much use to them.
+            sb.AppendLine();
+            sb.AppendLine("**Variable operation limits**");
+            sb.AppendLine();
+            sb.AppendLine("| Variable | Allowed values | Read from |");
+            sb.AppendLine("| --- | --- | --- |");
+            foreach (var limit in analysis.VariableLimits)
+            {
+                sb.AppendLine(
+                    CultureInfo.InvariantCulture,
+                    $"| `{limit.Name}` | {limit.Limit} | `{limit.Evidence}` |");
             }
         }
     }
