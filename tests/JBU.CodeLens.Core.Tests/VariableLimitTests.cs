@@ -152,9 +152,8 @@ public class VariableLimitTests
     }
 
     [Fact]
-    public void ComparisonAtOnlyOneEnd_ReportsNothing()
+    public void ComparisonAtOnlyOneEnd_ReportsThatOneEnd()
     {
-        // A single bound is not a range, and guessing the other end would be inventing a fact.
         var limits = Analyze(Context(
             """
             public void Operate(int count)
@@ -164,7 +163,114 @@ public class VariableLimitTests
             """,
             parameters: ["int count"]));
 
-        Assert.DoesNotContain(limits, l => l.Name == "count");
+        Assert.Equal("greater than 0", Assert.Single(limits, l => l.Name == "count").Limit);
+    }
+
+    [Fact]
+    public void GuardRejectingNonPositiveValues_ReportsGreaterThanZero()
+    {
+        // The guard says what is refused, so refusing "<= 0" permits everything above 0.
+        var limits = Analyze(Context(
+            """
+            public void Operate(int quantity)
+            {
+                if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
+            }
+            """,
+            parameters: ["int quantity"]));
+
+        var limit = Assert.Single(limits, l => l.Name == "quantity");
+        Assert.Equal("greater than 0", limit.Limit);
+        Assert.Equal(VariableLimitSource.Guard, limit.Source);
+    }
+
+    [Fact]
+    public void GuardRejectingNegativeValues_LeavesZeroPermitted()
+    {
+        var limits = Analyze(Context(
+            """
+            public void Operate(int offset)
+            {
+                if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
+            }
+            """,
+            parameters: ["int offset"]));
+
+        Assert.Equal("0 or greater", Assert.Single(limits, l => l.Name == "offset").Limit);
+    }
+
+    [Fact]
+    public void GuardOnTextLength_ReportsACharacterLimit()
+    {
+        var limits = Analyze(Context(
+            """
+            public void Operate(string name)
+            {
+                if (name.Length > 10) throw new ArgumentException("too long");
+            }
+            """,
+            parameters: ["string name"]));
+
+        var limit = Assert.Single(limits, l => l.Name == "name");
+        Assert.Equal("at most 10 characters", limit.Limit);
+    }
+
+    [Fact]
+    public void GuardOnCollectionSize_CountsItemsRatherThanCharacters()
+    {
+        var limits = Analyze(Context(
+            """
+            public void Operate(List<int> values)
+            {
+                if (values.Count < 3) throw new ArgumentException("too few");
+            }
+            """,
+            parameters: ["List<int> values"]));
+
+        Assert.Equal("at least 3 items", Assert.Single(limits, l => l.Name == "values").Limit);
+    }
+
+    [Fact]
+    public void NullGuard_BecomesTheLimitOnAReference()
+    {
+        var limits = Analyze(Context(
+            """
+            public void Operate(Order order)
+            {
+                if (order == null) throw new ArgumentNullException(nameof(order));
+            }
+            """,
+            parameters: ["Order order"]));
+
+        Assert.Equal("must not be null", Assert.Single(limits, l => l.Name == "order").Limit);
+    }
+
+    [Fact]
+    public void AGuardAndAPlainComparisonAreReadOppositeWaysRound()
+    {
+        // The guard rejects "< 18", so 18 and above is permitted. Read the same way as a plain
+        // comparison it would come out as "less than 18" — the exact inverse of the truth.
+        var guarded = Analyze(Context(
+            """
+            public void Operate(int age)
+            {
+                if (age < 18) throw new ArgumentOutOfRangeException(nameof(age));
+            }
+            """,
+            parameters: ["int age"]));
+
+        Assert.Equal("18 or greater", Assert.Single(guarded, l => l.Name == "age").Limit);
+
+        var compared = Analyze(Context(
+            """
+            public void Operate(int age)
+            {
+                if (age < 18) ApplyDiscount(age);
+            }
+            """,
+            parameters: ["int age"]));
+
+        Assert.Equal("less than 18", Assert.Single(compared, l => l.Name == "age").Limit);
     }
 
     [Fact]
@@ -217,20 +323,67 @@ public class VariableLimitTests
     }
 
     [Fact]
-    public void IntAndDouble_AreNotReportedFromTheirTypeAlone()
+    public void EveryVariableGetsAnAnswer_EvenWhenNothingRestrictsIt()
     {
-        // Quoting the full range of an int tells the reader nothing they did not already know,
-        // and would bury the variables that carry a real restriction.
+        // A blank entry would leave the reader unable to tell "unrestricted" from "not examined",
+        // so an unrestricted variable falls back to what its type permits.
         var limits = Analyze(Context(
             """
-            public void Operate(int total, double ratio)
+            public void Operate(int total, double ratio, string label, bool active)
             {
-                Use(total, ratio);
+                Use(total, ratio, label, active);
             }
             """,
-            parameters: ["int total", "double ratio"]));
+            parameters: ["int total", "double ratio", "string label", "bool active"]));
 
-        Assert.Empty(limits);
+        Assert.Equal(4, limits.Count);
+        Assert.Equal("any whole number", Assert.Single(limits, l => l.Name == "total").Limit);
+        Assert.Equal("any decimal number", Assert.Single(limits, l => l.Name == "ratio").Limit);
+        Assert.Equal("any text", Assert.Single(limits, l => l.Name == "label").Limit);
+        Assert.Equal("true or false", Assert.Single(limits, l => l.Name == "active").Limit);
+        Assert.All(limits, l => Assert.Equal(AnalysisConfidence.Low, l.Confidence));
+    }
+
+    [Fact]
+    public void UnsignedTypes_AreNotDescribedAsAllowingNegatives()
+    {
+        // size_t is unsigned; calling it "any whole number" would overstate what it accepts.
+        var limits = Analyze(Context(
+            "void Operate(size_t index) { Use(index); }",
+            parameters: ["size_t index"],
+            fileName: "engine.cpp"));
+
+        Assert.Equal("0 or greater", Assert.Single(limits).Limit);
+    }
+
+    [Fact]
+    public void WideNumericTypes_AreDescribedRatherThanQuotedInFull()
+    {
+        // "-2,147,483,648 to 2,147,483,647" is technically the range of an int and tells the
+        // reader nothing; it would also crowd out the variables carrying a real restriction.
+        var limits = Analyze(Context(
+            "public void Operate(int total) { Use(total); }",
+            parameters: ["int total"]));
+
+        Assert.DoesNotContain("2,147,483,647", Assert.Single(limits).Limit, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ClassFieldsTheMethodNeverTouches_AreLeftOut()
+    {
+        // Listing every field of the class against every method would bury the ones that matter.
+        var parentClass = new ClassInfo { Name = "Sample", SourceFilePath = @"C:\proj\Sample.cs" };
+        parentClass.Fields.Add(new VariableInfo { Name = "usedField", Type = "byte" });
+        parentClass.Fields.Add(new VariableInfo { Name = "unusedField", Type = "byte" });
+
+        var method = new MethodInfo { Name = "Operate", ParentClass = parentClass };
+        method.XmlDocTags["sourceCode"] = "public void Operate() { Use(usedField); }";
+        parentClass.Methods.Add(method);
+
+        var limits = Analyze(new MethodAnalysisContext(method));
+
+        Assert.Contains(limits, l => l.Name == "usedField");
+        Assert.DoesNotContain(limits, l => l.Name == "unusedField");
     }
 
     [Fact]
@@ -302,14 +455,18 @@ public class VariableLimitTests
     }
 
     [Fact]
-    public void MethodWithNoStoredBody_ReportsNothingRatherThanGuessing()
+    public void MethodWithNoStoredBody_StillReportsWhatTheSignatureShows()
     {
+        // The body is what reveals a restriction, but the parameter types are known regardless,
+        // so the reader still gets an answer rather than an empty panel.
         var parentClass = new ClassInfo { Name = "Sample", SourceFilePath = @"C:\proj\Sample.cs" };
         var method = new MethodInfo { Name = "Operate", ParentClass = parentClass };
         method.Parameters.Add("byte channel");
         parentClass.Methods.Add(method);
 
-        Assert.Empty(Analyze(new MethodAnalysisContext(method)));
+        var limit = Assert.Single(Analyze(new MethodAnalysisContext(method)));
+        Assert.Equal("0 to 255", limit.Limit);
+        Assert.Equal(VariableLimitSource.DeclaredType, limit.Source);
     }
 
     [Fact]
@@ -359,7 +516,7 @@ public class VariableLimitTests
             parameters: ["double ratio"]));
 
         var limit = Assert.Single(limits, l => l.Name == "ratio");
-        Assert.Equal("more than 0.5, less than 2.5", limit.Limit);
+        Assert.Equal("greater than 0.5, less than 2.5", limit.Limit);
     }
 
     [Fact]
