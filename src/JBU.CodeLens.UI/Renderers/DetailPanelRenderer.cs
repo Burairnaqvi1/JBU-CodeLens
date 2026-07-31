@@ -848,6 +848,16 @@ internal static class DetailPanelRenderer
                 paramText.Inlines.Add(new Run($"  {name}") { Foreground = Brush(resourceRoot, "TextPrimaryBrush") });
                 stack.Children.Add(paramText);
 
+                // The permitted range belongs beside the parameter it constrains — that is where
+                // the reader is already looking when asking "what may I pass in here?". The card
+                // lower down repeats it with the originating code for anyone who wants to check.
+                var limit = context.Analysis.VariableLimits
+                    .FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.Ordinal));
+                if (limit is not null)
+                {
+                    stack.Children.Add(CreateInlineLimit(limit, resourceRoot));
+                }
+
                 if (method.XmlDocTags.TryGetValue($"param:{name}", out var paramDoc))
                     stack.Children.Add(CreateBodyText(paramDoc, resourceRoot, marginTop: 4, marginLeft: 12));
             }
@@ -968,6 +978,35 @@ internal static class DetailPanelRenderer
         }
 
         return WrapInCard(stack, resourceRoot);
+    }
+
+    /// <summary>
+    /// The one-line form of a variable's operation limit, shown beneath the parameter it applies
+    /// to. Carries no evidence column — the reader wanting to check the claim has the full table
+    /// further down; here the answer itself is what matters.
+    /// </summary>
+    private static TextBlock CreateInlineLimit(VariableLimit limit, FrameworkElement resourceRoot)
+    {
+        var line = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Margin = new Thickness(12, 3, 0, 0),
+        };
+
+        line.Inlines.Add(new Run("limit  ")
+        {
+            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
+            FontWeight = FontWeights.SemiBold,
+        });
+        line.Inlines.Add(new Run(limit.Limit)
+        {
+            Foreground = Brush(resourceRoot, LimitBrushKey(limit.Confidence)),
+            FontWeight = FontWeights.SemiBold,
+        });
+
+        line.ToolTip = $"{limit.Evidence}\n\n{DescribeLimitSource(limit)}";
+        return line;
     }
 
     /// <summary>
