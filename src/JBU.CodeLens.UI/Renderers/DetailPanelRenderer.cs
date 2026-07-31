@@ -994,7 +994,7 @@ internal static class DetailPanelRenderer
             Margin = new Thickness(12, 3, 0, 0),
         };
 
-        line.Inlines.Add(new Run("limit  ")
+        line.Inlines.Add(new Run("limit: ")
         {
             Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
             FontWeight = FontWeights.SemiBold,
