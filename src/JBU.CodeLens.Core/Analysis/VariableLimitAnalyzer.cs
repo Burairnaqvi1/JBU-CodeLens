@@ -145,12 +145,12 @@ public sealed class VariableLimitAnalyzer
         {
             foreach (Match match in SafeRegex.Matches(
                 line,
-                @"\b([A-Za-z_]\w*)\s*<(=?)\s*" + NumberPattern + @"\s*\|\|\s*\1\s*>(=?)\s*" + NumberPattern))
+                @"\b([A-Za-z_]\w*)\s*<(=?)\s*" + ValuePattern + @"\s*\|\|\s*\1\s*>(=?)\s*" + ValuePattern))
             {
                 var name = match.Groups[1].Value;
                 if (!known.TryGetValue(name, out var declared)) continue;
-                if (!TryParse(match.Groups[3].Value, out var lowValue)) continue;
-                if (!TryParse(match.Groups[5].Value, out var highValue)) continue;
+                if (!TryResolve(match.Groups[3].Value, context, out var lowValue)) continue;
+                if (!TryResolve(match.Groups[5].Value, context, out var highValue)) continue;
 
                 // The guard states what is refused, so "< 0" leaves 0 itself permitted while
                 // "<= 0" refuses 0 as well.
@@ -180,12 +180,12 @@ public sealed class VariableLimitAnalyzer
         foreach (var line in RejectionLines(context))
         {
             foreach (Match match in SafeRegex.Matches(
-                line, @"\b([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*" + NumberPattern + @"\b"))
+                line, @"\b([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*" + ValuePattern + @"\b"))
             {
                 var name = match.Groups[1].Value;
                 if (!known.TryGetValue(name, out var declared)) continue;
                 if (IsLengthExpression(line, name)) continue;
-                if (!TryParse(match.Groups[3].Value, out var value)) continue;
+                if (!TryResolve(match.Groups[3].Value, context, out var value)) continue;
 
                 // Rejected "< 5" leaves "5 or more" permitted; rejected "<= 5" leaves
                 // "greater than 5". The operator flips because the guard describes refusals.
@@ -738,6 +738,69 @@ public sealed class VariableLimitAnalyzer
     /// <c>1.5f</c>, <c>10L</c>.
     /// </summary>
     private const string NumberPattern = @"(-?\d+(?:\.\d+)?)(?:[fFdDmMlLuU]{1,2})?";
+
+    /// <summary>
+    /// A bound as written: either a literal, or the name of something standing in for one.
+    /// </summary>
+    private const string ValuePattern = @"([A-Za-z_]\w*|-?\d+(?:\.\d+)?[fFdDmMlLuU]{0,2})";
+
+    /// <summary>
+    /// Turns a bound into a number, following a name to its value where the name stands for a
+    /// fixed one — so <c>if (count &gt; MaxItems)</c> reports "100 or less" rather than falling
+    /// back to the range of the type.
+    /// </summary>
+    private static bool TryResolve(string token, MethodAnalysisContext context, out decimal value)
+    {
+        // The token now arrives whole, so any type suffix C# or C++ attached — the "m" of 0m —
+        // comes with it and has to come off before the number will parse.
+        var literal = token.TrimEnd('f', 'F', 'd', 'D', 'm', 'M', 'l', 'L', 'u', 'U');
+        if (literal.Length > 0 && char.IsAsciiDigit(literal[^1]) && TryParse(literal, out value))
+        {
+            return true;
+        }
+
+        return FixedValues(context).TryGetValue(token, out value);
+    }
+
+    /// <summary>
+    /// Names that stand for a fixed number: fields and locals initialised to a literal and never
+    /// assigned again anywhere in this method.
+    /// </summary>
+    /// <remarks>
+    /// The reassignment check is what makes this safe. <c>int limit = 5; limit = Compute();</c>
+    /// initialises to a literal but does not stand for it, and quoting 5 would state a bound the
+    /// method never applies. A name that is written to is not a constant, so it is not followed.
+    /// The condition itself still appears in the evidence column, so a reader can always see
+    /// which name produced the number.
+    /// </remarks>
+    private static Dictionary<string, decimal> FixedValues(MethodAnalysisContext context) =>
+        FixedValueCache.GetValue(context, static ctx =>
+        {
+            var map = new Dictionary<string, decimal>(StringComparer.Ordinal);
+            var body = CodeOnly(ctx);
+
+            var candidates = (ctx.Method.ParentClass?.Fields ?? []).Concat(ctx.Method.LocalVariables);
+            foreach (var candidate in candidates)
+            {
+                if (string.IsNullOrEmpty(candidate.Name) || candidate.InitialValue is null) continue;
+                if (!TryParse(candidate.InitialValue.Trim(), out var literal)) continue;
+
+                // "=" but not "==", and not the "=" of the declaration this value came from.
+                var assignments = SafeRegex.Matches(
+                    body, $@"\b{Regex.Escape(candidate.Name)}\s*(?:[-+*/]?=)(?!=)").Count;
+                var declared = SafeRegex.IsMatch(
+                    body, $@"\b{Regex.Escape(candidate.Name)}\s*=\s*{Regex.Escape(candidate.InitialValue.Trim())}");
+
+                if (assignments > (declared ? 1 : 0)) continue;
+
+                map[candidate.Name] = literal;
+            }
+
+            return map;
+        });
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MethodAnalysisContext, Dictionary<string, decimal>>
+        FixedValueCache = new();
 
     private static bool TryParse(string text, out decimal value) =>
         decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value);

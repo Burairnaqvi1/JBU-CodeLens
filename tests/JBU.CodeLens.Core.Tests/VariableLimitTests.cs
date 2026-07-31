@@ -614,6 +614,81 @@ public class VariableLimitTests
     }
 
     [Fact]
+    public void ANamedConstantBound_IsFollowedToItsValue()
+    {
+        // "count > MaxItems" is how real code writes a bound. Reporting the range of the type
+        // would throw away the one number the reader wants.
+        var parentClass = new ClassInfo { Name = "Sample", SourceFilePath = @"C:\proj\Sample.cs" };
+        parentClass.Fields.Add(new VariableInfo { Name = "MaxItems", Type = "int", InitialValue = "100" });
+
+        var method = new MethodInfo { Name = "Operate", ParentClass = parentClass };
+        method.Parameters.Add("int count");
+        method.XmlDocTags["sourceCode"] =
+            """
+            public void Operate(int count)
+            {
+                if (count > MaxItems) throw new ArgumentOutOfRangeException(nameof(count));
+            }
+            """;
+        parentClass.Methods.Add(method);
+
+        var limit = Assert.Single(Analyze(new MethodAnalysisContext(method)), l => l.Name == "count");
+        Assert.Equal("100 or less", limit.Limit);
+
+        // The name still appears in the evidence, so the number can be traced back to it.
+        Assert.Contains("MaxItems", limit.Evidence, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ANameThatIsReassigned_IsNotTreatedAsAConstant()
+    {
+        // It is initialised to a literal but does not stand for one, so quoting 5 would state a
+        // bound the method never applies. The initial value has to be set for this to exercise
+        // the reassignment check at all — without it, resolution never starts and the test would
+        // pass for the wrong reason.
+        var parentClass = new ClassInfo { Name = "Sample", SourceFilePath = @"C:\proj\Sample.cs" };
+        var method = new MethodInfo { Name = "Operate", ParentClass = parentClass };
+        method.Parameters.Add("int count");
+        method.LocalVariables.Add(new VariableInfo { Name = "limit", Type = "int", InitialValue = "5" });
+        method.XmlDocTags["sourceCode"] =
+            """
+            public void Operate(int count)
+            {
+                int limit = 5;
+                limit = Compute();
+                if (count > limit) throw new ArgumentOutOfRangeException(nameof(count));
+            }
+            """;
+        parentClass.Methods.Add(method);
+
+        var limits = Analyze(new MethodAnalysisContext(method));
+        var limit = Assert.Single(limits, l => l.Name == "count");
+        Assert.Equal("any whole number", limit.Limit);
+        Assert.DoesNotContain("5", limit.Limit, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ALocalConstantBound_IsFollowedToItsValue()
+    {
+        var parentClass = new ClassInfo { Name = "Sample", SourceFilePath = @"C:\proj\Sample.cs" };
+        var method = new MethodInfo { Name = "Operate", ParentClass = parentClass };
+        method.Parameters.Add("int count");
+        method.LocalVariables.Add(new VariableInfo { Name = "cap", Type = "int", InitialValue = "8" });
+        method.XmlDocTags["sourceCode"] =
+            """
+            public void Operate(int count)
+            {
+                const int cap = 8;
+                if (count > cap) throw new ArgumentOutOfRangeException(nameof(count));
+            }
+            """;
+        parentClass.Methods.Add(method);
+
+        Assert.Equal("8 or less",
+            Assert.Single(Analyze(new MethodAnalysisContext(method)), l => l.Name == "count").Limit);
+    }
+
+    [Fact]
     public void DividingByAMemberDoesNotConstrainTheObjectItBelongsTo()
     {
         // Found in this project's own MetricsCalculator: "total / ir.Classes.Count" made ir
