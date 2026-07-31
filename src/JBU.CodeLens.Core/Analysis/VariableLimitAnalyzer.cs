@@ -141,7 +141,7 @@ public sealed class VariableLimitAnalyzer
     {
         var known = BuildDeclaredVariables(context);
 
-        foreach (var line in GuardLines(context))
+        foreach (var line in RejectionLines(context))
         {
             foreach (Match match in SafeRegex.Matches(
                 line,
@@ -177,7 +177,7 @@ public sealed class VariableLimitAnalyzer
     {
         var known = BuildDeclaredVariables(context);
 
-        foreach (var line in GuardLines(context))
+        foreach (var line in RejectionLines(context))
         {
             foreach (Match match in SafeRegex.Matches(
                 line, @"\b([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*" + NumberPattern + @"\b"))
@@ -211,7 +211,7 @@ public sealed class VariableLimitAnalyzer
     {
         var known = BuildDeclaredVariables(context);
 
-        foreach (var line in GuardLines(context))
+        foreach (var line in RejectionLines(context))
         {
             foreach (Match match in SafeRegex.Matches(
                 line,
@@ -259,7 +259,7 @@ public sealed class VariableLimitAnalyzer
                 VariableLimitSource.Guard, AnalysisConfidence.High, VariableLimitKind.Presence);
         }
 
-        foreach (var line in GuardLines(context))
+        foreach (var line in RejectionLines(context))
         {
             // "x == null" and "x is null" say the same thing; C# has largely moved to the second,
             // so a rule that knows only the first misses most modern code.
@@ -292,11 +292,13 @@ public sealed class VariableLimitAnalyzer
 
         foreach (var (name, declared) in known)
         {
-            // A literal divisor is not a variable anyone can get wrong, and "/=" and "%" divide
-            // just as surely as "/".
-            if (!SafeRegex.IsMatch(CodeOnly(context), $@"[/%]\s*{Regex.Escape(name)}\b")) continue;
+            // The name must be the whole divisor. In "total / ir.Classes.Count" what must not be
+            // zero is the count, not ir — so anything followed by a member access, an index or a
+            // call is a different expression that merely starts with this name.
+            if (!SafeRegex.IsMatch(
+                CodeOnly(context),
+                $@"[/%]\s*{Regex.Escape(name)}\b(?!\s*[.\[(])")) continue;
 
-            // A comment or string mentioning a slash is not a division.
             yield return Build(name, declared, "must not be zero",
                 $"used as a divisor: / {name}",
                 VariableLimitSource.Guard, AnalysisConfidence.Medium, VariableLimitKind.Range);
@@ -318,7 +320,7 @@ public sealed class VariableLimitAnalyzer
         // often written as separate statements — "if (v < low) return low;" on one line and
         // "if (v > high) return high;" on the next is the same restriction as the pair joined
         // by "||", and a one-line pattern would see neither.
-        foreach (var line in GuardLines(context))
+        foreach (var line in RejectionLines(context))
         {
             foreach (Match match in SafeRegex.Matches(
                 line, @"\b([A-Za-z_]\w*)\s*(<=|>=|<|>)\s*([A-Za-z_]\w*)\b"))
@@ -364,7 +366,7 @@ public sealed class VariableLimitAnalyzer
     {
         var known = BuildDeclaredVariables(context);
 
-        foreach (var line in GuardLines(context))
+        foreach (var line in RejectionLines(context))
         {
             foreach (Match match in SafeRegex.Matches(
                 line,
@@ -472,30 +474,22 @@ public sealed class VariableLimitAnalyzer
             }
         }
 
-        foreach (var name in lower.Keys.Union(upper.Keys, StringComparer.Ordinal))
+        // Both ends, or nothing. A lone comparison is almost always a branch rather than a
+        // restriction: "if (angle > 0)" on the result of IndexOf does not mean angle is positive,
+        // it means the code does something different when the character was found — angle is
+        // routinely -1. Reported as a limit that would be a plain falsehood. Two ends bracketing
+        // a value are far more often a range the method genuinely works within, and a value the
+        // method truly refuses is caught by the guard rules, which read a throw rather than a
+        // branch.
+        foreach (var (name, low) in lower)
         {
-            var hasLow = lower.TryGetValue(name, out var low);
-            var hasHigh = upper.TryGetValue(name, out var high);
-            var declared = known[name];
+            if (!upper.TryGetValue(name, out var high)) continue;
+            if (low.Bound.Value > high.Bound.Value) continue;
 
-            if (hasLow && hasHigh)
-            {
-                if (low.Bound.Value > high.Bound.Value) continue;
-                yield return Build(
-                    name, declared, DescribeRange(low.Bound, high.Bound),
-                    $"{low.Evidence}, {high.Evidence}",
-                    VariableLimitSource.Comparison, AnalysisConfidence.Medium);
-            }
-            else if (hasLow)
-            {
-                yield return Build(name, declared, DescribeLower(low.Bound), low.Evidence,
-                    VariableLimitSource.Comparison, AnalysisConfidence.Medium);
-            }
-            else
-            {
-                yield return Build(name, declared, DescribeUpper(high.Bound), high.Evidence,
-                    VariableLimitSource.Comparison, AnalysisConfidence.Medium);
-            }
+            yield return Build(
+                name, known[name], DescribeRange(low.Bound, high.Bound),
+                $"{low.Evidence}, {high.Evidence}",
+                VariableLimitSource.Comparison, AnalysisConfidence.Medium);
         }
     }
 
@@ -577,18 +571,32 @@ public sealed class VariableLimitAnalyzer
         CodeOnlyCache = new();
 
     /// <summary>
-    /// The lines that reject a value — those combining a test with a <c>throw</c> or an early
-    /// <c>return</c>. Splitting first keeps one line's condition from pairing with another's
-    /// bound, which whole-body matching would allow.
+    /// The lines that refuse a value: a test paired with a <c>throw</c>.
     /// </summary>
-    private static IEnumerable<string> GuardLines(MethodAnalysisContext context)
+    /// <remarks>
+    /// <para>
+    /// Only a throw counts. An early <c>return</c> looks similar but means something different:
+    /// <c>if (value &lt; low) return low;</c> does not forbid a low value, it substitutes one, so
+    /// the caller may pass anything. Treating that as a refusal would state a restriction the
+    /// method does not impose — and <c>if (x is null) return;</c> would be read as "must not be
+    /// null" when it means the exact opposite, that null is handled.
+    /// </para>
+    /// <para>
+    /// Matched on word boundaries. Plain substring matching found "return" inside the identifier
+    /// <c>returnStatements</c>, which turned an ordinary branch into a refusal and produced the
+    /// nonsense limit "at most 0 items".
+    /// </para>
+    /// <para>
+    /// Splitting into lines first keeps one line's condition from pairing with another's bound,
+    /// which whole-body matching would allow.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<string> RejectionLines(MethodAnalysisContext context)
     {
         foreach (var raw in CodeOnly(context).Split('\n'))
         {
             var line = raw.Trim();
-            if (line.Contains("if", StringComparison.Ordinal) &&
-                (line.Contains("throw", StringComparison.Ordinal) ||
-                 line.Contains("return", StringComparison.Ordinal)))
+            if (SafeRegex.IsMatch(line, @"\bif\b") && SafeRegex.IsMatch(line, @"\bthrow\b"))
             {
                 yield return line;
             }

@@ -152,13 +152,32 @@ public class VariableLimitTests
     }
 
     [Fact]
-    public void ComparisonAtOnlyOneEnd_ReportsThatOneEnd()
+    public void ASingleComparisonInABranch_IsNotTreatedAsALimit()
     {
+        // Passing 0 here is perfectly legal; the method simply does nothing with it. Found in
+        // this project's own source, where "if (angle > 0)" tests the result of IndexOf — a
+        // value that is routinely -1, so "greater than 0" would have been a plain falsehood.
         var limits = Analyze(Context(
             """
             public void Operate(int count)
             {
                 if (count > 0) Use(count);
+            }
+            """,
+            parameters: ["int count"]));
+
+        Assert.Equal("any whole number", Assert.Single(limits, l => l.Name == "count").Limit);
+    }
+
+    [Fact]
+    public void ASingleBoundIsStillReportedWhenTheMethodActuallyRefusesIt()
+    {
+        // The difference from the test above is the throw: this method will not accept 0.
+        var limits = Analyze(Context(
+            """
+            public void Operate(int count)
+            {
+                if (count <= 0) throw new ArgumentOutOfRangeException(nameof(count));
             }
             """,
             parameters: ["int count"]));
@@ -248,8 +267,8 @@ public class VariableLimitTests
     [Fact]
     public void AGuardAndAPlainComparisonAreReadOppositeWaysRound()
     {
-        // The guard rejects "< 18", so 18 and above is permitted. Read the same way as a plain
-        // comparison it would come out as "less than 18" — the exact inverse of the truth.
+        // A guard names what it refuses, so refusing "< 18" permits 18 and above. Read at face
+        // value, as a comparison is, it would come out as "less than 18" — the exact inverse.
         var guarded = Analyze(Context(
             """
             public void Operate(int age)
@@ -261,16 +280,17 @@ public class VariableLimitTests
 
         Assert.Equal("18 or greater", Assert.Single(guarded, l => l.Name == "age").Limit);
 
+        // A comparison names what the code works with, and is taken as written.
         var compared = Analyze(Context(
             """
             public void Operate(int age)
             {
-                if (age < 18) ApplyDiscount(age);
+                if (age >= 18 && age <= 65) ApplyDiscount(age);
             }
             """,
             parameters: ["int age"]));
 
-        Assert.Equal("less than 18", Assert.Single(compared, l => l.Name == "age").Limit);
+        Assert.Equal("18 to 65", Assert.Single(compared, l => l.Name == "age").Limit);
     }
 
     [Fact]
@@ -594,6 +614,25 @@ public class VariableLimitTests
     }
 
     [Fact]
+    public void DividingByAMemberDoesNotConstrainTheObjectItBelongsTo()
+    {
+        // Found in this project's own MetricsCalculator: "total / ir.Classes.Count" made ir
+        // itself "must not be zero", which is meaningless for an object reference. What must not
+        // be zero is the count.
+        var limits = Analyze(Context(
+            """
+            public void Operate(ProjectIR ir, int total)
+            {
+                var average = total / ir.Classes.Count;
+            }
+            """,
+            parameters: ["ProjectIR ir", "int total"]));
+
+        Assert.DoesNotContain("zero", Assert.Single(limits, l => l.Name == "ir").Limit,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BoundsThatAreVariables_NameThemRatherThanFallingBackToTheType()
     {
         var limits = Analyze(Context(
@@ -611,8 +650,27 @@ public class VariableLimitTests
     [Fact]
     public void SymbolicBoundsWrittenAsSeparateStatements_AreStillOneRange()
     {
-        // Taken from the project's own C++ fixture. The two ends are separate statements, and a
-        // rule expecting them joined by "||" would see neither.
+        // The two ends are separate statements, and a rule expecting them joined by "||" would
+        // see neither.
+        var limits = Analyze(Context(
+            """
+            public void Operate(int value, int low, int high)
+            {
+                if (value < low) throw new ArgumentOutOfRangeException(nameof(value));
+                if (value > high) throw new ArgumentOutOfRangeException(nameof(value));
+            }
+            """,
+            parameters: ["int value", "int low", "int high"]));
+
+        Assert.Equal("between low and high", Assert.Single(limits, l => l.Name == "value").Limit);
+    }
+
+    [Fact]
+    public void AValueTheMethodSubstitutesRatherThanRefuses_IsNotRestricted()
+    {
+        // clampValue from the project's own C++ fixture. Passing -500 is perfectly legal — the
+        // method returns low instead. Reading the early return as a refusal would advertise a
+        // restriction callers do not have to obey.
         var limits = Analyze(Context(
             """
             int clampValue(int value, int low, int high) {
@@ -624,7 +682,43 @@ public class VariableLimitTests
             parameters: ["int value", "int low", "int high"],
             fileName: "engine.cpp"));
 
-        Assert.Equal("between low and high", Assert.Single(limits, l => l.Name == "value").Limit);
+        Assert.Equal("any whole number", Assert.Single(limits, l => l.Name == "value").Limit);
+    }
+
+    [Fact]
+    public void AnIdentifierContainingTheWordReturn_DoesNotMakeALineARefusal()
+    {
+        // Found in this project's own source: "if (returnStatements.Count > 0)" was read as a
+        // refusal because "return" appears inside the variable's name, producing the nonsense
+        // limit "at most 0 items".
+        var limits = Analyze(Context(
+            """
+            public void Operate(List<string> returnStatements)
+            {
+                if (returnStatements.Count > 0) { Use(returnStatements); }
+            }
+            """,
+            parameters: ["List<string> returnStatements"]));
+
+        var limit = Assert.Single(limits, l => l.Name == "returnStatements");
+        Assert.DoesNotContain("at most 0", limit.Limit, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnEarlyReturnOnNull_DoesNotBecomeMustNotBeNull()
+    {
+        // "if (x is null) return;" means null is handled, which is the opposite of forbidden.
+        var limits = Analyze(Context(
+            """
+            public void Operate(Order order)
+            {
+                if (order is null) return;
+                Use(order);
+            }
+            """,
+            parameters: ["Order order"]));
+
+        Assert.DoesNotContain("must not be null", Assert.Single(limits).Limit, StringComparison.Ordinal);
     }
 
     [Fact]
