@@ -587,20 +587,55 @@ public sealed class VariableLimitAnalyzer
     /// nonsense limit "at most 0 items".
     /// </para>
     /// <para>
+    /// A guard written across two lines counts as well. Brace style puts the throw on its own
+    /// line, which is how most C++ and a good deal of C# is written, and a rule that insisted on
+    /// one physical line would miss all of it. The condition is joined to the throw only when the
+    /// throw is the first statement of the block it opens, so one guard's condition can never
+    /// pair with a later, unrelated throw.
+    /// </para>
+    /// <para>
     /// Splitting into lines first keeps one line's condition from pairing with another's bound,
     /// which whole-body matching would allow.
     /// </para>
     /// </remarks>
     private static IEnumerable<string> RejectionLines(MethodAnalysisContext context)
     {
-        foreach (var raw in CodeOnly(context).Split('\n'))
+        var lines = CodeOnly(context).Split('\n');
+
+        for (var i = 0; i < lines.Length; i++)
         {
-            var line = raw.Trim();
-            if (SafeRegex.IsMatch(line, @"\bif\b") && SafeRegex.IsMatch(line, @"\bthrow\b"))
+            var line = lines[i].Trim();
+            if (!SafeRegex.IsMatch(line, @"\bif\b")) continue;
+
+            if (SafeRegex.IsMatch(line, @"\bthrow\b"))
             {
                 yield return line;
+                continue;
+            }
+
+            // The condition opened a block. Only the first statement inside it can be the
+            // refusal; anything else means this is an ordinary branch.
+            if (!line.EndsWith('{')) continue;
+
+            var next = NextStatement(lines, i + 1);
+            if (next is not null && SafeRegex.IsMatch(next, @"^\s*throw\b"))
+            {
+                yield return line + " " + next.Trim();
             }
         }
+    }
+
+    /// <summary>The next line carrying code, or null if the block ends first.</summary>
+    private static string? NextStatement(string[] lines, int start)
+    {
+        for (var i = start; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+            if (line.Length == 0) continue;
+            return line;
+        }
+
+        return null;
     }
 
     /// <summary>

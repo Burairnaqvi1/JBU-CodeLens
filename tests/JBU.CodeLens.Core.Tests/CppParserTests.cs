@@ -135,4 +135,62 @@ public sealed class CppParserTests : IDisposable
         Assert.StartsWith("int GetValue", source.Trim(), StringComparison.Ordinal);
         Assert.Contains("return 7;", source, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Parse_BranchingFunction_ReportsCyclomaticComplexity()
+    {
+        // Complexity was never computed for C++ at all, so every method sat at the default of 1.
+        // A C++ project therefore reported an average complexity of 1.0 however involved it was,
+        // and no C++ method could reach the "most complex methods" list.
+        var result = Parse("branching.cpp", """
+            int classify(int score, bool strict) {
+                if (score < 0) { return -1; }
+                if (score > 90) { return 4; }
+                else if (score > 70) { return 3; }
+                else if (score > 50) { return 2; }
+                for (int i = 0; i < 3; ++i) { score += i; }
+                return strict ? 1 : 0;
+            }
+            """);
+
+        Assert.Empty(result.Errors);
+        var method = result.Classes.SelectMany(c => c.Methods).Single(m => m.Name == "classify");
+
+        // One for the method, plus four ifs, a for and a conditional expression.
+        Assert.Equal(7, method.CyclomaticComplexity);
+    }
+
+    [Fact]
+    public void Parse_SimpleFunction_HasComplexityOfOne()
+    {
+        var result = Parse("plain.cpp", """
+            int twice(int value) { return value * 2; }
+            """);
+
+        var method = result.Classes.SelectMany(c => c.Methods).Single(m => m.Name == "twice");
+        Assert.Equal(1, method.CyclomaticComplexity);
+    }
+
+    [Fact]
+    public void Parse_FreeFunctionTakingAQualifiedType_IsNotFiledUnderAPhantomClass()
+    {
+        // The owning type was taken from the last "::" anywhere in the display name, which found
+        // the one inside std::vector and invented a class called "average(const std".
+        var result = Parse("freefn.cpp", """
+            #include <vector>
+            int average(const std::vector<int>& samples, int fallback) {
+                if (samples.empty()) { return fallback; }
+                return samples[0];
+            }
+            """);
+
+        Assert.Empty(result.Errors);
+
+        // The phantom name was the function's own name with half a parameter type attached.
+        Assert.DoesNotContain(result.Classes, c => c.Name.Contains("std", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Classes, c => c.Name.StartsWith("average", StringComparison.Ordinal));
+
+        var global = Assert.Single(result.Classes, c => c.Name == "(global)");
+        Assert.Single(global.Methods, m => m.Name == "average");
+    }
 }

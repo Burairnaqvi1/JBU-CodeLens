@@ -890,6 +890,52 @@ public class VariableLimitTests
     }
 
     [Fact]
+    public void AGuardWrittenAcrossTwoLines_IsStillRead()
+    {
+        // Brace style puts the throw on its own line. This is how most C++ is written, and a rule
+        // insisting on one physical line missed all of it.
+        var limits = Analyze(Context(
+            """
+            void Operate(int priority, int channelCount) {
+                if (channelCount <= 0) {
+                    throw std::out_of_range("bad count");
+                }
+                if (priority != 1 && priority != 2 && priority != 3) {
+                    throw std::invalid_argument("bad priority");
+                }
+            }
+            """,
+            parameters: ["int priority", "int channelCount"],
+            fileName: "engine.cpp"));
+
+        Assert.Equal("greater than 0", Assert.Single(limits, l => l.Name == "channelCount").Limit);
+        Assert.Equal("1, 2 or 3", Assert.Single(limits, l => l.Name == "priority").Limit);
+    }
+
+    [Fact]
+    public void AConditionOpeningAnOrdinaryBlock_IsNotJoinedToALaterThrow()
+    {
+        // Only the first statement of the block can be the refusal. Without that rule the
+        // condition of any branch would pair with whatever throw happened to follow it.
+        var limits = Analyze(Context(
+            """
+            void Operate(int count, int other) {
+                if (count > 5) {
+                    Log(count);
+                    Adjust(other);
+                }
+                if (other <= 0) {
+                    throw new ArgumentException("bad");
+                }
+            }
+            """,
+            parameters: ["int count", "int other"]));
+
+        Assert.Equal("any whole number", Assert.Single(limits, l => l.Name == "count").Limit);
+        Assert.Equal("greater than 0", Assert.Single(limits, l => l.Name == "other").Limit);
+    }
+
+    [Fact]
     public void CommentedOutCode_IsNotReadAsIfItRan()
     {
         // A limit taken from a line that was deliberately disabled would be worse than no limit:

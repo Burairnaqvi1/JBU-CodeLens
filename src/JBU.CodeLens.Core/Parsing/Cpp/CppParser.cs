@@ -671,10 +671,17 @@ public class CppParser : ILanguageParser
                     continue;
                 }
 
-                var scopeIndex = candidate.LastIndexOf("::", StringComparison.Ordinal);
+                // Only the part before the parameter list can carry the owning type. A parameter
+                // type contains scope markers of its own, and searching the whole display name
+                // found the "::" inside std::vector, so a free function taking one was filed
+                // under a phantom class called "computeAverage(const std".
+                var parameters = candidate.IndexOf('(', StringComparison.Ordinal);
+                var qualifiedName = parameters >= 0 ? candidate[..parameters] : candidate;
+
+                var scopeIndex = qualifiedName.LastIndexOf("::", StringComparison.Ordinal);
                 if (scopeIndex > 0)
                 {
-                    return candidate[..scopeIndex];
+                    return qualifiedName[..scopeIndex];
                 }
             }
         }
@@ -883,10 +890,56 @@ public class CppParser : ILanguageParser
         }
 
         methodInfo.LocalVariables = ExtractLocalVariables(cursor, sourceCode);
+        methodInfo.CyclomaticComplexity = CountCyclomaticComplexity(sourceCode);
         ApplyVariableOperationalLimits(methodInfo, sourceCode);
         methodInfo.OperationalLimits.AddRange(DetectPotentialRuntimeIssuesCpp(methodInfo, sourceCode));
 
         return methodInfo;
+    }
+
+    /// <summary>
+    /// Counts the decision points in a C++ method body, giving McCabe's cyclomatic complexity.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without this every C++ method was left at the default of 1, so a C++ project reported an
+    /// average complexity of 1.0 however involved its code was, and no C++ method could ever
+    /// appear in the "most complex methods" list. The measurement was silently C#-only.
+    /// </para>
+    /// <para>
+    /// The same constructs are counted as on the C# side — one for the method itself, then one
+    /// for each branch, loop, case, catch and conditional expression — so the two languages
+    /// produce comparable figures and the project-wide average means something.
+    /// </para>
+    /// <para>
+    /// Comments and string literals are blanked first, so the word "if" inside a comment or a
+    /// message does not raise the count.
+    /// </para>
+    /// </remarks>
+    private static int CountCyclomaticComplexity(string methodSource)
+    {
+        if (string.IsNullOrEmpty(methodSource))
+        {
+            return 1;
+        }
+
+        try
+        {
+            var code = SafeRegex.Replace(
+                methodSource,
+                @"//[^\n]*|/\*.*?\*/|""(?:\\.|[^""\\\n])*""",
+                match => new string(' ', match.Value.Length));
+
+            var complexity = 1;
+            complexity += SafeRegex.Matches(code, @"\b(?:if|while|for|case|catch)\b").Count;
+            complexity += SafeRegex.Matches(code, @"\?[^:]*:").Count;
+            return complexity;
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // A pathological body is not worth failing the parse for; the default stands.
+            return 1;
+        }
     }
 
     private static void ApplyVariableOperationalLimits(MethodInfo methodInfo, string methodSource)
