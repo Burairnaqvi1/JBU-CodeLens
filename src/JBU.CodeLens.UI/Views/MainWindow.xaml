@@ -569,6 +569,26 @@
                                     <TextBlock x:Name="PlaceholderReopenText" Margin="8,0,0,0" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
+
+                            <!-- Credits. Placed on the opening screen because it is the first thing
+                                 shown on every launch, and set apart by a rule so it reads as a
+                                 footnote rather than as another instruction to follow. -->
+                            <Border Height="1"
+                                    Width="180"
+                                    Background="{DynamicResource BorderBrush}"
+                                    HorizontalAlignment="Center"
+                                    Margin="0,28,0,0"/>
+                            <TextBlock Text="Developed by Burair and Usaid"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,14,0,0"/>
+                            <TextBlock Text="Supervised by Jawad Zaidi"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Opacity="0.85"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,4,0,0"/>
                         </StackPanel>
                     </Border>
 
