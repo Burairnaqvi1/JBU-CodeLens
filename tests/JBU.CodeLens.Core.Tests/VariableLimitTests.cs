@@ -933,6 +933,41 @@ public class VariableLimitTests
     }
 
     [Fact]
+    public void TwoSeparateGuards_CombineIntoOneRange()
+    {
+        // Writing the ends as separate statements is at least as common as joining them with
+        // "or". Emitting them one at a time meant only the first survived, so a value guarded at
+        // both ends was reported as bounded at one.
+        var limits = Analyze(Context(
+            """
+            public void Operate(int level)
+            {
+                if (level < 1) throw new ArgumentOutOfRangeException(nameof(level));
+                if (level > 100) throw new ArgumentOutOfRangeException(nameof(level));
+            }
+            """,
+            parameters: ["int level"]));
+
+        Assert.Equal("1 to 100", Assert.Single(limits, l => l.Name == "level").Limit);
+    }
+
+    [Fact]
+    public void SeveralGuardsOnOneEnd_KeepTheTightest()
+    {
+        var limits = Analyze(Context(
+            """
+            public void Operate(int level)
+            {
+                if (level < 1) throw new ArgumentOutOfRangeException(nameof(level));
+                if (level < 10) throw new ArgumentOutOfRangeException(nameof(level));
+            }
+            """,
+            parameters: ["int level"]));
+
+        Assert.Equal("10 or greater", Assert.Single(limits, l => l.Name == "level").Limit);
+    }
+
+    [Fact]
     public void ACharacterRangeWrittenAsARefusal_IsReadTheSameWay()
     {
         // "accept a to z" and "refuse anything outside a to z" describe one span.

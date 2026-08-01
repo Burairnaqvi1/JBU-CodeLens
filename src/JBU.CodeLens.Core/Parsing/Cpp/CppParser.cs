@@ -404,6 +404,17 @@ public class CppParser : ILanguageParser
         foreach (var classInfo in result.Classes)
         {
             classInfo.Methods = DeduplicateMethods(classInfo.Methods);
+
+            // File-scope constants are attached to every type in the file, because that is the
+            // scope they are visible from. Analysis only surfaces a field a method actually
+            // mentions, so a type that never touches one is not padded with it.
+            foreach (var constant in context.FileConstants)
+            {
+                if (!classInfo.Fields.Exists(f => string.Equals(f.Name, constant.Name, StringComparison.Ordinal)))
+                {
+                    classInfo.Fields.Add(constant);
+                }
+            }
         }
 
         result.Errors.AddRange(context.WalkErrors);
@@ -494,6 +505,14 @@ public class CppParser : ILanguageParser
                     if (IsOutOfClassDefinition(cursor))
                     {
                         ProcessOutOfClassMethod(cursor, context);
+                    }
+
+                    return CXChildVisitResult.CXChildVisit_Continue;
+
+                case CXCursorKind.CXCursor_VarDecl:
+                    if (IsTopLevelTypeParent(parentKind))
+                    {
+                        CollectFileConstant(cursor, context);
                     }
 
                     return CXChildVisitResult.CXChildVisit_Continue;
@@ -904,6 +923,46 @@ public class CppParser : ILanguageParser
         methodInfo.OperationalLimits.AddRange(DetectPotentialRuntimeIssuesCpp(methodInfo, sourceCode));
 
         return methodInfo;
+    }
+
+    /// <summary>
+    /// Records a namespace or file scope constant along with the literal it is set to.
+    /// </summary>
+    /// <remarks>
+    /// The value is read from the declaration text rather than the AST, because libclang exposes
+    /// an initialiser as a child expression tree that would have to be walked and reassembled;
+    /// the source line already says what is wanted. Only a literal is kept — a constant computed
+    /// from something else has no fixed value to quote, and quoting a guess would be worse than
+    /// leaving the bound unresolved.
+    /// </remarks>
+    private static void CollectFileConstant(CXCursor cursor, AstVisitorContext context)
+    {
+        try
+        {
+            var name = GetSpelling(cursor);
+            if (string.IsNullOrEmpty(name)) return;
+            if (context.FileConstants.Exists(c => string.Equals(c.Name, name, StringComparison.Ordinal))) return;
+
+            var declaration = ExtractSourceText(cursor, context.FileBytes);
+            if (string.IsNullOrEmpty(declaration)) return;
+
+            var match = SafeRegex.Match(
+                declaration,
+                @"\b" + Regex.Escape(name) + @"\s*=\s*(-?\d+(?:\.\d+)?)");
+            if (!match.Success) return;
+
+            context.FileConstants.Add(new VariableInfo
+            {
+                Name = name,
+                Type = GetTypeSpellingStr(clang_getCursorType(cursor)),
+                InitialValue = match.Groups[1].Value,
+                IsField = true,
+            });
+        }
+        catch
+        {
+            // Best-effort: a constant that cannot be read simply stays unresolved.
+        }
     }
 
     /// <summary>
@@ -1718,6 +1777,15 @@ public class CppParser : ILanguageParser
         public required byte[] FileBytes { get; init; }
         public required List<ClassInfo> Classes { get; init; }
         public required List<MethodInfo> FreeFunctions { get; init; }
+
+        /// <summary>
+        /// Constants declared at namespace or file scope. C++ commonly writes a bound as one of
+        /// these, and without collecting them a guard such as <c>window &gt; MaxWindow</c> has no
+        /// value to resolve to, so the reported limit stops at the end that happens to be a
+        /// literal.
+        /// </summary>
+        public List<VariableInfo> FileConstants { get; } = new();
+
         public List<string> WalkErrors { get; } = new();
     }
 

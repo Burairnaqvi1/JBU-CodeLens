@@ -186,6 +186,47 @@ public sealed class CppParserTests : IDisposable
     }
 
     [Fact]
+    public void Parse_NamespaceScopeConstant_IsAvailableToTheEnclosingType()
+    {
+        // C++ commonly writes a bound as a namespace-scope constant. Without collecting these,
+        // a guard against one has no value to resolve to and the limit stops at whichever end
+        // happens to be a literal.
+        var result = Parse("consts.cpp", """
+            namespace acme {
+                const int MaxWindow = 64;
+                int widen(int window) {
+                    if (window <= 0 || window > MaxWindow) { return 0; }
+                    return window;
+                }
+            }
+            """);
+
+        Assert.Empty(result.Errors);
+        var field = result.Classes
+            .SelectMany(c => c.Fields)
+            .Single(f => f.Name == "MaxWindow");
+
+        Assert.Equal("64", field.InitialValue);
+    }
+
+    [Fact]
+    public void Parse_ComputedConstant_IsNotGivenAValue()
+    {
+        // A constant derived from something else has no fixed literal to quote, and a guess
+        // would be worse than leaving the bound unresolved.
+        var result = Parse("computed.cpp", """
+            namespace acme {
+                int baseSize();
+                const int Derived = baseSize() * 2;
+                int use(int n) { return n; }
+            }
+            """);
+
+        var field = result.Classes.SelectMany(c => c.Fields).FirstOrDefault(f => f.Name == "Derived");
+        Assert.True(field is null || field.InitialValue is null, "a computed constant must not carry a literal");
+    }
+
+    [Fact]
     public void Parse_ThrowingFunction_ListsTheExceptionTypes()
     {
         // The C# side listed a method's exceptions while C++ always reported none, so the errors

@@ -169,13 +169,21 @@ public sealed class VariableLimitAnalyzer
     }
 
     /// <summary>
-    /// A guard rejecting values beyond a single bound: <c>if (count &lt;= 0) throw</c> permits
-    /// "greater than 0". This is the commonest restriction in real code and the reason a
-    /// one-sided bound is worth reporting rather than waiting for a matching pair.
+    /// Bounds a guard refuses, gathered across every guard in the method: <c>if (count &lt;= 0)
+    /// throw</c> permits "greater than 0", and a second guard refusing <c>count &gt; 100</c>
+    /// narrows that to "1 to 100".
     /// </summary>
+    /// <remarks>
+    /// Accumulated rather than reported one at a time. Writing the two ends as separate
+    /// statements is at least as common as joining them with "or", and emitting them separately
+    /// meant only the first survived the merge — a value guarded at both ends was reported as
+    /// bounded at one, which understates what the method enforces.
+    /// </remarks>
     private static IEnumerable<VariableLimit> RuleSingleBoundGuard(MethodAnalysisContext context)
     {
         var known = BuildDeclaredVariables(context);
+        var lower = new Dictionary<string, (Bound Bound, string Evidence)>(StringComparer.Ordinal);
+        var upper = new Dictionary<string, (Bound Bound, string Evidence)>(StringComparer.Ordinal);
 
         foreach (var line in RejectionLines(context))
         {
@@ -183,21 +191,45 @@ public sealed class VariableLimitAnalyzer
                 line, @"\b([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*" + ValuePattern + @"\b"))
             {
                 var name = match.Groups[1].Value;
-                if (!known.TryGetValue(name, out var declared)) continue;
+                if (!known.ContainsKey(name)) continue;
                 if (IsLengthExpression(line, name)) continue;
                 if (!TryResolve(match.Groups[3].Value, context, out var value)) continue;
 
-                // Rejected "< 5" leaves "5 or more" permitted; rejected "<= 5" leaves
-                // "greater than 5". The operator flips because the guard describes refusals.
-                var text = match.Groups[2].Value switch
+                // The guard names refusals, so the operator flips: refusing "< 5" permits 5 and
+                // upwards, refusing "<= 5" permits everything above 5.
+                var evidence = Condense(match.Value);
+                switch (match.Groups[2].Value)
                 {
-                    "<" => DescribeLower(new Bound(value, Inclusive: true)),
-                    "<=" => DescribeLower(new Bound(value, Inclusive: false)),
-                    ">" => DescribeUpper(new Bound(value, Inclusive: true)),
-                    _ => DescribeUpper(new Bound(value, Inclusive: false)),
-                };
+                    case "<": Narrow(lower, name, new Bound(value, true), evidence, isLower: true); break;
+                    case "<=": Narrow(lower, name, new Bound(value, false), evidence, isLower: true); break;
+                    case ">": Narrow(upper, name, new Bound(value, true), evidence, isLower: false); break;
+                    default: Narrow(upper, name, new Bound(value, false), evidence, isLower: false); break;
+                }
+            }
+        }
 
-                yield return Build(name, declared, text, match.Value,
+        foreach (var name in lower.Keys.Union(upper.Keys, StringComparer.Ordinal))
+        {
+            var hasLow = lower.TryGetValue(name, out var low);
+            var hasHigh = upper.TryGetValue(name, out var high);
+            var declared = known[name];
+
+            if (hasLow && hasHigh)
+            {
+                if (low.Bound.Value > high.Bound.Value) continue;
+                yield return Build(
+                    name, declared, DescribeRange(low.Bound, high.Bound),
+                    $"{low.Evidence}; {high.Evidence}",
+                    VariableLimitSource.Guard, AnalysisConfidence.High);
+            }
+            else if (hasLow)
+            {
+                yield return Build(name, declared, DescribeLower(low.Bound), low.Evidence,
+                    VariableLimitSource.Guard, AnalysisConfidence.High);
+            }
+            else
+            {
+                yield return Build(name, declared, DescribeUpper(high.Bound), high.Evidence,
                     VariableLimitSource.Guard, AnalysisConfidence.High);
             }
         }
