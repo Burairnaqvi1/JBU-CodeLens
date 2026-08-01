@@ -23,7 +23,6 @@ namespace JBU.CodeLens.Core.Parsing.Cpp;
 /// </summary>
 public class CppParser : ILanguageParser
 {
-    private const int MaxSourceCodeLength = 800;
     // Must be 0 (not SkipFunctionBodies) so method body AST nodes are available for source extraction and variable analysis.
     private const uint CXTranslationUnit_None = 0;
 
@@ -891,10 +890,62 @@ public class CppParser : ILanguageParser
 
         methodInfo.LocalVariables = ExtractLocalVariables(cursor, sourceCode);
         methodInfo.CyclomaticComplexity = CountCyclomaticComplexity(sourceCode);
+        // Merged, not replaced: the documented list comes from Doxygen @throws tags and the two
+        // do not necessarily agree — a method may document an exception it no longer throws, or
+        // throw one nobody documented, and the reader is served by seeing both.
+        foreach (var thrown in ExtractThrownExceptionsFromBody(sourceCode))
+        {
+            if (!methodInfo.ThrownExceptions.Contains(thrown, StringComparer.Ordinal))
+            {
+                methodInfo.ThrownExceptions.Add(thrown);
+            }
+        }
         ApplyVariableOperationalLimits(methodInfo, sourceCode);
         methodInfo.OperationalLimits.AddRange(DetectPotentialRuntimeIssuesCpp(methodInfo, sourceCode));
 
         return methodInfo;
+    }
+
+    /// <summary>
+    /// Collects the exception types a C++ method throws, in the order they first appear.
+    /// </summary>
+    /// <remarks>
+    /// Without this the C# side listed a method's exceptions while the C++ side always reported
+    /// none, so the "Errors / Exceptions" section told the reader that a function throwing three
+    /// different types threw nothing at all — worse than silence, because it reads as a checked
+    /// finding. Comments and strings are blanked first so the word "throw" inside a message does
+    /// not register.
+    /// </remarks>
+    private static List<string> ExtractThrownExceptionsFromBody(string methodSource)
+    {
+        var thrown = new List<string>();
+        if (string.IsNullOrEmpty(methodSource))
+        {
+            return thrown;
+        }
+
+        try
+        {
+            var code = SafeRegex.Replace(
+                methodSource,
+                @"//[^\n]*|/\*.*?\*/|""(?:\\.|[^""\\\n])*""",
+                match => new string(' ', match.Value.Length));
+
+            foreach (Match match in SafeRegex.Matches(code, @"\bthrow\s+([A-Za-z_][\w:]*)\s*[({]"))
+            {
+                var type = match.Groups[1].Value;
+                if (!thrown.Contains(type, StringComparer.Ordinal))
+                {
+                    thrown.Add(type);
+                }
+            }
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // A pathological body is not worth failing the parse for.
+        }
+
+        return thrown;
     }
 
     /// <summary>
@@ -1091,13 +1142,15 @@ public class CppParser : ILanguageParser
                 return string.Empty;
             }
 
-            var text = Encoding.UTF8.GetString(fileBytes, (int)startOffset, length);
-            if (text.Length > MaxSourceCodeLength)
-            {
-                text = text[..MaxSourceCodeLength];
-            }
-
-            return text;
+            // Returned whole. This text is what every deterministic analyser reads, so cutting it
+            // short silently truncated the analysis rather than the display: a method longer than
+            // the old 800-character cap had its later branches uncounted, so its complexity came
+            // out too low, and any guard or division past that point was invisible — one function
+            // here divides by a count on its last line and was never reported as needing it
+            // non-zero. The C# parser has always stored the whole body, which is why only C++ was
+            // affected. The language model path caps the snippet separately when building a
+            // prompt, so nothing downstream depends on the cap being applied here.
+            return Encoding.UTF8.GetString(fileBytes, (int)startOffset, length);
         }
         catch
         {

@@ -215,22 +215,26 @@ public sealed class VariableLimitAnalyzer
         {
             foreach (Match match in SafeRegex.Matches(
                 line,
-                @"\b([A-Za-z_]\w*)\s*(?:\.\s*(?:Length|Count|Size)\b|\.\s*(?:length|size)\s*\(\s*\))\s*(>=|<=|>|<)\s*"
-                    + NumberPattern))
+                @"\b([A-Za-z_]\w*)\s*(?:\.\s*(?:Length|Count|Size)\b|\.\s*(?:length|size)\s*\(\s*\))\s*(>=|<=|==|!=|>|<)\s*"
+                    + ValuePattern))
             {
                 var name = match.Groups[1].Value;
                 if (!known.TryGetValue(name, out var declared)) continue;
-                if (!TryParse(match.Groups[3].Value, out var value)) continue;
+                if (!TryResolve(match.Groups[3].Value, context, out var value)) continue;
 
                 var unit = UnitFor(declared.Type);
 
-                // Rejecting "> 50" permits up to 50; rejecting ">= 50" permits up to 49.
+                // Rejecting "> 50" permits up to 50; rejecting ">= 50" permits up to 49. The
+                // equality forms are how a fixed size is written — an account number refused
+                // unless it is exactly twenty-two characters, or a batch refused when empty.
                 var text = match.Groups[2].Value switch
                 {
                     ">" => AtMost(value, unit),
                     ">=" => AtMost(value - 1, unit),
                     "<" => AtLeast(value, unit),
-                    _ => AtLeast(value + 1, unit),
+                    "<=" => AtLeast(value + 1, unit),
+                    "!=" => Exactly(value, unit),
+                    _ => value == 0 ? AtLeast(1, unit) : NotExactly(value, unit),
                 };
 
                 yield return Build(name, declared, text, match.Value,
@@ -430,19 +434,38 @@ public sealed class VariableLimitAnalyzer
     {
         var known = BuildDeclaredVariables(context);
 
+        // The span can be written either way round: as the values accepted, or — inside a guard —
+        // as the values refused. Both describe the same range, so both are read.
         foreach (Match match in SafeRegex.Matches(
             CodeOnly(context), @"\b([A-Za-z_]\w*)\s*>=\s*'(.)'\s*&&\s*\1\s*<=\s*'(.)'"))
         {
-            var name = match.Groups[1].Value;
-            if (!known.TryGetValue(name, out var declared)) continue;
-
-            var low = match.Groups[2].Value;
-            var high = match.Groups[3].Value;
-            if (string.CompareOrdinal(low, high) > 0) continue;
-
-            yield return Build(name, declared, $"'{low}' to '{high}'", match.Value,
-                VariableLimitSource.Guard, AnalysisConfidence.High);
+            var limit = BuildCharacterRange(match, known, match.Groups[2].Value, match.Groups[3].Value);
+            if (limit is not null) yield return limit;
         }
+
+        foreach (var line in RejectionLines(context))
+        {
+            foreach (Match match in SafeRegex.Matches(
+                line, @"\b([A-Za-z_]\w*)\s*<\s*'(.)'\s*\|\|\s*\1\s*>\s*'(.)'"))
+            {
+                var limit = BuildCharacterRange(match, known, match.Groups[2].Value, match.Groups[3].Value);
+                if (limit is not null) yield return limit;
+            }
+        }
+    }
+
+    private static VariableLimit? BuildCharacterRange(
+        Match match,
+        Dictionary<string, (string Type, VariableScopeKind Scope)> known,
+        string low,
+        string high)
+    {
+        var name = match.Groups[1].Value;
+        if (!known.TryGetValue(name, out var declared)) return null;
+        if (string.CompareOrdinal(low, high) > 0) return null;
+
+        return Build(name, declared, $"'{low}' to '{high}'", match.Value,
+            VariableLimitSource.Guard, AnalysisConfidence.High);
     }
 
     /// <summary>
@@ -613,28 +636,49 @@ public sealed class VariableLimitAnalyzer
                 continue;
             }
 
-            // The condition opened a block. Only the first statement inside it can be the
-            // refusal; anything else means this is an ordinary branch.
-            if (!line.EndsWith('{')) continue;
-
-            var next = NextStatement(lines, i + 1);
-            if (next is not null && SafeRegex.IsMatch(next, @"^\s*throw\b"))
+            // The condition opened a block. Only its first statement can be the refusal; anything
+            // else means this is an ordinary branch. The opening brace may sit at the end of the
+            // condition or on a line of its own — the second is the usual C# convention, and
+            // handling only the first missed most real guards.
+            var first = FirstStatementOfBlock(lines, i, line);
+            if (first is not null && SafeRegex.IsMatch(first, @"^throw\b"))
             {
-                yield return line + " " + next.Trim();
+                yield return line + " " + first;
             }
         }
     }
 
-    /// <summary>The next line carrying code, or null if the block ends first.</summary>
-    private static string? NextStatement(string[] lines, int start)
+    /// <summary>
+    /// The first statement of the block a condition opens, or null when it opens none.
+    /// </summary>
+    private static string? FirstStatementOfBlock(string[] lines, int conditionIndex, string conditionLine)
+    {
+        var next = conditionIndex + 1;
+
+        if (!conditionLine.EndsWith('{'))
+        {
+            // The brace must be the very next thing, otherwise the condition guards a single
+            // statement that is not a throw, or nothing at all.
+            var brace = NextCodeLine(lines, next, out var braceIndex);
+            if (brace != "{") return null;
+            next = braceIndex + 1;
+        }
+
+        return NextCodeLine(lines, next, out _);
+    }
+
+    /// <summary>The next line carrying code, with its position.</summary>
+    private static string? NextCodeLine(string[] lines, int start, out int index)
     {
         for (var i = start; i < lines.Length; i++)
         {
             var line = lines[i].Trim();
             if (line.Length == 0) continue;
+            index = i;
             return line;
         }
 
+        index = -1;
         return null;
     }
 
@@ -735,11 +779,21 @@ public sealed class VariableLimitAnalyzer
             ? $"{values[0]} or {values[1]}"
             : $"{string.Join(", ", values.Take(values.Count - 1))} or {values[^1]}";
 
+    private static string Exactly(decimal value, string unit) =>
+        string.Create(CultureInfo.InvariantCulture, $"exactly {Number(value)} {Unit(value, unit)}");
+
+    private static string NotExactly(decimal value, string unit) =>
+        string.Create(CultureInfo.InvariantCulture, $"not {Number(value)} {Unit(value, unit)}");
+
     private static string AtMost(decimal value, string unit) =>
-        string.Create(CultureInfo.InvariantCulture, $"at most {Number(value)} {unit}");
+        string.Create(CultureInfo.InvariantCulture, $"at most {Number(value)} {Unit(value, unit)}");
 
     private static string AtLeast(decimal value, string unit) =>
-        string.Create(CultureInfo.InvariantCulture, $"at least {Number(value)} {unit}");
+        string.Create(CultureInfo.InvariantCulture, $"at least {Number(value)} {Unit(value, unit)}");
+
+    /// <summary>Drops the plural for a count of one, so a limit does not read "1 items".</summary>
+    private static string Unit(decimal value, string plural) =>
+        value == 1 ? plural.TrimEnd('s') : plural;
 
     private static string DescribeRange(Bound low, Bound high)
     {

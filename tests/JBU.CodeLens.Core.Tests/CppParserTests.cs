@@ -161,6 +161,50 @@ public sealed class CppParserTests : IDisposable
     }
 
     [Fact]
+    public void Parse_LongMethod_IsAnalysedToItsEnd()
+    {
+        // The stored body used to be cut at 800 characters, which truncated the analysis rather
+        // than the display: branches past the cut went uncounted and any guard or division there
+        // was invisible. Padding pushes the final branch beyond that old limit.
+        var padding = string.Join("\n", Enumerable.Range(0, 60).Select(i => $"    int filler{i} = {i};"));
+        var result = Parse("long.cpp", $$"""
+            int summarise(int total, int divisor) {
+            {{padding}}
+                if (divisor == 0) { return 0; }
+                if (total > 100) { total = 100; }
+                return total / divisor;
+            }
+            """);
+
+        Assert.Empty(result.Errors);
+        var method = result.Classes.SelectMany(c => c.Methods).Single(m => m.Name == "summarise");
+
+        Assert.True(
+            method.XmlDocTags["sourceCode"].Length > 800,
+            "the fixture must exceed the old cap for this test to mean anything");
+        Assert.Equal(3, method.CyclomaticComplexity);
+    }
+
+    [Fact]
+    public void Parse_ThrowingFunction_ListsTheExceptionTypes()
+    {
+        // The C# side listed a method's exceptions while C++ always reported none, so the errors
+        // section told the reader a throwing function threw nothing.
+        var result = Parse("throws.cpp", """
+            #include <stdexcept>
+            int checked(int value) {
+                if (value < 0) { throw std::invalid_argument("negative"); }
+                if (value > 10) { throw std::out_of_range("too big"); }
+                return value;
+            }
+            """);
+
+        var method = result.Classes.SelectMany(c => c.Methods).Single(m => m.Name == "checked");
+        Assert.Contains("std::invalid_argument", method.ThrownExceptions, StringComparer.Ordinal);
+        Assert.Contains("std::out_of_range", method.ThrownExceptions, StringComparer.Ordinal);
+    }
+
+    [Fact]
     public void Parse_SimpleFunction_HasComplexityOfOne()
     {
         var result = Parse("plain.cpp", """

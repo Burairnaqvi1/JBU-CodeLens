@@ -913,6 +913,81 @@ public class VariableLimitTests
     }
 
     [Fact]
+    public void AGuardWithTheBraceOnItsOwnLine_IsRead()
+    {
+        // Allman style is the ordinary C# convention, and handling only the brace-at-end form
+        // missed most real guards: this exact shape reported nothing for compoundsPerYear.
+        var limits = Analyze(Context(
+            """
+            public void Operate(int compoundsPerYear)
+            {
+                if (compoundsPerYear != 1 && compoundsPerYear != 4 && compoundsPerYear != 12)
+                {
+                    throw new ArgumentException("Unsupported.", nameof(compoundsPerYear));
+                }
+            }
+            """,
+            parameters: ["int compoundsPerYear"]));
+
+        Assert.Equal("1, 4 or 12", Assert.Single(limits, l => l.Name == "compoundsPerYear").Limit);
+    }
+
+    [Fact]
+    public void ACharacterRangeWrittenAsARefusal_IsReadTheSameWay()
+    {
+        // "accept a to z" and "refuse anything outside a to z" describe one span.
+        var limits = Analyze(Context(
+            """
+            void Operate(char band) {
+                if (band < 'a' || band > 'z') {
+                    throw std::invalid_argument("bad band");
+                }
+            }
+            """,
+            parameters: ["char band"],
+            fileName: "radio.cpp"));
+
+        Assert.Equal("'a' to 'z'", Assert.Single(limits, l => l.Name == "band").Limit);
+    }
+
+    [Fact]
+    public void AFixedLengthCheck_ReportsTheExactSize()
+    {
+        var limits = Analyze(Context(
+            """
+            public void Operate(string iban)
+            {
+                if (iban.Length != 22)
+                {
+                    throw new ArgumentException("Wrong length.", nameof(iban));
+                }
+            }
+            """,
+            parameters: ["string iban"]));
+
+        Assert.Equal("exactly 22 characters", Assert.Single(limits, l => l.Name == "iban").Limit);
+    }
+
+    [Fact]
+    public void AnEmptinessCheckOnACollection_ReadsAsAMinimumOfOne()
+    {
+        // And singular: "at least 1 items" is the sort of thing a reader notices immediately.
+        var limits = Analyze(Context(
+            """
+            public void Operate(List<int> batch)
+            {
+                if (batch.Count == 0)
+                {
+                    throw new ArgumentException("Empty.", nameof(batch));
+                }
+            }
+            """,
+            parameters: ["List<int> batch"]));
+
+        Assert.Equal("at least 1 item", Assert.Single(limits, l => l.Name == "batch").Limit);
+    }
+
+    [Fact]
     public void AConditionOpeningAnOrdinaryBlock_IsNotJoinedToALaterThrow()
     {
         // Only the first statement of the block can be the refusal. Without that rule the
