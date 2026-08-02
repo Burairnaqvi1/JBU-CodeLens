@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using JBU.CodeLens.Shared.Structural;
 // Composition root: the only UI file that references Core concrete types (to construct
 // the services it then uses exclusively through their Shared interfaces).
@@ -102,6 +103,8 @@ public partial class MainWindow : Window
         WindowStyle = WindowStyle.SingleBorderWindow;
         ResizeMode = ResizeMode.CanResize;
         ApplyTheme(_settings.Theme == "Light" ? AppTheme.Light : AppTheme.Dark);
+
+        _filterDebounce.Tick += FilterDebounce_Tick;
 
         VizView.BackRequested += (_, _) => ShowAppPage(AppPage.Dashboard);
         VizView.NodeClicked += NavigateToVisualizedNode;
@@ -564,11 +567,32 @@ public partial class MainWindow : Window
 
     private void Window_DragEnter(object sender, DragEventArgs e)
     {
-        if (TryGetSingleFolder(e, out _))
+        if (TryGetSingleFolder(e, out var folder))
         {
             e.Effects = DragDropEffects.Copy;
             _statusBeforeDrag ??= StatusBarText.Text;
             StatusBarText.Text = "Drop the folder to scan it";
+            ShowDropOverlay(folder);
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+        }
+
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Re-asserts the drag feedback on every move. DragEnter alone is not enough: crossing a
+    /// child that accepts drops raises DragLeave on the window, and without this the overlay
+    /// would vanish for the rest of a drag that is still over the window.
+    /// </summary>
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        if (TryGetSingleFolder(e, out var folder))
+        {
+            e.Effects = DragDropEffects.Copy;
+            ShowDropOverlay(folder);
         }
         else
         {
@@ -580,6 +604,15 @@ public partial class MainWindow : Window
 
     private void Window_DragLeave(object sender, DragEventArgs e)
     {
+        // DragLeave also fires when the pointer passes over a child element, which is not the
+        // drag ending. Only treat it as a departure when the pointer is genuinely outside.
+        var position = e.GetPosition(this);
+        if (position.X >= 0 && position.Y >= 0 && position.X <= ActualWidth && position.Y <= ActualHeight)
+        {
+            return;
+        }
+
+        HideDropOverlay();
         if (_statusBeforeDrag is not null)
         {
             StatusBarText.Text = _statusBeforeDrag;
@@ -587,8 +620,20 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ShowDropOverlay(string folderPath)
+    {
+        DropOverlayTitle.Text = IsBusy
+            ? "Busy — finish the current job first"
+            : "Drop to scan this folder";
+        DropOverlaySubtitle.Text = folderPath;
+        DropOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void HideDropOverlay() => DropOverlay.Visibility = Visibility.Collapsed;
+
     private void Window_Drop(object sender, DragEventArgs e)
     {
+        HideDropOverlay();
         _statusBeforeDrag = null;
         if (TryGetSingleFolder(e, out var folderPath))
         {
@@ -858,6 +903,15 @@ public partial class MainWindow : Window
                 FilterBox.SelectAll();
             }
 
+            e.Handled = true;
+            return;
+        }
+
+        // Enter is the impatient typist's override: it skips the debounce rather than waiting
+        // out the interval that was only there to keep fast typing smooth.
+        if (e.Key == System.Windows.Input.Key.Enter && FilterBox.IsKeyboardFocusWithin)
+        {
+            FilterDebounce_Tick(null, EventArgs.Empty);
             e.Handled = true;
             return;
         }
@@ -1154,11 +1208,35 @@ public partial class MainWindow : Window
 
     // ── Tree filter ──────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Delays the filter until typing pauses. Filtering rebuilds the whole tree, so on a large
+    /// project running it per keystroke made the box lag several characters behind the typist.
+    /// </summary>
+    private readonly DispatcherTimer _filterDebounce = new() { Interval = TimeSpan.FromMilliseconds(150) };
+
     private void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        // The hint and clear button track the text itself, not the filter, so they stay
+        // immediate — a 150 ms lag on the placeholder would look like a dropped keystroke.
         var empty = string.IsNullOrEmpty(FilterBox.Text);
         FilterHint.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         FilterClearButton.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+
+        if (empty)
+        {
+            // Clearing restores the full tree; there is nothing to wait for.
+            _filterDebounce.Stop();
+            ApplyTreeFilter(string.Empty);
+            return;
+        }
+
+        _filterDebounce.Stop();
+        _filterDebounce.Start();
+    }
+
+    private void FilterDebounce_Tick(object? sender, EventArgs e)
+    {
+        _filterDebounce.Stop();
         ApplyTreeFilter(FilterBox.Text);
     }
 

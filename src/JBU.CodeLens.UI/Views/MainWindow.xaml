@@ -9,6 +9,7 @@
         WindowStartupLocation="Manual"
         AllowDrop="True"
         DragEnter="Window_DragEnter"
+        DragOver="Window_DragOver"
         DragLeave="Window_DragLeave"
         Drop="Window_Drop"
         PreviewKeyDown="Window_PreviewKeyDown">
@@ -771,7 +772,7 @@
                                Foreground="{DynamicResource TextSecondaryBrush}"/>
                     <TextBlock FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
                                Foreground="{DynamicResource TextPrimaryBrush}"
-                               Text="Ctrl+O open a folder · F5 rescan · Ctrl+F filter · Esc clear the filter or cancel"/>
+                               Text="Ctrl+O open a folder · F5 rescan · Ctrl+F filter · Enter apply the filter now · Esc clear the filter or cancel&#x0a;On the project tree: + and &#x2212; zoom · Ctrl+0 fit to view"/>
 
                     <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16,0,14"/>
 
@@ -792,5 +793,32 @@
                 </StackPanel>
             </Border>
         </Popup>
+
+        <!-- Shown only while a folder is being dragged over the window. The status bar already
+             said "Drop the folder to scan it", but it sits at the very bottom of a large window
+             and nobody looks there mid-drag. IsHitTestVisible is false so the overlay cannot
+             swallow the drop it is advertising. -->
+        <Border x:Name="DropOverlay"
+                Visibility="Collapsed"
+                IsHitTestVisible="False"
+                Panel.ZIndex="200"
+                Background="#CC101418"
+                BorderBrush="{DynamicResource PrimaryBrush}"
+                BorderThickness="3"
+                CornerRadius="10"
+                Margin="16">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="52"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource PrimaryBrush}"/>
+                <TextBlock x:Name="DropOverlayTitle" Text="Drop to scan this folder"
+                           FontSize="20" FontWeight="SemiBold" Margin="0,14,0,0"
+                           HorizontalAlignment="Center" Foreground="White"/>
+                <TextBlock x:Name="DropOverlaySubtitle" Text=""
+                           FontSize="12" Margin="0,6,0,0" Opacity="0.85"
+                           HorizontalAlignment="Center" Foreground="White"
+                           TextTrimming="CharacterEllipsis" MaxWidth="520"/>
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>

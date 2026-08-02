@@ -126,7 +126,15 @@ public partial class VisualizationView : UserControl
         }
 
         Render();
-        Dispatcher.InvokeAsync(FitToView, DispatcherPriority.Loaded);
+        Dispatcher.InvokeAsync(
+            () =>
+            {
+                FitToView();
+                // PreviewKeyDown tunnels along the focus path, so the zoom keys only reach this
+                // page once focus is actually inside it.
+                Focus();
+            },
+            DispatcherPriority.Loaded);
     }
 
     // ── Toolbar ──────────────────────────────────────────────────────────────
@@ -196,7 +204,136 @@ public partial class VisualizationView : UserControl
 
     private void FitButton_Click(object sender, RoutedEventArgs e) => FitToView();
 
+    // ── Save as image ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Writes the whole diagram to a PNG at its natural size, independent of the current zoom
+    /// and of what happens to be scrolled into view.
+    /// </summary>
+    /// <remarks>
+    /// The diagram was previously trapped in the window — a report or slide could only get it
+    /// through a screenshot, which captures the visible portion at screen resolution.
+    /// </remarks>
+    private void SaveImageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (double.IsNaN(TreeCanvas.Width) || TreeCanvas.Width <= 0 || TreeCanvas.Height <= 0)
+        {
+            return;
+        }
+
+        var suggested = string.IsNullOrEmpty(_projectName) ? "diagram" : _projectName;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save the diagram",
+            Filter = "PNG image (*.png)|*.png",
+            DefaultExt = ".png",
+            FileName = $"{SanitizeFileName(suggested)} - structure.png",
+        };
+
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            File.WriteAllBytes(dialog.FileName, RenderCanvasToPng());
+        }
+        catch (IOException ex)
+        {
+            MessageBox.Show(
+                Window.GetWindow(this),
+                $"The image could not be saved.\n\n{ex.Message}",
+                "Save diagram",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            MessageBox.Show(
+                Window.GetWindow(this),
+                $"The image could not be saved.\n\n{ex.Message}",
+                "Save diagram",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private byte[] RenderCanvasToPng()
+    {
+        // The live canvas carries the zoom transform, so it is rendered through a temporary
+        // visual at scale 1 — otherwise the file would come out at whatever zoom the reader
+        // happened to leave the view on.
+        const double dpi = 96;
+        const double exportScale = 2; // legible when dropped into a document at half size
+        var width = TreeCanvas.Width;
+        var height = TreeCanvas.Height;
+
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+            (int)Math.Ceiling(width * exportScale),
+            (int)Math.Ceiling(height * exportScale),
+            dpi * exportScale,
+            dpi * exportScale,
+            PixelFormats.Pbgra32);
+
+        var visual = new DrawingVisual();
+        using (var context = visual.RenderOpen())
+        {
+            // Painted rather than left transparent: the node labels follow the theme, and light
+            // text on a transparent background is invisible in most viewers.
+            var background = TryFindResource("SurfaceBrush") as Brush ?? Brushes.White;
+            context.DrawRectangle(background, null, new Rect(0, 0, width, height));
+            context.DrawRectangle(new VisualBrush(TreeCanvas), null, new Rect(0, 0, width, height));
+        }
+
+        bitmap.Render(visual);
+
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
+    }
+
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string([.. name.Select(c => invalid.Contains(c) ? '_' : c)]).Trim();
+        return cleaned.Length == 0 ? "diagram" : cleaned;
+    }
+
     // ── Zoom & pan ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Keyboard zoom and fit. The diagram could only be zoomed with the wheel or the toolbar
+    /// buttons, which left it unusable without a mouse.
+    /// </summary>
+    private void View_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+
+        switch (e.Key)
+        {
+            // OemPlus/OemMinus are the main row; Add/Subtract are the numeric keypad. Both are
+            // accepted with and without Ctrl — nothing else on this page takes typed input, so
+            // requiring the modifier would only be a rule to remember.
+            case Key.OemPlus or Key.Add:
+                ZoomAtViewportCenter(ZoomStep);
+                break;
+            case Key.OemMinus or Key.Subtract:
+                ZoomAtViewportCenter(1 / ZoomStep);
+                break;
+            // Ctrl+0 only. Ctrl+F is the filter shortcut and MainWindow claims it before the
+            // event tunnels this far.
+            case Key.D0 or Key.NumPad0 when ctrl:
+                FitToView();
+                break;
+            default:
+                return;
+        }
+
+        e.Handled = true;
+    }
 
     private void CanvasScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
