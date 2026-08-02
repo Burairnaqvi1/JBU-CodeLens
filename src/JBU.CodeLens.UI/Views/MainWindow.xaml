@@ -794,11 +794,43 @@
             </Border>
         </Popup>
 
+        <!-- Modal choice, used where a raw system MessageBox would otherwise appear. The app
+             draws its own chrome and follows a light/dark theme; a stock message box arrives in
+             the OS style with none of it, and looks like a different program. -->
+        <Grid x:Name="ChoiceOverlay"
+              Grid.Row="0" Grid.RowSpan="3"
+              Visibility="Collapsed"
+              Panel.ZIndex="300"
+              Background="#99000000">
+            <Border MaxWidth="470"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Padding="22,20,22,18"
+                    CornerRadius="10"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1">
+                <StackPanel>
+                    <TextBlock x:Name="ChoiceTitle"
+                               FontSize="15" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock x:Name="ChoiceMessage"
+                               FontSize="12" TextWrapping="Wrap" Margin="0,10,0,0" LineHeight="18"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <StackPanel x:Name="ChoiceButtons"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Margin="0,20,0,0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <!-- Shown only while a folder is being dragged over the window. The status bar already
              said "Drop the folder to scan it", but it sits at the very bottom of a large window
              and nobody looks there mid-drag. IsHitTestVisible is false so the overlay cannot
              swallow the drop it is advertising. -->
         <Border x:Name="DropOverlay"
+                Grid.Row="0" Grid.RowSpan="3"
                 Visibility="Collapsed"
                 IsHitTestVisible="False"
                 Panel.ZIndex="200"

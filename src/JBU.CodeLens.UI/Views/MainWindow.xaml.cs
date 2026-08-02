@@ -907,6 +907,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        // The choice overlay is modal, so it answers the keyboard before anything behind it.
+        if (_pendingChoice is not null)
+        {
+            if (e.Key == System.Windows.Input.Key.Escape)
+            {
+                CompleteChoice(null);
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         // Enter is the impatient typist's override: it skips the debounce rather than waiting
         // out the interval that was only there to keep fast typing smooth.
         if (e.Key == System.Windows.Input.Key.Enter && FilterBox.IsKeyboardFocusWithin)
@@ -1410,6 +1422,71 @@ public partial class MainWindow : Window
         }
     }
 
+    // ── Themed modal choice ──────────────────────────────────────────────────
+
+    /// <summary>Completes when the reader picks one of the buttons, or presses Escape.</summary>
+    private TaskCompletionSource<string?>? _pendingChoice;
+
+    /// <summary>
+    /// Asks a question inside the window and returns the label of the button chosen, or null if
+    /// the reader dismissed it.
+    /// </summary>
+    /// <remarks>
+    /// Replaces MessageBox.Show. The stock dialog ignores the application theme, so on the dark
+    /// theme it appeared as a bright grey box in the middle of a dark window.
+    /// </remarks>
+    private Task<string?> AskChoiceAsync(string title, string message, params string[] options)
+    {
+        // A second question arriving while one is open would strand the first caller awaiting a
+        // task that can never complete.
+        _pendingChoice?.TrySetResult(null);
+
+        ChoiceTitle.Text = title;
+        ChoiceMessage.Text = message;
+        ChoiceButtons.Children.Clear();
+
+        var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingChoice = completion;
+
+        for (var i = 0; i < options.Length; i++)
+        {
+            var label = options[i];
+            var isPrimary = i == 0;
+            var button = new Button
+            {
+                Content = label,
+                Padding = new Thickness(16, 5, 16, 5),
+                FontSize = 12,
+                Margin = new Thickness(i == 0 ? 0 : 8, 0, 0, 0),
+            };
+
+            if (isPrimary)
+            {
+                button.SetResourceReference(BackgroundProperty, "PrimaryBrush");
+                button.SetResourceReference(ForegroundProperty, "SurfaceBrush");
+            }
+
+            button.Click += (_, _) => CompleteChoice(label);
+            ChoiceButtons.Children.Add(button);
+        }
+
+        ChoiceOverlay.Visibility = Visibility.Visible;
+        if (ChoiceButtons.Children.Count > 0 && ChoiceButtons.Children[0] is Button first)
+        {
+            first.Focus();
+        }
+
+        return completion.Task;
+    }
+
+    private void CompleteChoice(string? result)
+    {
+        ChoiceOverlay.Visibility = Visibility.Collapsed;
+        var pending = _pendingChoice;
+        _pendingChoice = null;
+        pending?.TrySetResult(result);
+    }
+
     private async void ExportWordButton_Click(object sender, RoutedEventArgs e)
     {
         if (!EnsureScanResultsForExport("Export to Word"))
@@ -1417,31 +1494,33 @@ public partial class MainWindow : Window
             return;
         }
 
-        var aiChoice = MessageBox.Show(
-            this,
-            "Include AI-generated explanations?\n\n" +
-            "• Yes — fuller document with brief descriptions, pre/post conditions, design constraints, and error analysis (slower).\n" +
-            "• No — parser metadata and documentation only (fast).",
-            "Export to Word",
-            MessageBoxButton.YesNoCancel,
-            MessageBoxImage.Question);
+        const string withAi = "Include AI";
+        const string withoutAi = "Metadata only";
 
-        if (aiChoice == MessageBoxResult.Cancel)
+        var aiChoice = await AskChoiceAsync(
+            "Export to Word",
+            "Include AI-generated explanations?\n\n" +
+            "Include AI — fuller document with brief descriptions, pre/post conditions, design " +
+            "constraints, and error analysis. This is slower.\n\n" +
+            "Metadata only — parser metadata and documentation from the source. This is fast.",
+            withAi, withoutAi, "Cancel");
+
+        if (aiChoice is null or "Cancel")
         {
             return;
         }
 
-        var includeAi = aiChoice == MessageBoxResult.Yes;
+        var includeAi = aiChoice == withAi;
         if (includeAi && (_explanationService is null || !_explanationService.IsReady))
         {
-            var fallback = MessageBox.Show(
-                this,
-                $"The AI model is not ready ({_explanationService?.LoadError ?? "still loading"}).\n\nExport without AI instead?",
+            const string exportAnyway = "Export without AI";
+            var fallback = await AskChoiceAsync(
                 "Export to Word",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
+                $"The AI model is not ready ({_explanationService?.LoadError ?? "still loading"}). " +
+                "The explanations cannot be generated right now.",
+                exportAnyway, "Cancel");
 
-            if (fallback != MessageBoxResult.Yes)
+            if (fallback != exportAnyway)
             {
                 return;
             }
