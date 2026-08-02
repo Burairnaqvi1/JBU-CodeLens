@@ -628,7 +628,7 @@ internal static class DetailPanelRenderer
         var languageBadge = GetMethodLanguageBadge(method);
         if (languageBadge is not null)
         {
-            var languagePill = CreateSubtleLanguagePill(languageBadge, resourceRoot, marginLeft: 8);
+            var languagePill = CreateLanguagePill(languageBadge, resourceRoot, marginLeft: 8);
             DockPanel.SetDock(languagePill, Dock.Right);
             headerRow.Children.Add(languagePill);
         }
@@ -2637,7 +2637,13 @@ internal static class DetailPanelRenderer
         return panel;
     }
 
-    private static Border CreateAccessPill(string accessModifier, FrameworkElement resourceRoot, double marginLeft = 0)
+    /// <summary>
+    /// The outlined pill: surface fill, hairline border, 12px semibold text. Only the text
+    /// colour varies between uses, so the geometry lives here rather than being restated by
+    /// every caller and drifting apart.
+    /// </summary>
+    private static Border CreateOutlinedPill(
+        string text, string foregroundKey, FrameworkElement resourceRoot, double marginLeft = 0)
     {
         return new Border
         {
@@ -2648,24 +2654,21 @@ internal static class DetailPanelRenderer
             BorderBrush = Brush(resourceRoot, "BorderBrush"),
             BorderThickness = new Thickness(1),
             VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock { Text = accessModifier, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextPrimaryBrush") },
+            Child = new TextBlock
+            {
+                Text = text,
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brush(resourceRoot, foregroundKey),
+            },
         };
     }
 
-    private static Border CreateCategoryPill(string text, FrameworkElement resourceRoot, double marginLeft = 0)
-    {
-        return new Border
-        {
-            Margin = new Thickness(marginLeft, 0, 0, 0),
-            Padding = new Thickness(10, 3, 10, 3),
-            CornerRadius = new CornerRadius(10),
-            Background = Brush(resourceRoot, "SurfaceBrush"),
-            BorderBrush = Brush(resourceRoot, "BorderBrush"),
-            BorderThickness = new Thickness(1),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock { Text = text, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "PrimaryBrush") },
-        };
-    }
+    private static Border CreateAccessPill(string accessModifier, FrameworkElement resourceRoot, double marginLeft = 0) =>
+        CreateOutlinedPill(accessModifier, "TextPrimaryBrush", resourceRoot, marginLeft);
+
+    private static Border CreateCategoryPill(string text, FrameworkElement resourceRoot, double marginLeft = 0) =>
+        CreateOutlinedPill(text, "PrimaryBrush", resourceRoot, marginLeft);
 
     /// <summary>
     /// Rounded badge pill per the design spec: C# = Secondary, C++ = Primary, AI = Warning
@@ -2690,15 +2693,17 @@ internal static class DetailPanelRenderer
         };
     }
 
-    private static Border CreateSubtleLanguagePill(string text, FrameworkElement resourceRoot, double marginLeft = 0)
-    {
-        var isCpp = text.Contains("C++", StringComparison.Ordinal);
-        return CreateBadge(
+    /// <summary>
+    /// The language badge, in the one place that decides which colour a language gets. Callers
+    /// pass "[C#]" or "[C++]" as the parser reports it; the brackets are display noise here.
+    /// </summary>
+    private static Border CreateLanguagePill(string text, FrameworkElement resourceRoot, double marginLeft = 0) =>
+        CreateBadge(
             text.Trim('[', ']'),
-            isCpp ? "PrimaryBrush" : "SecondaryBrush",
+            text.Contains("C++", StringComparison.Ordinal) ? "PrimaryBrush" : "SecondaryBrush",
             resourceRoot,
             marginLeft);
-    }
+
 
     private static string? GetMethodLanguageBadge(MethodInfo method)
     {
@@ -2736,10 +2741,10 @@ internal static class DetailPanelRenderer
         return "AI model not loaded. Place a .gguf model file in the models/ folder.";
     }
 
+    /// <summary>The same language badge, stacked under a heading rather than beside it.</summary>
     private static Border CreateLanguageBadge(string text, FrameworkElement resourceRoot, double marginTop = 0)
     {
-        var isCpp = text.Contains("C++", StringComparison.Ordinal);
-        var badge = CreateBadge(text.Trim('[', ']'), isCpp ? "PrimaryBrush" : "SecondaryBrush", resourceRoot);
+        var badge = CreateLanguagePill(text, resourceRoot);
         badge.Margin = new Thickness(0, marginTop, 0, 0);
         badge.HorizontalAlignment = HorizontalAlignment.Left;
         return badge;
