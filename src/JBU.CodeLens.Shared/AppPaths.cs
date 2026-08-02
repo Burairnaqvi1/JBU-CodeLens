@@ -1,3 +1,4 @@
+using System.Diagnostics;
 namespace JBU.CodeLens.Shared;
 
 /// <summary>
@@ -70,8 +71,9 @@ public static class AppPaths
                 File.Copy(source, Path.Combine(currentDirectory, Path.GetFileName(source)), overwrite: false);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[JBU CodeLens] Could not migrate the data folder: {ex.GetType().Name}: {ex.Message}");
             // A failed migration must never block startup; the stores just begin empty.
         }
     }

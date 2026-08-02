@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace JBU.CodeLens.Core.AI;
@@ -75,8 +76,9 @@ public sealed class AiResultStore
                 _createdTicks[key] = entry.T;
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[JBU CodeLens] Could not read the saved AI results: {ex.GetType().Name}: {ex.Message}");
             // A broken cache file must never break the app; inference just starts cold.
             results.Clear();
         }
@@ -129,8 +131,9 @@ public sealed class AiResultStore
                 _path,
                 tempPath => File.WriteAllText(tempPath, JsonSerializer.Serialize(shape)));
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[JBU CodeLens] Could not save the AI results: {ex.GetType().Name}: {ex.Message}");
             // Best-effort persistence only.
         }
     }

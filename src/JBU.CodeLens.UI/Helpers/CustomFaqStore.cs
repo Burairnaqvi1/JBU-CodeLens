@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
@@ -39,8 +40,9 @@ public static class CustomFaqStore
             _cacheFileTimeUtc = fileTime;
             return _cache;
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[JBU CodeLens] Could not read the saved questions: {ex.GetType().Name}: {ex.Message}");
             return _cache ?? [];
         }
     }
@@ -87,8 +89,9 @@ public static class CustomFaqStore
             _cache = questions;
             _cacheFileTimeUtc = File.GetLastWriteTimeUtc(FilePath);
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[JBU CodeLens] Could not save the questions: {ex.GetType().Name}: {ex.Message}");
             // Best-effort persistence — a failed save shouldn't crash the UI.
         }
     }

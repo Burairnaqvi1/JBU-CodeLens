@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
@@ -57,8 +58,9 @@ public sealed class UiSettings
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[JBU CodeLens] Could not read the settings: {ex.GetType().Name}: {ex.Message}");
             // Corrupt or unreadable settings must never block startup — fall back to defaults.
         }
 
@@ -75,8 +77,9 @@ public sealed class UiSettings
             // file, so a crash while saving cannot cost the user their theme and last project.
             AtomicFileWriter.Write(FilePath, temp => File.WriteAllText(temp, JsonSerializer.Serialize(this)));
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[JBU CodeLens] Could not save the settings: {ex.GetType().Name}: {ex.Message}");
             // Persistence is a convenience; losing it costs nothing functional.
         }
     }

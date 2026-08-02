@@ -1,0 +1,34 @@
+name: Build and test
+
+# The UI project targets net8.0-windows and the C++ parser loads libclang through
+# libclang.runtime.win-x64, so the whole solution only builds on a Windows runner.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore JBU.CodeLens.sln
+
+      # The projects build with AnalysisMode=All and TreatWarningsAsErrors, so this step is
+      # also the static analysis gate — a new analyser warning fails the build here exactly
+      # as it does locally.
+      - name: Build
+        run: dotnet build JBU.CodeLens.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test JBU.CodeLens.sln --configuration Release --no-build --verbosity normal

@@ -170,6 +170,88 @@ public sealed class StressTests : IDisposable
         Assert.Equal(20, reports.Max(r => r.FilesParsed));
     }
 
+    /// <summary>
+    /// Real projects nest deeply — node_modules-style trees, generated output, vendored
+    /// dependencies — and the scanner walks whatever it is pointed at. A recursive walk that
+    /// works on three levels can still overflow the stack on sixty.
+    /// </summary>
+    [Fact]
+    public async Task Scan_DeeplyNestedFolders_FindsEveryFile()
+    {
+        const int depth = 60;
+        var current = _tempDir;
+        for (var i = 0; i < depth; i++)
+        {
+            current = Path.Combine(current, $"lvl{i}");
+            Directory.CreateDirectory(current);
+            await File.WriteAllTextAsync(
+                Path.Combine(current, $"Deep{i}.cs"),
+                $"namespace Deep;\npublic class Deep{i} {{ public int Value() => {i}; }}");
+        }
+
+        var result = await new ScideEngine().AnalyzeProjectAsync(_tempDir);
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal(depth, result.ParseResults.Count);
+        Assert.Empty(result.FailedFiles);
+    }
+
+    /// <summary>
+    /// Paths past 260 characters are ordinary on Windows once a project sits a few folders down
+    /// inside a user profile. The scan must either read them or record them as failed files —
+    /// what it must never do is abort the whole scan.
+    /// </summary>
+    [Fact]
+    public async Task Scan_PathsBeyondTheLegacyLimit_DoNotAbortTheScan()
+    {
+        // Each segment is well under the 255-character per-component limit; it is the total
+        // path length that crosses MAX_PATH.
+        var segment = new string('p', 60);
+        var current = _tempDir;
+        for (var i = 0; i < 5; i++)
+        {
+            current = Path.Combine(current, $"{segment}{i}");
+            Directory.CreateDirectory(current);
+        }
+
+        Assert.True(current.Length > 260, $"the test needs a path over 260 chars, got {current.Length}");
+
+        await File.WriteAllTextAsync(
+            Path.Combine(current, "LongPath.cs"),
+            "namespace Long;\npublic class LongPath { public int Value() => 1; }");
+
+        // A file at a normal depth, to prove the long one did not take the scan down with it.
+        await File.WriteAllTextAsync(
+            Path.Combine(_tempDir, "Normal.cs"),
+            "namespace Long;\npublic class Normal { public int Value() => 2; }");
+
+        var result = await new ScideEngine().AnalyzeProjectAsync(_tempDir);
+
+        Assert.True(result.Success, result.Error);
+        Assert.Contains(result.ParseResults, r => r.Classes.Any(c => c.Name == "Normal"));
+    }
+
+    /// <summary>
+    /// A file whose name survives the scan but whose content is empty, whitespace, or a lone
+    /// byte-order mark: each is a real thing to find in a source tree.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("   \n\t\n  ")]
+    [InlineData("﻿")]
+    public void Parse_EmptyOrWhitespaceFile_ReturnsAnEmptyResultRatherThanThrowing(string content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        var path = Path.Combine(_tempDir, $"Empty{content.Length}.cs");
+        File.WriteAllText(path, content);
+
+        var result = new CSharpParser().Parse(path);
+
+        Assert.NotNull(result);
+        Assert.Empty(result.Classes);
+    }
+
     /// <summary>Reports inline (no SynchronizationContext posting) so tests can assert counts.</summary>
     private sealed class SynchronousProgress(Action<ScanProgress> handler) : IProgress<ScanProgress>
     {

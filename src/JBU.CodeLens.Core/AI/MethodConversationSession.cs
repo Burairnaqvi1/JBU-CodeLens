@@ -53,7 +53,7 @@ public sealed class MethodConversationSession : IMethodConversationSession
     var answer = CleanAnswer(_service.RunInstruction(
       prompt,
       maxTokens,
-      ExplanationService.DefaultSystemPrompt,
+      ExplanationService.ConversationSystemPrompt,
       cancellationToken,
       onPartial is null ? null : partial => onPartial(CleanAnswer(partial))));
     _history.Add(new ConversationTurn(question, answer));
@@ -101,8 +101,10 @@ public sealed class MethodConversationSession : IMethodConversationSession
     }
 
     builder.AppendLine();
-    builder.AppendLine(_methodContext);
-    builder.AppendLine(CultureInfo.InvariantCulture, $"Initial explanation: {_initialExplanation}");
+    // The method context is scanned source: fenced so a comment written to look like an
+    // instruction is presented as material to describe, not as part of the ask.
+    builder.AppendLine(ExplanationService.FenceCodeData(
+      _methodContext + Environment.NewLine + $"Initial explanation: {_initialExplanation}"));
     builder.AppendLine();
 
     if (_history.Count > 0)

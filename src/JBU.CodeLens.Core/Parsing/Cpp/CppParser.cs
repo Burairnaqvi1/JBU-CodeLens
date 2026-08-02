@@ -23,6 +23,23 @@ namespace JBU.CodeLens.Core.Parsing.Cpp;
 /// </summary>
 public class CppParser : ILanguageParser
 {
+    /// <summary>
+    /// Records a swallowed failure from a libclang call without disturbing the walk that
+    /// contains it.
+    /// </summary>
+    /// <remarks>
+    /// Every catch in this file is a deliberate resilience boundary — a malformed header must
+    /// not abort a scan, and an exception escaping a native callback would take the process
+    /// down — but they were also completely silent. A C++ file that came back with no classes
+    /// gave no way to tell a genuinely empty file from twenty suppressed marshaling errors.
+    /// This writes to the debug listener only, so a normal run is unchanged.
+    /// </remarks>
+    private static void NoteSuppressed(
+        Exception ex,
+        [System.Runtime.CompilerServices.CallerMemberName] string operation = "") =>
+        System.Diagnostics.Debug.WriteLine(
+            $"[JBU CodeLens] CppParser.{operation}: suppressed {ex.GetType().Name}: {ex.Message}");
+
     // Must be 0 (not SkipFunctionBodies) so method body AST nodes are available for source extraction and variable analysis.
     private const uint CXTranslationUnit_None = 0;
 
@@ -149,8 +166,9 @@ public class CppParser : ILanguageParser
         {
             fileBytes = File.ReadAllBytes(filePath);
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             // Parsing can still proceed with an empty buffer for source extraction.
             fileBytes = [];
         }
@@ -175,8 +193,9 @@ public class CppParser : ILanguageParser
         {
             fileBytes = await File.ReadAllBytesAsync(filePath, cancellationToken).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             fileBytes = [];
         }
 
@@ -588,8 +607,9 @@ public class CppParser : ILanguageParser
                     break;
             }
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             // Member-level failures should not abort the class walk.
         }
 
@@ -620,8 +640,9 @@ public class CppParser : ILanguageParser
 
             return IsFileScopeDeclaration(cursor);
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return false;
         }
     }
@@ -647,8 +668,9 @@ public class CppParser : ILanguageParser
                 current = clang_getCursorSemanticParent(current);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return false;
         }
 
@@ -703,8 +725,9 @@ public class CppParser : ILanguageParser
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return null;
         }
 
@@ -718,8 +741,9 @@ public class CppParser : ILanguageParser
             var cxString = clang_getCursorDisplayName(cursor);
             return MarshalCxString(cxString);
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return string.Empty;
         }
     }
@@ -766,8 +790,9 @@ public class CppParser : ILanguageParser
                 current = clang_getCursorSemanticParent(current);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return null;
         }
 
@@ -959,8 +984,9 @@ public class CppParser : ILanguageParser
                 IsField = true,
             });
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             // Best-effort: a constant that cannot be read simply stays unresolved.
         }
     }
@@ -1100,8 +1126,9 @@ public class CppParser : ILanguageParser
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             // Best-effort heuristics only.
         }
     }
@@ -1130,8 +1157,9 @@ public class CppParser : ILanguageParser
                 handle.Free();
             }
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return new List<VariableInfo>();
         }
 
@@ -1176,8 +1204,9 @@ public class CppParser : ILanguageParser
                 IsField = false,
             });
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             // Continue walking on individual variable failures.
         }
 
@@ -1227,8 +1256,9 @@ public class CppParser : ILanguageParser
             // prompt, so nothing downstream depends on the cap being applied here.
             return Encoding.UTF8.GetString(fileBytes, (int)startOffset, length);
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return string.Empty;
         }
     }
@@ -1272,8 +1302,9 @@ public class CppParser : ILanguageParser
                 return "Expected to be a valid file path";
             }
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return null;
         }
 
@@ -1393,8 +1424,9 @@ public class CppParser : ILanguageParser
                     "Potential infinite loop: loop has no visible termination condition.");
             }
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return new List<string>();
         }
 
@@ -1520,8 +1552,9 @@ public class CppParser : ILanguageParser
             var cxString = clang_getCursorSpelling(cursor);
             return MarshalCxString(cxString);
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return string.Empty;
         }
     }
@@ -1533,8 +1566,9 @@ public class CppParser : ILanguageParser
             var cxString = clang_getTypeSpelling(type);
             return MarshalCxString(cxString);
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return string.Empty;
         }
     }
@@ -1546,8 +1580,9 @@ public class CppParser : ILanguageParser
             var cxString = clang_Cursor_getRawCommentText(cursor);
             return MarshalCxString(cxString);
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return string.Empty;
         }
     }
@@ -1573,8 +1608,9 @@ public class CppParser : ILanguageParser
             var location = clang_getCursorLocation(cursor);
             return clang_Location_isFromMainFile(location) != 0;
         }
-        catch
+        catch (Exception ex)
         {
+            NoteSuppressed(ex);
             return false;
         }
     }

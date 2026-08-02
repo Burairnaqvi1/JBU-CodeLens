@@ -48,6 +48,10 @@ dotnet_diagnostic.CA1716.severity = none
 #     or unreadable settings/cache file must never block startup.
 #   * Tests (7) -- temp-directory cleanup in Dispose.
 #
+# The parser and persistence catches additionally write the suppressed exception to the debug
+# listener, so a file that silently produced nothing can be traced without changing the resilience
+# behaviour of a normal run.
+#
 # The governing design principle is that this application analyses source code it did not write, so
 # no single malformed input may terminate the process mid-scan. Narrowing these catches would mean
 # guessing the complete exception set of Roslyn, libclang marshaling, LLamaSharp and the file
