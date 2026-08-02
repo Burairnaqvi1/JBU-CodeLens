@@ -32,7 +32,7 @@ public sealed class MethodConversationSession : IMethodConversationSession
       "step by step", "step-by-step", "at length", "more detail",
   ];
 
-  public string Ask(string question, Action<string>? onPartial = null)
+  public string Ask(string question, Action<string>? onPartial = null, CancellationToken cancellationToken = default)
   {
     if (string.IsNullOrWhiteSpace(question))
     {
@@ -53,6 +53,8 @@ public sealed class MethodConversationSession : IMethodConversationSession
     var answer = CleanAnswer(_service.RunInstruction(
       prompt,
       maxTokens,
+      ExplanationService.DefaultSystemPrompt,
+      cancellationToken,
       onPartial is null ? null : partial => onPartial(CleanAnswer(partial))));
     _history.Add(new ConversationTurn(question, answer));
     return answer;

@@ -17,5 +17,5 @@ public interface IMethodConversationSession
     /// the model streams tokens (from the inference thread — marshal to the UI thread before
     /// touching controls).
     /// </summary>
-    string Ask(string question, Action<string>? onPartial = null);
+    string Ask(string question, Action<string>? onPartial = null, CancellationToken cancellationToken = default);
 }

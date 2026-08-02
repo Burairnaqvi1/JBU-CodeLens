@@ -30,10 +30,10 @@ public interface IExplanationService : IDisposable
     /// touching controls); the returned string is the final post-processed text and may differ
     /// slightly from the last partial.
     /// </summary>
-    string ExplainMethod(MethodInfo methodInfo, Action<string>? onPartial = null);
+    string ExplainMethod(MethodInfo methodInfo, Action<string>? onPartial = null, CancellationToken cancellationToken = default);
 
     /// <summary>One-sentence developer-style description. Streams like ExplainMethod.</summary>
-    string GenerateBriefDescription(MethodInfo methodInfo, Action<string>? onPartial = null);
+    string GenerateBriefDescription(MethodInfo methodInfo, Action<string>? onPartial = null, CancellationToken cancellationToken = default);
 
     /// <summary>Short project overview from a pre-formatted context description.</summary>
     string GenerateProjectSummary(string projectContext);
@@ -43,7 +43,7 @@ public interface IExplanationService : IDisposable
     /// and relationships. Cached per class for the session, like the method operations.
     /// Streams like ExplainMethod.
     /// </summary>
-    string GenerateClassSummary(ClassInfo classInfo, Action<string>? onPartial = null);
+    string GenerateClassSummary(ClassInfo classInfo, Action<string>? onPartial = null, CancellationToken cancellationToken = default);
 
     /// <summary>Pre/post-condition bullets.</summary>
     string GeneratePrePostConditions(MethodInfo methodInfo);

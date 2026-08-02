@@ -329,7 +329,14 @@ public class CSharpParser : ILanguageParser
                 node.IsKind(SyntaxKind.ForEachStatement) ||
                 node.IsKind(SyntaxKind.CaseSwitchLabel) ||
                 node.IsKind(SyntaxKind.ConditionalExpression) ||
-                node.IsKind(SyntaxKind.CatchClause))
+                node.IsKind(SyntaxKind.CatchClause) ||
+                // Each short-circuit operator is its own decision: "a && b" can leave the
+                // condition by two different routes, and McCabe counts both. Leaving them out
+                // meant a method guarded by one long condition scored the same as one guarded by
+                // a single test, and the figure had to be published with a caveat attached.
+                node.IsKind(SyntaxKind.LogicalAndExpression) ||
+                node.IsKind(SyntaxKind.LogicalOrExpression) ||
+                node.IsKind(SyntaxKind.CoalesceExpression))
             {
                 complexity++;
             }

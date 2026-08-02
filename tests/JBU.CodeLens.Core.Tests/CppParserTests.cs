@@ -246,6 +246,68 @@ public sealed class CppParserTests : IDisposable
     }
 
     [Fact]
+    public void Complexity_CountsShortCircuitOperators()
+    {
+        // "a && b" can leave the condition by two routes, and McCabe counts both.
+        var result = Parse("shortcircuit.cpp", """
+            int check(int a, int b) {
+                if (a > 0 && b > 0) { return 1; }
+                return 0;
+            }
+            """);
+
+        var method = result.Classes.SelectMany(c => c.Methods).Single(m => m.Name == "check");
+
+        // One for the method, one for the if, one for the &&.
+        Assert.Equal(3, method.CyclomaticComplexity);
+    }
+
+    [Fact]
+    public void Complexity_CountsNestedTernariesSeparately()
+    {
+        // The pattern used before tried to match "? ... :" and lost count once two were nested.
+        var result = Parse("ternary.cpp", """
+            int band(int n) { return n > 10 ? 2 : n > 5 ? 1 : 0; }
+            """);
+
+        var method = result.Classes.SelectMany(c => c.Methods).Single(m => m.Name == "band");
+
+        // One for the method plus one for each of the two conditionals.
+        Assert.Equal(3, method.CyclomaticComplexity);
+    }
+
+    /// <summary>
+    /// The same logic written in each language must produce the same figure.
+    /// </summary>
+    /// <remarks>
+    /// The two counters share no code — one walks a syntax tree, the other matches patterns —
+    /// so nothing but a test stops them drifting apart. A project-wide average mixing the two
+    /// languages would then mean nothing, and neither would a comparison between them.
+    /// </remarks>
+    [Theory]
+    [InlineData("if (a > 0) { return 1; } return 0;", 2)]
+    [InlineData("if (a > 0 && b > 0) { return 1; } return 0;", 3)]
+    [InlineData("if (a > 0 || b > 0) { return 1; } return 0;", 3)]
+    [InlineData("for (int i = 0; i < 3; ++i) { a += i; } return a;", 2)]
+    [InlineData("while (a > 0) { a--; } return a;", 2)]
+    [InlineData("return a > 0 ? 1 : 0;", 2)]
+    [InlineData("if (a > 0) { if (b > 0) { return 2; } return 1; } return 0;", 3)]
+    [InlineData("return 0;", 1)]
+    public void Complexity_AgreesBetweenTheTwoLanguages(string body, int expected)
+    {
+        var cpp = Parse("parity.cpp", $"int probe(int a, int b) {{ {body} }}")
+            .Classes.SelectMany(c => c.Methods).Single(m => m.Name == "probe");
+
+        var csharpPath = Path.Combine(_tempDir, "parity.cs");
+        File.WriteAllText(csharpPath, $"public class P {{ public int Probe(int a, int b) {{ {body} }} }}");
+        var csharp = new JBU.CodeLens.Core.Parsing.CSharp.CSharpParser().Parse(csharpPath)
+            .Classes.SelectMany(c => c.Methods).Single(m => m.Name == "Probe");
+
+        Assert.Equal(expected, cpp.CyclomaticComplexity);
+        Assert.Equal(expected, csharp.CyclomaticComplexity);
+    }
+
+    [Fact]
     public void Parse_SimpleFunction_HasComplexityOfOne()
     {
         var result = Parse("plain.cpp", """

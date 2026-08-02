@@ -41,7 +41,7 @@ public sealed class ExplanationService : IExplanationService
     internal const int MaxTokensFollowUpAnswer = MaxTokensFollowUp;
     internal const int MaxTokensFollowUpAnswerDetailed = MaxTokensFollowUpDetailed;
 
-    private const string DefaultSystemPrompt =
+    internal const string DefaultSystemPrompt =
         "You are a concise technical writer. Answer briefly and stay factual.";
 
     // Input budget sized so the enlarged source snippet plus the verified-facts block always
@@ -158,7 +158,10 @@ public sealed class ExplanationService : IExplanationService
     /// <summary>
     /// Generates a plain-English explanation of what <paramref name="methodInfo"/> is responsible for.
     /// </summary>
-    public string ExplainMethod(MethodInfo methodInfo, Action<string>? onPartial = null)
+    public string ExplainMethod(
+        MethodInfo methodInfo,
+        Action<string>? onPartial = null,
+        CancellationToken cancellationToken = default)
     {
         if (!IsReady)
         {
@@ -169,14 +172,18 @@ public sealed class ExplanationService : IExplanationService
         {
             var prompt = BuildExplainMethodPrompt(methodInfo);
             return ShapeExplanation(RunInstruction(
-                prompt, MaxTokensExplanation, ShapeStream(onPartial, ShapeExplanation)));
+                prompt, MaxTokensExplanation, DefaultSystemPrompt, cancellationToken,
+                ShapeStream(onPartial, ShapeExplanation)));
         });
     }
 
     /// <summary>
     /// Generates a brief developer-style description when no XML summary exists.
     /// </summary>
-    public string GenerateBriefDescription(MethodInfo methodInfo, Action<string>? onPartial = null)
+    public string GenerateBriefDescription(
+        MethodInfo methodInfo,
+        Action<string>? onPartial = null,
+        CancellationToken cancellationToken = default)
     {
         if (!IsReady)
         {
@@ -199,7 +206,8 @@ public sealed class ExplanationService : IExplanationService
             }
 
             return ShapeBriefDescription(RunInstruction(
-                userPrompt, MaxTokensBrief, systemPrompt, ShapeStream(onPartial, ShapeBriefDescription)));
+                userPrompt, MaxTokensBrief, systemPrompt, cancellationToken,
+                ShapeStream(onPartial, ShapeBriefDescription)));
         });
     }
 
@@ -228,7 +236,10 @@ public sealed class ExplanationService : IExplanationService
     /// members and relationships. Cached per (file, class) for the session so revisiting a
     /// class costs nothing.
     /// </summary>
-    public string GenerateClassSummary(ClassInfo classInfo, Action<string>? onPartial = null)
+    public string GenerateClassSummary(
+        ClassInfo classInfo,
+        Action<string>? onPartial = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(classInfo);
 
@@ -250,6 +261,7 @@ public sealed class ExplanationService : IExplanationService
             DescribeClassCompact(classInfo),
             MaxTokensExplanation,
             systemPrompt,
+            cancellationToken,
             ShapeStream(onPartial, ShapeClassSummary)));
 
         if (IsCleanOutput(result))
@@ -418,15 +430,16 @@ public sealed class ExplanationService : IExplanationService
             "Stay factual and never contradict the verified facts in the request.",
             cancellationToken);
 
-        // The per-section fallbacks below each run their own (uncancellable) inference call;
-        // don't start any of them for a request that has already been canceled.
+        // Each fallback below runs its own inference call. They now take the same token, so a
+        // request cancelled part-way stops between sections instead of finishing the remaining
+        // ones and discarding the lot.
         cancellationToken.ThrowIfCancellationRequested();
 
         var sections = SplitSections(response);
 
         var brief = PostProcessSection(sections, "BRIEF",
             raw => TruncateProse(raw, maxSentences: 1, maxWords: 35),
-            () => GenerateBriefDescription(methodInfo));
+            () => GenerateBriefDescription(methodInfo, onPartial: null, cancellationToken));
         var prePost = PostProcessSection(sections, "CONDITIONS",
             raw => TruncateSectionedBullets(raw, maxBulletsPerSection: 3, maxWordsPerBullet: 20),
             () => GeneratePrePostConditions(methodInfo));
@@ -438,7 +451,7 @@ public sealed class ExplanationService : IExplanationService
             () => GenerateErrorAnalysis(methodInfo));
         var explanation = PostProcessSection(sections, "EXPLANATION",
             raw => TruncateProse(raw, maxSentences: 3, maxWords: 80),
-            () => ExplainMethod(methodInfo));
+            () => ExplainMethod(methodInfo, onPartial: null, cancellationToken));
 
         CacheSection("brief", methodInfo, brief);
         CacheSection("prepost", methodInfo, prePost);
@@ -593,9 +606,13 @@ public sealed class ExplanationService : IExplanationService
 
         try
         {
-            return Task.Run(
-                    () => RunInstructionAsync(instruction, maxTokens, systemPrompt, cancellationToken, onPartial),
-                    cancellationToken)
+            // Blocked on directly rather than pushed through Task.Run first. The inner method
+            // awaits with ConfigureAwait(false) throughout, so no continuation needs the calling
+            // thread and blocking here cannot deadlock. The extra hop bought nothing: it did not
+            // stop a caller on the interface thread from freezing, since that caller waits either
+            // way — it only spent a second thread per generation. Callers already run this from
+            // a background task, which is where the responsibility properly sits.
+            return RunInstructionAsync(instruction, maxTokens, systemPrompt, cancellationToken, onPartial)
                 .GetAwaiter().GetResult();
         }
         catch (OperationCanceledException)
@@ -760,6 +777,11 @@ public sealed class ExplanationService : IExplanationService
             var executor = new InstructExecutor(context, string.Empty, string.Empty);
             await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken).ConfigureAwait(false))
             {
+                // Checked here as well as handed to InferAsync: the executor does not act on the
+                // token itself, so without this a stop request was only noticed once the whole
+                // answer had been generated — up to a minute of waiting for something the reader
+                // had already cancelled.
+                cancellationToken.ThrowIfCancellationRequested();
                 builder.Append(token);
                 ReportPartial();
             }
@@ -771,6 +793,11 @@ public sealed class ExplanationService : IExplanationService
             var executor = new InstructExecutor(context, string.Empty, string.Empty);
             await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken).ConfigureAwait(false))
             {
+                // Checked here as well as handed to InferAsync: the executor does not act on the
+                // token itself, so without this a stop request was only noticed once the whole
+                // answer had been generated — up to a minute of waiting for something the reader
+                // had already cancelled.
+                cancellationToken.ThrowIfCancellationRequested();
                 builder.Append(token);
                 ReportPartial();
             }
@@ -782,6 +809,11 @@ public sealed class ExplanationService : IExplanationService
             var executor = new InstructExecutor(context, "[INST] ", " [/INST]");
             await foreach (var token in executor.InferAsync(instruction, inferenceParams, cancellationToken).ConfigureAwait(false))
             {
+                // Checked here as well as handed to InferAsync: the executor does not act on the
+                // token itself, so without this a stop request was only noticed once the whole
+                // answer had been generated — up to a minute of waiting for something the reader
+                // had already cancelled.
+                cancellationToken.ThrowIfCancellationRequested();
                 builder.Append(token);
                 ReportPartial();
             }

@@ -1615,6 +1615,19 @@ internal static class DetailPanelRenderer
         var generateBtn = CreateRegenerateButton("Generate AI Explanation", () => { }, resourceRoot, marginTop: 10);
         stack.Children.Add(generateBtn);
 
+        // Sits beside the generate button and appears only while the model is running. Every
+        // other slow operation in the application can be stopped; generation could not, leaving
+        // the reader with nothing to do but wait out a long answer.
+        Action? stopHandler = null;
+        var stopBtn = CreateRegenerateButton("Stop", () => stopHandler?.Invoke(), resourceRoot, marginTop: 6);
+        stopBtn.Visibility = Visibility.Collapsed;
+        stopBtn.Background = Brush(resourceRoot, "SurfaceBrush");
+        stopBtn.Foreground = Brush(resourceRoot, "TextPrimaryBrush");
+        stopBtn.BorderBrush = Brush(resourceRoot, "BorderBrush");
+        stopBtn.BorderThickness = new Thickness(1);
+        System.Windows.Automation.AutomationProperties.SetName(stopBtn, "Stop generating");
+        stack.Children.Add(stopBtn);
+
         var isBusy = false;
 
         string GetSeedExplanation()
@@ -1842,31 +1855,92 @@ internal static class DetailPanelRenderer
             generateBtn.Content = "Generating…";
             SetBusy(true);
 
+            // A long explanation used to leave the reader with nothing to do but wait, while
+            // every other slow operation in the application could be stopped. The button that
+            // started the generation becomes the one that stops it, so the control is where the
+            // reader is already looking.
+            var generation = new CancellationTokenSource();
+            var token = generation.Token;
+            var finished = false;
+            stopBtn.Visibility = Visibility.Visible;
+            stopBtn.IsEnabled = true;
+
+            // Guarded because stopping and finishing can both arrive: the reader presses Stop,
+            // and the answer that was already in flight completes a moment later. Whichever
+            // happens first owns the outcome.
+            void EndGeneration()
+            {
+                if (finished) return;
+                finished = true;
+
+                stopBtn.Visibility = Visibility.Collapsed;
+                generateBtn.Content = "Regenerate Explanation";
+                SetBusy(false);
+                RefreshStarters();
+            }
+
+            stopHandler = () =>
+            {
+                if (finished) return;
+
+                // The token is cancelled so the model stops as soon as it reaches a point where
+                // it can, but the panel does not wait for that. The library that drives the
+                // model decides when to look at the token, and on a long answer it can be many
+                // seconds — long enough that a reader who pressed Stop would reasonably conclude
+                // nothing had happened. Releasing the panel now is what they asked for; the
+                // half-finished answer is discarded whenever the model gets round to stopping.
+                generation.Cancel();
+
+                answerBlock.Text = answerBlock.Text is "Generating explanation…" or ""
+                    ? "Stopped before anything was generated."
+                    : answerBlock.Text.TrimEnd() + " …stopped.";
+                answerBlock.Opacity = 1.0;
+                state.OpeningExplanation = null;
+                EndGeneration();
+            };
+
             var svc = explanationService;
             var m = method;
             Task.Run(() =>
             {
-                var text = svc.ExplainMethod(m, partial =>
+                try
+                {
+                    var text = svc.ExplainMethod(m, partial =>
+                        Application.Current.Dispatcher.BeginInvoke(() =>
+                        {
+                            // A stopped generation must not keep writing to the panel, which the
+                            // reader has been told is finished with.
+                            if (finished) return;
+                            answerBlock.Text = partial;
+                            answerBlock.Opacity = 1.0;
+                        }),
+                        token);
+
                     Application.Current.Dispatcher.BeginInvoke(() =>
                     {
-                        answerBlock.Text = partial;
+                        if (finished) return;
+
+                        answerBlock.Text = text;
                         answerBlock.Opacity = 1.0;
-                    }));
 
-                Application.Current.Dispatcher.BeginInvoke(() =>
+                        // Only a genuine explanation seeds the thread; a bracketed message is an
+                        // error string and must not become the model's idea of the method.
+                        state.OpeningExplanation = text.StartsWith('[') ? null : text;
+                        EndGeneration();
+                    });
+                }
+                catch (OperationCanceledException)
                 {
-                    answerBlock.Text = text;
-                    answerBlock.Opacity = 1.0;
-
-                    // Only a genuine explanation seeds the thread; a bracketed message is an
-                    // error string and must not become the model's idea of the method.
-                    state.OpeningExplanation = text.StartsWith('[') ? null : text;
-
-                    generateBtn.Content = "Regenerate Explanation";
-                    SetBusy(false);
-                    RefreshStarters();
-                });
-            });
+                    // The panel was already released when Stop was pressed; nothing to undo.
+                }
+                finally
+                {
+                    // Disposed here rather than when the panel is released: the token has to stay
+                    // alive until the model actually stops reading it, which can be well after
+                    // the reader has moved on.
+                    generation.Dispose();
+                }
+            }, token);
         };
 
         RebuildTranscript();

@@ -969,11 +969,23 @@ public class CppParser : ILanguageParser
     /// Collects the exception types a C++ method throws, in the order they first appear.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Without this the C# side listed a method's exceptions while the C++ side always reported
     /// none, so the "Errors / Exceptions" section told the reader that a function throwing three
     /// different types threw nothing at all — worse than silence, because it reads as a checked
     /// finding. Comments and strings are blanked first so the word "throw" inside a message does
     /// not register.
+    /// </para>
+    /// <para>
+    /// Only a type constructed at the throw is recognised, which is how nearly all C++ is
+    /// written. Three shapes are deliberately left out rather than guessed at:
+    /// <c>throw makeError(...)</c>, where the type is whatever the function returns and the name
+    /// at the throw is not it; <c>throw caught;</c>, where the type belongs to the declaration of
+    /// the variable rather than the statement; and a bare <c>throw;</c>, which re-raises whatever
+    /// is already in flight. Naming the function or the variable in those cases would put a
+    /// wrong type in front of the reader, and a wrong entry in a list headed "exceptions" is
+    /// worse than a short list.
+    /// </para>
     /// </remarks>
     private static List<string> ExtractThrownExceptionsFromBody(string methodSource)
     {
@@ -1036,7 +1048,17 @@ public class CppParser : ILanguageParser
 
             var complexity = 1;
             complexity += SafeRegex.Matches(code, @"\b(?:if|while|for|case|catch)\b").Count;
-            complexity += SafeRegex.Matches(code, @"\?[^:]*:").Count;
+
+            // Short-circuit operators are decisions in their own right, counted here so a C++
+            // figure means the same as a C# one.
+            complexity += SafeRegex.Matches(code, @"&&|\|\|").Count;
+
+            // Every conditional expression contains exactly one question mark, and C++ has no
+            // other use for the character once comments and strings are blanked. Counting the
+            // marks is therefore both simpler and steadier than the pattern used before, which
+            // tried to match "? ... :" and miscounted as soon as two were nested.
+            complexity += code.Count(character => character == '?');
+
             return complexity;
         }
         catch (RegexMatchTimeoutException)
