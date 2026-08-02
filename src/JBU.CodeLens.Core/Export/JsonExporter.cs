@@ -53,5 +53,14 @@ public static class JsonExporter
         return JsonSerializer.Serialize(data, JsonOptions);
     }
 
-    public static void ExportToFile(ProjectIR ir, string outputPath) => File.WriteAllText(outputPath, Export(ir));
+    /// <summary>
+    /// Writes the export, replacing any existing file only once the new one is complete.
+    /// </summary>
+    /// <remarks>
+    /// Written through the same temp-file-then-move used by every other export. Writing directly
+    /// meant an interruption part-way left a truncated file in place of the previous good one,
+    /// and a half-written JSON file is worse than none: it parses far enough to look real.
+    /// </remarks>
+    public static void ExportToFile(ProjectIR ir, string outputPath) =>
+        AtomicFileWriter.Write(outputPath, temp => File.WriteAllText(temp, Export(ir)));
 }

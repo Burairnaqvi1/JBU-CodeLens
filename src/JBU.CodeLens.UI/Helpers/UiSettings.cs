@@ -17,6 +17,12 @@ public sealed class UiSettings
     /// <summary>Full path of the most recently scanned project folder, or null if none.</summary>
     public string? LastProjectPath { get; set; }
 
+    /// <summary>
+    /// Folder the last export was written to, so the save dialog opens where the user works
+    /// rather than sending them back through the same folders on every export.
+    /// </summary>
+    public string? LastExportFolder { get; set; }
+
     private static string FilePath => AppPaths.InAppData("ui-settings.json");
 
     public static UiSettings Load()

@@ -1145,22 +1145,74 @@ public partial class MainWindow : Window
             includeAi = false;
         }
 
+        var results = _lastScanResults;
+        // EnsureScanResultsForExport above has already established this is set.
+        var folder = _lastScannedFolder!;
+        var service = _explanationService;
+        var useAi = includeAi;
+        var metrics = ToMetricsSnapshot(_lastMetrics);
+
+        await RunExportAsync(
+            "Save project documentation",
+            "Word Document (*.docx)|*.docx",
+            ".docx",
+            "Documentation",
+            includeAi ? "Exporting with AI (this may take a while)…" : "Exporting documentation…",
+            (path, token) => _exportService.ExportWord(
+                path,
+                folder,
+                results,
+                service,
+                useAi,
+                msg => Dispatcher.BeginInvoke(() => StatusBarText.Text = msg),
+                metrics,
+                token));
+    }
+
+    /// <summary>
+    /// Runs one export: asks where to save, does the work off the UI thread, and reports how it
+    /// went.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The three export commands were separate copies of the same forty lines — deriving the
+    /// project name, configuring the dialog, saving and restoring the status text, toggling the
+    /// busy state, catching, and offering to open the result. Sharing them removes the risk of a
+    /// fix reaching one and not the others, which had already happened: Word could be cancelled
+    /// while Markdown and JSON passed <c>CancellationToken.None</c> and ran to completion whatever
+    /// the user pressed.
+    /// </para>
+    /// <para>
+    /// A file the user already has open is the commonest way an export fails, and the underlying
+    /// sharing-violation message says nothing a person can act on, so that case is named.
+    /// </para>
+    /// </remarks>
+    private async Task RunExportAsync(
+        string dialogTitle,
+        string filter,
+        string extension,
+        string what,
+        string busyStatus,
+        Action<string, CancellationToken> export)
+    {
         var projectName = Path.GetFileName(
             _lastScannedFolder!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
 
         var dialog = new SaveFileDialog
         {
-            Title = "Save project documentation",
-            Filter = "Word Document (*.docx)|*.docx",
-            FileName = $"{projectName}_JBUCodeLens_Documentation.docx",
-            DefaultExt = ".docx",
+            Title = dialogTitle,
+            Filter = filter,
+            FileName = $"{projectName}_JBUCodeLens_{what}{extension}",
+            DefaultExt = extension,
             AddExtension = true,
+            InitialDirectory = Directory.Exists(_settings.LastExportFolder) ? _settings.LastExportFolder : null,
         };
 
         if (dialog.ShowDialog(this) != true) return;
 
+        var exportedPath = dialog.FileName;
         var previousStatus = StatusBarText.Text;
-        StatusBarText.Text = includeAi ? "Exporting with AI (this may take a while)…" : "Exporting documentation…";
+        StatusBarText.Text = busyStatus;
         _isExporting = true;
         _activeCts = new CancellationTokenSource();
         var cancellationToken = _activeCts.Token;
@@ -1168,32 +1220,34 @@ public partial class MainWindow : Window
 
         try
         {
-            var results = _lastScanResults;
-            var folder = _lastScannedFolder;
-            var service = _explanationService;
-            var useAi = includeAi;
-            var metrics = ToMetricsSnapshot(_lastMetrics);
+            await Task.Run(() => export(exportedPath, cancellationToken), cancellationToken);
 
-            await Task.Run(() => _exportService.ExportWord(
-                dialog.FileName,
-                folder,
-                results,
-                service,
-                useAi,
-                msg => Dispatcher.BeginInvoke(() => StatusBarText.Text = msg),
-                metrics,
-                cancellationToken),
-                cancellationToken);
+            _settings.LastExportFolder = Path.GetDirectoryName(exportedPath);
+            _settings.Save();
 
-            var exportedPath = dialog.FileName;
-            ShowNotification("Documentation exported successfully.", NotificationKind.Success,
+            ShowNotification($"{what} exported successfully.", NotificationKind.Success,
                 "Open", () => Process.Start(new ProcessStartInfo(exportedPath) { UseShellExecute = true }));
-            StatusBarText.Text = $"Documentation exported to {exportedPath}";
+            StatusBarText.Text = $"{what} exported to {exportedPath}";
         }
         catch (OperationCanceledException)
         {
             StatusBarText.Text = previousStatus;
             ShowNotification("Export canceled — no file was written.");
+        }
+        catch (IOException)
+        {
+            StatusBarText.Text = previousStatus;
+            ShowNotification(
+                $"Could not write {Path.GetFileName(exportedPath)} — it looks like it is open in " +
+                "another program. Close it and try again.",
+                NotificationKind.Error);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            StatusBarText.Text = previousStatus;
+            ShowNotification(
+                $"No permission to write to that folder. Try saving somewhere else.",
+                NotificationKind.Error);
         }
         catch (Exception ex)
         {
@@ -1216,46 +1270,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        var projectName = Path.GetFileName(
-            _lastScannedFolder!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var ir = _lastProjectIr;
+        var results = _lastScanResults;
 
-        var dialog = new SaveFileDialog
-        {
-            Title = "Save Markdown export",
-            Filter = "Markdown (*.md)|*.md",
-            FileName = $"{projectName}_JBUCodeLens_Analysis.md",
-            DefaultExt = ".md",
-            AddExtension = true,
-        };
-
-        if (dialog.ShowDialog(this) != true) return;
-
-        var previousStatus = StatusBarText.Text;
-        StatusBarText.Text = "Exporting Markdown…";
-        _isExporting = true;
-        SetBusyUiState(busy: true);
-
-        try
-        {
-            var ir = _lastProjectIr;
-            var results = _lastScanResults;
-            await Task.Run(() => _exportService.ExportMarkdown(ir, results, dialog.FileName), CancellationToken.None);
-
-            var exportedPath = dialog.FileName;
-            ShowNotification("Markdown exported successfully.", NotificationKind.Success,
-                "Open", () => Process.Start(new ProcessStartInfo(exportedPath) { UseShellExecute = true }));
-            StatusBarText.Text = $"Markdown exported to {exportedPath}";
-        }
-        catch (Exception ex)
-        {
-            StatusBarText.Text = previousStatus;
-            ShowNotification($"Export failed: {ex.Message}", NotificationKind.Error);
-        }
-        finally
-        {
-            _isExporting = false;
-            SetBusyUiState(busy: false);
-        }
+        await RunExportAsync(
+            "Save Markdown export",
+            "Markdown (*.md)|*.md",
+            ".md",
+            "Analysis",
+            "Exporting Markdown…",
+            (path, _) => _exportService.ExportMarkdown(ir, results, path));
     }
 
     private async void ExportJsonButton_Click(object sender, RoutedEventArgs e)
@@ -1265,46 +1289,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        var projectName = Path.GetFileName(
-            _lastScannedFolder!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var ir = _lastProjectIr;
+        var results = _lastScanResults;
 
-        var dialog = new SaveFileDialog
-        {
-            Title = "Save JSON export",
-            Filter = "JSON (*.json)|*.json",
-            FileName = $"{projectName}_JBUCodeLens_Analysis.json",
-            DefaultExt = ".json",
-            AddExtension = true,
-        };
-
-        if (dialog.ShowDialog(this) != true) return;
-
-        var previousStatus = StatusBarText.Text;
-        StatusBarText.Text = "Exporting JSON…";
-        _isExporting = true;
-        SetBusyUiState(busy: true);
-
-        try
-        {
-            var ir = _lastProjectIr;
-            var results = _lastScanResults;
-            await Task.Run(() => _exportService.ExportJson(ir, results, dialog.FileName), CancellationToken.None);
-
-            var exportedPath = dialog.FileName;
-            ShowNotification("JSON exported successfully.", NotificationKind.Success,
-                "Open", () => Process.Start(new ProcessStartInfo(exportedPath) { UseShellExecute = true }));
-            StatusBarText.Text = $"JSON exported to {exportedPath}";
-        }
-        catch (Exception ex)
-        {
-            StatusBarText.Text = previousStatus;
-            ShowNotification($"Export failed: {ex.Message}", NotificationKind.Error);
-        }
-        finally
-        {
-            _isExporting = false;
-            SetBusyUiState(busy: false);
-        }
+        await RunExportAsync(
+            "Save JSON export",
+            "JSON (*.json)|*.json",
+            ".json",
+            "Analysis",
+            "Exporting JSON…",
+            (path, _) => _exportService.ExportJson(ir, results, path));
     }
 
     // ── Detail panel ─────────────────────────────────────────────────────────
