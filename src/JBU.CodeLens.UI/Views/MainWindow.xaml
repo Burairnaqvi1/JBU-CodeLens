@@ -457,6 +457,15 @@
                                         AutomationProperties.Name="Clear the filter"
                                         Click="FilterClear_Click"/>
                             </Grid>
+
+                            <!-- Says how the filter went. Without it, a query matching nothing
+                                 leaves an empty tree that is indistinguishable from a failure. -->
+                            <TextBlock x:Name="FilterResultText"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed"
+                                       Margin="2,6,0,0"/>
                         </StackPanel>
                     </Border>
 

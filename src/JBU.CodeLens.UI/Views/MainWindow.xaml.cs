@@ -109,12 +109,15 @@ public partial class MainWindow : Window
 
         StatusBarText.Text = "Loading AI model…";
         Loaded += MainWindow_Loaded;
+        // Placement is saved on Closing rather than Closed: by the time Closed runs the window
+        // has been torn down and its bounds no longer report anything useful.
+        Closing += (_, _) => SaveWindowPlacement();
         Closed += (_, _) => _explanationService?.Dispose();
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        FitToWorkArea();
+        RestoreWindowPlacement();
 
         // Evaluate the empty state now so the "Reopen last project" button appears on launch.
         ShowPlaceholder();
@@ -138,9 +141,14 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Sizes and positions the window so the title bar and controls stay within the visible work area.
+    /// Restores where the window was last left, or centres it on first run.
     /// </summary>
-    private void FitToWorkArea()
+    /// <remarks>
+    /// The saved position is only used when it still lands on a screen that exists. A window
+    /// remembered on a second monitor that has since been unplugged would otherwise open
+    /// off-screen, where it cannot be moved back without keyboard tricks most people do not know.
+    /// </remarks>
+    private void RestoreWindowPlacement()
     {
         var area = SystemParameters.WorkArea;
         const double margin = 32;
@@ -148,13 +156,78 @@ public partial class MainWindow : Window
         var maxWidth = Math.Max(MinWidth, area.Width - margin);
         var maxHeight = Math.Max(MinHeight, area.Height - margin);
 
-        if (Width > maxWidth)
-            Width = maxWidth;
-        if (Height > maxHeight)
-            Height = maxHeight;
+        if (_settings is { WindowWidth: { } savedWidth, WindowHeight: { } savedHeight })
+        {
+            Width = Math.Clamp(savedWidth, MinWidth, maxWidth);
+            Height = Math.Clamp(savedHeight, MinHeight, maxHeight);
+        }
+        else
+        {
+            if (Width > maxWidth) Width = maxWidth;
+            if (Height > maxHeight) Height = maxHeight;
+        }
 
-        Left = area.Left + Math.Max(0, (area.Width - Width) / 2);
-        Top = area.Top + Math.Max(0, (area.Height - Height) / 2);
+        if (_settings is { WindowLeft: { } savedLeft, WindowTop: { } savedTop } &&
+            IsOnAVisibleScreen(savedLeft, savedTop))
+        {
+            Left = savedLeft;
+            Top = savedTop;
+        }
+        else
+        {
+            Left = area.Left + Math.Max(0, (area.Width - Width) / 2);
+            Top = area.Top + Math.Max(0, (area.Height - Height) / 2);
+        }
+
+        if (_settings.WindowMaximized)
+        {
+            WindowState = WindowState.Maximized;
+        }
+    }
+
+    /// <summary>
+    /// True when the given top-left corner falls inside the desktop that currently exists.
+    /// </summary>
+    private static bool IsOnAVisibleScreen(double left, double top)
+    {
+        // A margin so a window remembered flush against an edge still counts as reachable.
+        const double reachable = 64;
+
+        var virtualLeft = SystemParameters.VirtualScreenLeft;
+        var virtualTop = SystemParameters.VirtualScreenTop;
+
+        return left + reachable >= virtualLeft
+            && top + reachable >= virtualTop
+            && left <= virtualLeft + SystemParameters.VirtualScreenWidth - reachable
+            && top <= virtualTop + SystemParameters.VirtualScreenHeight - reachable;
+    }
+
+    /// <summary>
+    /// Records where the window is so the next launch opens in the same place.
+    /// </summary>
+    /// <remarks>
+    /// The restore bounds are saved rather than the current ones, because a maximised window
+    /// reports the whole screen; storing that would make it impossible to get a normal-sized
+    /// window back.
+    /// </remarks>
+    private void SaveWindowPlacement()
+    {
+        _settings.WindowMaximized = WindowState == WindowState.Maximized;
+
+        var bounds = WindowState == WindowState.Normal
+            ? new Rect(Left, Top, Width, Height)
+            : RestoreBounds;
+
+        if (bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            return;
+        }
+
+        _settings.WindowLeft = bounds.Left;
+        _settings.WindowTop = bounds.Top;
+        _settings.WindowWidth = bounds.Width;
+        _settings.WindowHeight = bounds.Height;
+        _settings.Save();
     }
 
     // ── Theme ────────────────────────────────────────────────────────────────
@@ -761,6 +834,9 @@ public partial class MainWindow : Window
     {
         BrowseButton.IsEnabled = !busy;
         PlaceholderOpenButton.IsEnabled = !busy;
+        // Its click handler already refused to act while busy, but it stayed lit and gave no sign
+        // of having been pressed, which reads as the application having frozen.
+        PlaceholderReopenButton.IsEnabled = !busy;
         ScanButton.IsEnabled = !busy && !string.IsNullOrEmpty(SelectedFolderPath);
         VisualizeButton.IsEnabled = !busy && _hasScanResults;
         SetExportButtonsEnabled(!busy && _hasScanResults);
@@ -988,6 +1064,7 @@ public partial class MainWindow : Window
 
         var q = query.Trim();
         var filtering = q.Length > 0;
+        var matchedFiles = 0;
 
         foreach (var child in root.Items)
         {
@@ -1018,6 +1095,10 @@ public partial class MainWindow : Window
                 c.Methods.Any(m => m.Name.Contains(q, StringComparison.OrdinalIgnoreCase))) == true;
 
             item.Visibility = fileMatch || memberMatch ? Visibility.Visible : Visibility.Collapsed;
+            if (fileMatch || memberMatch)
+            {
+                matchedFiles++;
+            }
 
             if (memberMatch)
             {
@@ -1031,6 +1112,32 @@ public partial class MainWindow : Window
                 item.IsExpanded = false;
             }
         }
+
+        ReportFilterResult(q, filtering, matchedFiles);
+    }
+
+    /// <summary>
+    /// Says how many files the filter matched, or that it matched none.
+    /// </summary>
+    /// <remarks>
+    /// A query matching nothing used to leave an empty tree and no explanation, which is
+    /// indistinguishable from the application having lost the project.
+    /// </remarks>
+    private void ReportFilterResult(string query, bool filtering, int matchedFiles)
+    {
+        if (!filtering)
+        {
+            FilterResultText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        FilterResultText.Visibility = Visibility.Visible;
+        FilterResultText.Text = matchedFiles switch
+        {
+            0 => $"No matches for “{query}”",
+            1 => "1 file matches",
+            _ => $"{matchedFiles} files match",
+        };
     }
 
     private static void FilterFileChildren(TreeViewItem fileItem, string q)

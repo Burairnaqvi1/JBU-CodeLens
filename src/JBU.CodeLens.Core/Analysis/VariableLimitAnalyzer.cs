@@ -622,11 +622,25 @@ public sealed class VariableLimitAnalyzer
     /// remaining character keeps its position and quoted evidence still lines up with the source.
     /// Cached per context because a dozen rules each need it.
     /// </remarks>
+    /// <summary>
+    /// The largest method body the rules will read, in characters.
+    /// </summary>
+    /// <remarks>
+    /// A dozen patterns run over this text, each with its own two-second ceiling, so a
+    /// generated or pathological method running to tens of thousands of lines could hold a
+    /// single file for the better part of half a minute before the per-file error handling saw
+    /// anything. The cap is far above any method a person writes; beyond it the rules simply
+    /// find nothing, which reads as "no limits" rather than stalling the scan.
+    /// </remarks>
+    private const int MaxAnalysableBodyLength = 100_000;
+
     private static string CodeOnly(MethodAnalysisContext context) =>
         CodeOnlyCache.GetValue(
             context,
             // Character literals stay: the character-range rule needs to see 'a' and 'z'.
-            static ctx => SourceText.StripCommentsAndStrings(ctx.SourceBody, keepCharacterLiterals: true));
+            static ctx => ctx.SourceBody.Length > MaxAnalysableBodyLength
+                ? string.Empty
+                : SourceText.StripCommentsAndStrings(ctx.SourceBody, keepCharacterLiterals: true));
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MethodAnalysisContext, string>
         CodeOnlyCache = new();

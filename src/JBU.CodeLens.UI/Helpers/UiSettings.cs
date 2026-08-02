@@ -23,6 +23,25 @@ public sealed class UiSettings
     /// </summary>
     public string? LastExportFolder { get; set; }
 
+    /// <summary>
+    /// Where the window was and how big it was when it last closed. Null until the first close.
+    /// </summary>
+    /// <remarks>
+    /// Stored so the window opens where it was left rather than being recentred each launch,
+    /// which undid any resizing the user had done. Kept as four nullable numbers rather than a
+    /// rectangle so a settings file written by an older build still loads.
+    /// </remarks>
+    public double? WindowLeft { get; set; }
+
+    public double? WindowTop { get; set; }
+
+    public double? WindowWidth { get; set; }
+
+    public double? WindowHeight { get; set; }
+
+    /// <summary>True when the window was maximised at close.</summary>
+    public bool WindowMaximized { get; set; }
+
     private static string FilePath => AppPaths.InAppData("ui-settings.json");
 
     public static UiSettings Load()
