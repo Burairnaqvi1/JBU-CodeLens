@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace JBU.CodeLens.Core.Analysis;
@@ -139,9 +140,9 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<VariableLimit> RuleRangeGuard(MethodAnalysisContext context)
     {
-        var known = BuildDeclaredVariables(context);
+        var known = DeclaredVariables(context);
 
-        foreach (var line in RejectionLines(context))
+        foreach (var line in RejectionLineList(context))
         {
             foreach (Match match in SafeRegex.Matches(
                 line,
@@ -181,11 +182,11 @@ public sealed class VariableLimitAnalyzer
     /// </remarks>
     private static IEnumerable<VariableLimit> RuleSingleBoundGuard(MethodAnalysisContext context)
     {
-        var known = BuildDeclaredVariables(context);
+        var known = DeclaredVariables(context);
         var lower = new Dictionary<string, (Bound Bound, string Evidence)>(StringComparer.Ordinal);
         var upper = new Dictionary<string, (Bound Bound, string Evidence)>(StringComparer.Ordinal);
 
-        foreach (var line in RejectionLines(context))
+        foreach (var line in RejectionLineList(context))
         {
             foreach (Match match in SafeRegex.Matches(
                 line, @"\b([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*" + ValuePattern + @"\b"))
@@ -241,9 +242,9 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<VariableLimit> RuleLengthGuard(MethodAnalysisContext context)
     {
-        var known = BuildDeclaredVariables(context);
+        var known = DeclaredVariables(context);
 
-        foreach (var line in RejectionLines(context))
+        foreach (var line in RejectionLineList(context))
         {
             foreach (Match match in SafeRegex.Matches(
                 line,
@@ -281,7 +282,7 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<VariableLimit> RuleNotNull(MethodAnalysisContext context)
     {
-        var known = BuildDeclaredVariables(context);
+        var known = DeclaredVariables(context);
 
         // ThrowIfNull is a statement in its own right rather than part of an "if", so it is read
         // from the whole body; the rest are conditions and are read from the guard lines.
@@ -295,7 +296,7 @@ public sealed class VariableLimitAnalyzer
                 VariableLimitSource.Guard, AnalysisConfidence.High, VariableLimitKind.Presence);
         }
 
-        foreach (var line in RejectionLines(context))
+        foreach (var line in RejectionLineList(context))
         {
             // "x == null" and "x is null" say the same thing; C# has largely moved to the second,
             // so a rule that knows only the first misses most modern code.
@@ -324,7 +325,7 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<VariableLimit> RuleDivisor(MethodAnalysisContext context)
     {
-        var known = BuildDeclaredVariables(context);
+        var known = DeclaredVariables(context);
 
         foreach (var (name, declared) in known)
         {
@@ -353,7 +354,7 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<VariableLimit> RuleSymbolicRangeGuard(MethodAnalysisContext context)
     {
-        var known = BuildDeclaredVariables(context);
+        var known = DeclaredVariables(context);
         var lower = new Dictionary<string, (string Bound, string Evidence)>(StringComparer.Ordinal);
         var upper = new Dictionary<string, (string Bound, string Evidence)>(StringComparer.Ordinal);
 
@@ -361,7 +362,7 @@ public sealed class VariableLimitAnalyzer
         // often written as separate statements — "if (v < low) return low;" on one line and
         // "if (v > high) return high;" on the next is the same restriction as the pair joined
         // by "||", and a one-line pattern would see neither.
-        foreach (var line in RejectionLines(context))
+        foreach (var line in RejectionLineList(context))
         {
             foreach (Match match in SafeRegex.Matches(
                 line, @"\b([A-Za-z_]\w*)\s*(<=|>=|<|>)\s*([A-Za-z_]\w*)\b"))
@@ -405,9 +406,9 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<VariableLimit> RuleAllowedValues(MethodAnalysisContext context)
     {
-        var known = BuildDeclaredVariables(context);
+        var known = DeclaredVariables(context);
 
-        foreach (var line in RejectionLines(context))
+        foreach (var line in RejectionLineList(context))
         {
             foreach (Match match in SafeRegex.Matches(
                 line,
@@ -443,17 +444,20 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<VariableLimit> RuleClamp(MethodAnalysisContext context)
     {
-        var known = BuildDeclaredVariables(context);
+        var known = DeclaredVariables(context);
 
         foreach (Match match in SafeRegex.Matches(
             CodeOnly(context),
+            // Bounds are resolved the same way the guard rules resolve theirs, so a limit written
+            // as Math.Clamp(v, MinLevel, MaxLevel) reads the same as one written as a guard
+            // against those constants.
             @"(?:Math\.Clamp|std::clamp|clamp)\s*\(\s*([A-Za-z_]\w*)\s*,\s*"
-                + NumberPattern + @"\s*,\s*" + NumberPattern + @"\s*\)"))
+                + ValuePattern + @"\s*,\s*" + ValuePattern + @"\s*\)"))
         {
             var name = match.Groups[1].Value;
             if (!known.TryGetValue(name, out var declared)) continue;
-            if (!TryParse(match.Groups[2].Value, out var low)) continue;
-            if (!TryParse(match.Groups[3].Value, out var high)) continue;
+            if (!TryResolve(match.Groups[2].Value, context, out var low)) continue;
+            if (!TryResolve(match.Groups[3].Value, context, out var high)) continue;
             if (low > high) continue;
 
             yield return Build(
@@ -469,7 +473,7 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<VariableLimit> RuleCharacterRange(MethodAnalysisContext context)
     {
-        var known = BuildDeclaredVariables(context);
+        var known = DeclaredVariables(context);
 
         // The span can be written either way round: as the values accepted, or — inside a guard —
         // as the values refused. Both describe the same range, so both are read.
@@ -480,7 +484,7 @@ public sealed class VariableLimitAnalyzer
             if (limit is not null) yield return limit;
         }
 
-        foreach (var line in RejectionLines(context))
+        foreach (var line in RejectionLineList(context))
         {
             foreach (Match match in SafeRegex.Matches(
                 line, @"\b([A-Za-z_]\w*)\s*<\s*'(.)'\s*\|\|\s*\1\s*>\s*'(.)'"))
@@ -512,7 +516,7 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<VariableLimit> RuleComparisonBounds(MethodAnalysisContext context)
     {
-        var known = BuildDeclaredVariables(context);
+        var known = DeclaredVariables(context);
         var lower = new Dictionary<string, (Bound Bound, string Evidence)>(StringComparer.Ordinal);
         var upper = new Dictionary<string, (Bound Bound, string Evidence)>(StringComparer.Ordinal);
 
@@ -560,7 +564,7 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<VariableLimit> RuleLoopBound(MethodAnalysisContext context)
     {
-        var known = BuildDeclaredVariables(context);
+        var known = DeclaredVariables(context);
 
         foreach (Match match in SafeRegex.Matches(
             CodeOnly(context),
@@ -597,7 +601,7 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     private static IEnumerable<VariableLimit> RuleDeclaredType(MethodAnalysisContext context)
     {
-        foreach (var (name, declared) in BuildDeclaredVariables(context))
+        foreach (var (name, declared) in DeclaredVariables(context))
         {
             yield return Build(name, declared, DescribeTypeRange(declared.Type),
                 $"declared as {declared.Type}",
@@ -619,16 +623,39 @@ public sealed class VariableLimitAnalyzer
     /// Cached per context because a dozen rules each need it.
     /// </remarks>
     private static string CodeOnly(MethodAnalysisContext context) =>
-        CodeOnlyCache.GetValue(context, static ctx => SafeRegex.Replace(
-            ctx.SourceBody,
-            @"//[^\n]*|/\*.*?\*/|""(?:\\.|[^""\\\n])*""|'(?:\\.|[^'\\\n])*'",
-            static match => match.Value[0] == '\''
-                // A character literal is meaningful to the character-range rule, so it stays.
-                ? match.Value
-                : new string(' ', match.Value.Length)));
+        CodeOnlyCache.GetValue(
+            context,
+            // Character literals stay: the character-range rule needs to see 'a' and 'z'.
+            static ctx => SourceText.StripCommentsAndStrings(ctx.SourceBody, keepCharacterLiterals: true));
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MethodAnalysisContext, string>
         CodeOnlyCache = new();
+
+    /// <summary>
+    /// The variables the method declares or receives, worked out once per method.
+    /// </summary>
+    /// <remarks>
+    /// Twelve rules each need this map, and each was rebuilding it — splitting every parameter
+    /// string and re-scanning the body for field mentions twelve times for every method in a
+    /// scan. Caching it against the context, as the cleaned source already is, removes eleven
+    /// twelfths of that work from the busiest path in the application.
+    /// </remarks>
+    private static Dictionary<string, (string Type, VariableScopeKind Scope)> DeclaredVariables(
+        MethodAnalysisContext context) =>
+        DeclaredVariablesCache.GetValue(context, static ctx => BuildDeclaredVariables(ctx));
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        MethodAnalysisContext, Dictionary<string, (string Type, VariableScopeKind Scope)>>
+        DeclaredVariablesCache = new();
+
+    /// <summary>
+    /// The lines that refuse a value, worked out once per method. Seven rules walk this list.
+    /// </summary>
+    private static List<string> RejectionLineList(MethodAnalysisContext context) =>
+        RejectionLinesCache.GetValue(context, static ctx => RejectionLines(ctx).ToList());
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        MethodAnalysisContext, List<string>> RejectionLinesCache = new();
 
     /// <summary>
     /// The lines that refuse a value: a test paired with a <c>throw</c>.
@@ -667,6 +694,29 @@ public sealed class VariableLimitAnalyzer
             var line = lines[i].Trim();
             if (!SafeRegex.IsMatch(line, @"\bif\b")) continue;
 
+            // A long condition gets wrapped by every formatter, and matching one physical line at
+            // a time meant such a guard was not seen at all. The continuation lines are folded
+            // back in before anything is matched, so the condition is read as it was written.
+            var conditionEnd = i;
+            if (!IsConditionComplete(line))
+            {
+                var joined = new StringBuilder(line);
+                var scanned = i;
+
+                while (!IsConditionComplete(joined.ToString()) &&
+                       scanned + 1 < lines.Length &&
+                       scanned - i < 8)
+                {
+                    scanned++;
+                    joined.Append(' ').Append(lines[scanned].Trim());
+                }
+
+                var whole = joined.ToString();
+                if (!IsConditionComplete(whole)) continue;
+                line = whole;
+                conditionEnd = scanned;
+            }
+
             if (SafeRegex.IsMatch(line, @"\bthrow\b"))
             {
                 yield return line;
@@ -677,12 +727,41 @@ public sealed class VariableLimitAnalyzer
             // else means this is an ordinary branch. The opening brace may sit at the end of the
             // condition or on a line of its own — the second is the usual C# convention, and
             // handling only the first missed most real guards.
-            var first = FirstStatementOfBlock(lines, i, line);
+            var first = FirstStatementOfBlock(lines, conditionEnd, line);
             if (first is not null && SafeRegex.IsMatch(first, @"^throw\b"))
             {
                 yield return line + " " + first;
             }
         }
+    }
+
+    /// <summary>
+    /// True when the brackets opened on this text have all been closed, so the condition is whole.
+    /// </summary>
+    /// <remarks>
+    /// Counted rather than matched, because a condition may nest brackets freely. Comments and
+    /// strings are already blanked by the time this runs, so a bracket inside either cannot skew
+    /// the count.
+    /// </remarks>
+    private static bool IsConditionComplete(string text)
+    {
+        var depth = 0;
+        var sawOpening = false;
+
+        foreach (var character in text)
+        {
+            if (character == '(')
+            {
+                depth++;
+                sawOpening = true;
+            }
+            else if (character == ')')
+            {
+                depth--;
+            }
+        }
+
+        return sawOpening && depth <= 0;
     }
 
     /// <summary>

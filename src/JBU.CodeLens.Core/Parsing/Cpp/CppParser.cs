@@ -985,10 +985,7 @@ public class CppParser : ILanguageParser
 
         try
         {
-            var code = SafeRegex.Replace(
-                methodSource,
-                @"//[^\n]*|/\*.*?\*/|""(?:\\.|[^""\\\n])*""",
-                match => new string(' ', match.Value.Length));
+            var code = SourceText.StripCommentsAndStrings(methodSource, keepCharacterLiterals: false);
 
             foreach (Match match in SafeRegex.Matches(code, @"\bthrow\s+([A-Za-z_][\w:]*)\s*[({]"))
             {
@@ -1035,10 +1032,7 @@ public class CppParser : ILanguageParser
 
         try
         {
-            var code = SafeRegex.Replace(
-                methodSource,
-                @"//[^\n]*|/\*.*?\*/|""(?:\\.|[^""\\\n])*""",
-                match => new string(' ', match.Value.Length));
+            var code = SourceText.StripCommentsAndStrings(methodSource, keepCharacterLiterals: false);
 
             var complexity = 1;
             complexity += SafeRegex.Matches(code, @"\b(?:if|while|for|case|catch)\b").Count;

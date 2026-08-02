@@ -689,6 +689,52 @@ public class VariableLimitTests
     }
 
     [Fact]
+    public void AClampBoundedByNamedConstants_FollowsThemToTheirValues()
+    {
+        // The guard rules were taught to follow constants but the clamp rule was left behind, so
+        // the same bound reported a range when written as a guard and nothing when clamped.
+        var parentClass = new ClassInfo { Name = "Sample", SourceFilePath = @"C:\proj\Sample.cs" };
+        parentClass.Fields.Add(new VariableInfo { Name = "MinLevel", Type = "int", InitialValue = "1" });
+        parentClass.Fields.Add(new VariableInfo { Name = "MaxLevel", Type = "int", InitialValue = "9" });
+
+        var method = new MethodInfo { Name = "Operate", ParentClass = parentClass };
+        method.Parameters.Add("int level");
+        method.XmlDocTags["sourceCode"] =
+            """
+            public void Operate(int level)
+            {
+                level = Math.Clamp(level, MinLevel, MaxLevel);
+            }
+            """;
+        parentClass.Methods.Add(method);
+
+        Assert.Equal(
+            "1 to 9",
+            Assert.Single(Analyze(new MethodAnalysisContext(method)), l => l.Name == "level").Limit);
+    }
+
+    [Fact]
+    public void AGuardWhoseConditionWrapsOntoASecondLine_IsStillRead()
+    {
+        // Long conditions get wrapped by every formatter. Matching one physical line at a time
+        // meant such a guard was not seen at all.
+        var limits = Analyze(Context(
+            """
+            public void Operate(int level)
+            {
+                if (level < 0 ||
+                    level > 100)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(level));
+                }
+            }
+            """,
+            parameters: ["int level"]));
+
+        Assert.Equal("0 to 100", Assert.Single(limits, l => l.Name == "level").Limit);
+    }
+
+    [Fact]
     public void ADivisorTheMethodChecksAndHandles_IsNotReportedAsRestricted()
     {
         // The method deals with zero itself and returns, so a caller may legitimately pass it.
