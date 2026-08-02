@@ -675,6 +675,30 @@ public sealed class ExplanationService : IExplanationService
         return result;
     }
 
+    /// <summary>
+    /// Every operation name that <see cref="RunCached"/> is called with. Kept in one place so
+    /// <see cref="Forget"/> cannot silently miss a section as new ones are added.
+    /// </summary>
+    private static readonly string[] CachedOperations = ["brief", "prepost", "design", "errors", "explain"];
+
+    /// <summary>
+    /// Drops every cached answer for one method, so the next request goes to the model.
+    /// </summary>
+    /// <remarks>
+    /// The "Regenerate" buttons in the detail panel clear the copy the panel itself holds, but
+    /// that only forces a call back into this service — which would hand the identical text
+    /// straight back out of <see cref="_resultCache"/>. Without this the buttons look like they
+    /// work (the text flickers and returns) while the model is never actually asked again.
+    /// </remarks>
+    public void Forget(MethodInfo methodInfo)
+    {
+        ArgumentNullException.ThrowIfNull(methodInfo);
+        foreach (var operation in CachedOperations)
+        {
+            _resultCache.TryRemove(BuildCacheKey(operation, methodInfo), out _);
+        }
+    }
+
     private static string BuildCacheKey(string operation, MethodInfo methodInfo)
     {
         var path = methodInfo.ParentClass?.SourceFilePath ?? string.Empty;

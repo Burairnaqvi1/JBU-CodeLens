@@ -64,4 +64,11 @@ public interface IExplanationService : IDisposable
 
     /// <summary>Starts a multi-turn Q&amp;A session about a method.</summary>
     IMethodConversationSession StartMethodConversation(MethodInfo methodInfo, string initialExplanation);
+
+    /// <summary>
+    /// Discards every cached answer held for <paramref name="methodInfo"/>, so the next request
+    /// for any of its sections reaches the model instead of the cache. Backs the "Regenerate"
+    /// controls in the detail panel.
+    /// </summary>
+    void Forget(MethodInfo methodInfo);
 }

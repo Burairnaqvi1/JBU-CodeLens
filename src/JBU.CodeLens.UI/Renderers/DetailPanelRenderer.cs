@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -34,6 +36,7 @@ internal static class DetailPanelRenderer
         host.Children.Add(CreateAccentTitle(fileName, resourceRoot));
         host.Children.Add(CreateMutedText(filePath, resourceRoot, marginTop: 6));
         host.Children.Add(CreateLanguageBadge(isCpp ? "[C++]" : "[C#]", resourceRoot, marginTop: 10));
+        host.Children.Add(CreateFileActions(filePath, resourceRoot));
 
         if (parseResult is null || parseResult.Errors.Count > 0)
         {
@@ -709,6 +712,13 @@ internal static class DetailPanelRenderer
                 return;
             }
 
+            // Once the button reads "Regenerate", pressing it is a request for a different
+            // answer — so the cached one has to go, or the service replays it verbatim.
+            if (generateAnalysisBtn.Content is string label && label.StartsWith("Regenerate", StringComparison.Ordinal))
+            {
+                explanationService.Forget(method);
+            }
+
             generateAnalysisBtn.IsEnabled = false;
             generateAnalysisBtn.Content = "Generating…";
             ShowAnalysisPlaceholder(prePostAiHost, "Generating pre & post conditions…");
@@ -939,19 +949,21 @@ internal static class DetailPanelRenderer
         aiLabelRow.Children.Add(CreateBadge("AI", "WarningBrush", resourceRoot, marginLeft: 6));
         stack.Children.Add(aiLabelRow);
 
-        if (!string.IsNullOrEmpty(method.CachedAiBriefDescription))
-        {
-            aiBriefText = CreateBodyText(method.CachedAiBriefDescription, resourceRoot, marginTop: 8);
-            stack.Children.Add(aiBriefText);
-        }
-        else
-        {
-            aiBriefText = CreateBodyText("Generating AI description…", resourceRoot, marginTop: 8);
-            stack.Children.Add(aiBriefText);
+        aiBriefText = CreateBodyText(
+            method.CachedAiBriefDescription ?? "Generating AI description…", resourceRoot, marginTop: 8);
+        stack.Children.Add(aiBriefText);
 
-            var briefTextBlock = aiBriefText;
-            var svc = explanationService;
-            var m = method;
+        var briefTextBlock = aiBriefText;
+        var svc = explanationService;
+        var m = method;
+
+        Button? regenerate = null;
+
+        void Generate()
+        {
+            if (regenerate is not null) regenerate.IsEnabled = false;
+            briefTextBlock.Text = "Generating AI description…";
+
             Task.Run(() =>
             {
                 // The partial callback streams the model's words onto the panel as they are
@@ -966,6 +978,7 @@ internal static class DetailPanelRenderer
                 Application.Current.Dispatcher.BeginInvoke(() =>
                 {
                     briefTextBlock.Text = text;
+                    if (regenerate is not null) regenerate.IsEnabled = true;
 
                     // Only cache real model output — bracketed strings are error/unavailable
                     // messages, and caching those would hide the AI once it becomes ready.
@@ -975,6 +988,24 @@ internal static class DetailPanelRenderer
                     }
                 });
             });
+        }
+
+        // The description is cached for the session, so without this the only way to get a second
+        // opinion on a wrong or unhelpful line was to restart the application.
+        regenerate = CreateSmallAction("Regenerate", "Ask the AI for a fresh description", resourceRoot, () =>
+        {
+            m.CachedAiBriefDescription = null;
+            // The panel's own copy is only half of it — the service caches per (method, file
+            // timestamp) too, and would return the same text without calling the model.
+            svc?.Forget(m);
+            Generate();
+        });
+        regenerate.Margin = new Thickness(8, 0, 0, 0);
+        aiLabelRow.Children.Add(regenerate);
+
+        if (string.IsNullOrEmpty(method.CachedAiBriefDescription))
+        {
+            Generate();
         }
 
         return WrapInCard(stack, resourceRoot);
@@ -1023,6 +1054,23 @@ internal static class DetailPanelRenderer
         AddCardHeader(stack, "Variable Operation Limits", resourceRoot);
 
         var limits = context.Analysis.VariableLimits;
+        if (limits.Count > 0)
+        {
+            // The table is the part of this panel most likely to end up in a report.
+            var copyRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+            };
+            copyRow.Children.Add(CreateCopyButton(
+                "Copy the limits table",
+                () => string.Join(
+                    Environment.NewLine,
+                    limits.Select(l => $"{l.Name}\t{l.Limit}\t{l.Evidence}")),
+                resourceRoot));
+            stack.Children.Add(copyRow);
+        }
+
         if (limits.Count == 0)
         {
             stack.Children.Add(CreateMutedText(
@@ -1449,6 +1497,13 @@ internal static class DetailPanelRenderer
 
             if (!isAuto)
             {
+                // A deliberate press of "Regenerate" must reach the model; the automatic first
+                // run is happy with whatever the cache already holds.
+                if (generateErrorBtn.Content is string label && label.StartsWith("Regenerate", StringComparison.Ordinal))
+                {
+                    explanationService.Forget(method);
+                }
+
                 generateErrorBtn.IsEnabled = false;
                 generateErrorBtn.Content = "Generating…";
             }
@@ -1627,6 +1682,23 @@ internal static class DetailPanelRenderer
         stopBtn.BorderThickness = new Thickness(1);
         System.Windows.Automation.AutomationProperties.SetName(stopBtn, "Stop generating");
         stack.Children.Add(stopBtn);
+
+        // The whole conversation, so an explanation and the answers that followed it can be
+        // taken away together rather than a paragraph at a time.
+        var copyRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 6, 0, 0),
+        };
+        copyRow.Children.Add(CreateCopyButton(
+            "Copy the explanation and answers",
+            () => string.Join(
+                Environment.NewLine + Environment.NewLine,
+                transcript.Children.OfType<FrameworkElement>()
+                    .Select(FindMessageText)
+                    .Where(t => !string.IsNullOrWhiteSpace(t))),
+            resourceRoot));
+        stack.Children.Add(copyRow);
 
         var isBusy = false;
 
@@ -1841,6 +1913,14 @@ internal static class DetailPanelRenderer
             }
 
             ShowStatus(string.Empty);
+
+            // "Regenerate Explanation" means the reader wants a different explanation, so the
+            // service's cached one is dropped first — otherwise it hands back the same text and
+            // the transcript is cleared for nothing.
+            if (generateBtn.Content is string label && label.StartsWith("Regenerate", StringComparison.Ordinal))
+            {
+                explanationService.Forget(method);
+            }
 
             // A new explanation reseeds the conversation, so the existing thread — whose answers
             // were produced against the previous seed — is cleared rather than left on screen
@@ -2177,6 +2257,183 @@ internal static class DetailPanelRenderer
         };
         btn.Click += (_, _) => onClick();
         return btn;
+    }
+
+    /// <summary>
+    /// The text of a transcript entry, whatever it is wrapped in.
+    /// </summary>
+    /// <remarks>
+    /// Entries are bubbles rather than bare text blocks, and the shape differs between a question
+    /// and an answer, so the text is found by looking rather than by assuming a structure.
+    /// </remarks>
+    private static string FindMessageText(FrameworkElement element)
+    {
+        if (element is TextBlock direct)
+        {
+            return direct.Text;
+        }
+
+        if (element is Border { Child: TextBlock inBorder })
+        {
+            return inBorder.Text;
+        }
+
+        if (element is Panel panel)
+        {
+            foreach (var child in panel.Children.OfType<FrameworkElement>())
+            {
+                var text = FindMessageText(child);
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    return text;
+                }
+            }
+        }
+
+        if (element is Border { Child: FrameworkElement nested })
+        {
+            return FindMessageText(nested);
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// A small button that puts the given text on the clipboard and says so briefly.
+    /// </summary>
+    /// <remarks>
+    /// Generated explanations and the limits table are exactly the things a reader wants to paste
+    /// into a report or a message, and selecting text across a wrapped panel by dragging is
+    /// awkward and easy to get wrong. The label changes to "Copied" for a moment because a copy
+    /// that gives no sign of having happened invites a second press.
+    /// </remarks>
+    private static Button CreateCopyButton(string toolTip, Func<string> getText, FrameworkElement resourceRoot)
+    {
+        var button = new Button
+        {
+            Content = "Copy",
+            Padding = new Thickness(8, 2, 8, 2),
+            FontSize = 10,
+            Background = Brush(resourceRoot, "SurfaceBrush"),
+            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
+            BorderBrush = Brush(resourceRoot, "BorderBrush"),
+            BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+            ToolTip = toolTip,
+        };
+
+        System.Windows.Automation.AutomationProperties.SetName(button, toolTip);
+
+        button.Click += (_, _) =>
+        {
+            var text = getText();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            try
+            {
+                Clipboard.SetText(text);
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // Another process can hold the clipboard open. Nothing here is worth interrupting
+                // the reader over; the unchanged label already says it did not happen.
+                return;
+            }
+
+            button.Content = "Copied";
+            var revert = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1.5),
+            };
+            revert.Tick += (_, _) =>
+            {
+                button.Content = "Copy";
+                revert.Stop();
+            };
+            revert.Start();
+        };
+
+        return button;
+    }
+
+    /// <summary>
+    /// A link that opens the given path, or shows it in the file manager.
+    /// </summary>
+    /// <remarks>
+    /// The panel names the file a class or method came from, but the name was inert text: reading
+    /// it and then finding the file by hand is a step the application can simply take.
+    /// </remarks>
+    internal static StackPanel CreateFileActions(string filePath, FrameworkElement resourceRoot)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+
+        row.Children.Add(CreateSmallAction(
+            "Open file",
+            $"Open {System.IO.Path.GetFileName(filePath)}",
+            resourceRoot,
+            () => Launch(new ProcessStartInfo(filePath) { UseShellExecute = true })));
+
+        // Named absolutely so the command cannot resolve to something else that happens to be
+        // earlier on the path.
+        var explorer = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+
+        row.Children.Add(CreateSmallAction(
+            "Show in folder",
+            "Show this file in the file manager",
+            resourceRoot,
+            () => Launch(new ProcessStartInfo(explorer, $"/select,\"{filePath}\""))));
+
+        return row;
+    }
+
+    private static Button CreateSmallAction(
+        string label, string toolTip, FrameworkElement resourceRoot, Action onClick)
+    {
+        var button = new Button
+        {
+            Content = label,
+            Padding = new Thickness(10, 3, 10, 3),
+            FontSize = 11,
+            Background = Brush(resourceRoot, "SurfaceBrush"),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            BorderBrush = Brush(resourceRoot, "BorderBrush"),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 0, 8, 0),
+            ToolTip = toolTip,
+        };
+
+        System.Windows.Automation.AutomationProperties.SetName(button, toolTip);
+        button.Click += (_, _) => onClick();
+        return button;
+    }
+
+    /// <summary>
+    /// Starts a shell action, ignoring the failures that are the user's environment rather than
+    /// a fault here — a file deleted since the scan, or no program associated with it.
+    /// </summary>
+    private static void Launch(ProcessStartInfo startInfo)
+    {
+        try
+        {
+            Process.Start(startInfo);
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            // No program associated with the file, or the shell refused. Nothing here is the
+            // application's to fix, and interrupting the reader over it would be worse than the
+            // button appearing to do nothing.
+            Debug.WriteLine($"[JBU CodeLens] Could not open '{startInfo.FileName}': {ex.Message}");
+        }
+        catch (IOException ex)
+        {
+            // The file has been moved or deleted since the scan.
+            Debug.WriteLine($"[JBU CodeLens] Could not open '{startInfo.FileName}': {ex.Message}");
+        }
     }
 
     private static Border CreateVariableChip(string name, string type, string tag, FrameworkElement resourceRoot)
