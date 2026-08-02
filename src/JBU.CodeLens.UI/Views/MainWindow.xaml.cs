@@ -140,6 +140,125 @@ public partial class MainWindow : Window
             : "Model not found — AI features disabled";
     }
 
+    // ── Settings and about ───────────────────────────────────────────────────
+
+    private void SettingsCaption_Click(object sender, RoutedEventArgs e)
+    {
+        AboutVersionText.Text = $"Version {AppVersion}";
+        AboutModelText.Text = DescribeModelState();
+        ReloadModelButton.IsEnabled = !IsBusy;
+        SettingsPopup.IsOpen = true;
+    }
+
+    private void CloseSettings_Click(object sender, RoutedEventArgs e) => SettingsPopup.IsOpen = false;
+
+    /// <summary>The build's version, shown so a report can be tied to what produced it.</summary>
+    private static string AppVersion =>
+        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
+
+    private string DescribeModelState()
+    {
+        if (_explanationService is null)
+        {
+            return "Still starting up.";
+        }
+
+        return _explanationService.IsReady
+            ? $"Loaded: {Path.GetFileName(_explanationService.ModelPath)}"
+            : $"Not loaded. {_explanationService.LoadError ?? "No model file was found."}";
+    }
+
+    /// <summary>
+    /// Looks for the model again and loads it, without restarting the application.
+    /// </summary>
+    /// <remarks>
+    /// A model that was missing at startup previously left the explanation features off for the
+    /// rest of the session, however quickly the file was put in place — the only way back was to
+    /// close and reopen the application, which nothing on screen said.
+    /// </remarks>
+    private async void ReloadModel_Click(object sender, RoutedEventArgs e)
+    {
+        ReloadModelButton.IsEnabled = false;
+        AboutModelText.Text = "Looking for the model…";
+
+        var modelPath = ModelPathResolver.Resolve();
+        var previous = _explanationService;
+
+        StatusBarText.Text = modelPath is null
+            ? "Looking for the model…"
+            : $"Loading AI model… ({Path.GetFileName(modelPath)})";
+
+        _explanationService = await Task.Run(
+            () => new ExplanationService(modelPath ?? string.Empty), CancellationToken.None);
+
+        // Disposed only after the replacement exists, so a generation running against the old
+        // one is not pulled out from under it.
+        previous?.Dispose();
+
+        AboutModelText.Text = DescribeModelState();
+        ReloadModelButton.IsEnabled = true;
+        StatusBarText.Text = _explanationService.IsReady
+            ? $"AI model ready — {Path.GetFileName(_explanationService.ModelPath)}"
+            : "Model not found — AI features disabled";
+
+        ShowNotification(
+            _explanationService.IsReady ? "Model loaded." : "Still no model file found.",
+            _explanationService.IsReady ? NotificationKind.Success : NotificationKind.Info);
+
+        RefreshCurrentDetailView();
+    }
+
+    /// <summary>
+    /// Deletes the stored AI results.
+    /// </summary>
+    /// <remarks>
+    /// Those results keep a copy of the code they describe, for every project ever scanned, and
+    /// there was no way to remove them from inside the application. It also gives a way to force
+    /// fresh answers when the saved ones are being compared against a change.
+    /// </remarks>
+    private void ClearAiCache_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var path = AiResultStore.DefaultPath;
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+                ShowNotification("Saved AI results cleared. New explanations will be generated as needed.",
+                    NotificationKind.Success);
+            }
+            else
+            {
+                ShowNotification("There were no saved AI results to clear.");
+            }
+        }
+        catch (IOException)
+        {
+            ShowNotification("Could not clear the saved results — a file was in use.", NotificationKind.Error);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            ShowNotification("No permission to clear the saved results.", NotificationKind.Error);
+        }
+    }
+
+    private void OpenDataFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var folder = Path.GetDirectoryName(AiResultStore.DefaultPath);
+            if (!string.IsNullOrEmpty(folder))
+            {
+                Directory.CreateDirectory(folder);
+                Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            ShowNotification("Could not open the folder.", NotificationKind.Error);
+        }
+    }
+
     /// <summary>
     /// Restores where the window was last left, or centres it on first run.
     /// </summary>

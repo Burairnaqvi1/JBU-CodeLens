@@ -370,6 +370,12 @@
                      no meaning to a screen reader, so each one states its name explicitly. -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal"
                             WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="SettingsCaptionButton"
+                            Style="{StaticResource CaptionButtonStyle}"
+                            Content="&#xE713;"
+                            Click="SettingsCaption_Click"
+                            ToolTip="Settings and about"
+                            AutomationProperties.Name="Settings and about"/>
                     <Button x:Name="MinimizeCaptionButton"
                             Style="{StaticResource CaptionButtonStyle}"
                             Content="&#xE921;"
@@ -714,5 +720,77 @@
                            VerticalAlignment="Center"/>
             </Grid>
         </Border>
+
+        <!-- Settings and about. A popup rather than a message box, because the native one keeps
+             its own light colours whatever theme the rest of the window is using. -->
+        <Popup x:Name="SettingsPopup"
+               Placement="Center"
+               PlacementTarget="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               PopupAnimation="Fade">
+            <Border Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Padding="22"
+                    MaxWidth="440">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="/Assets/logo-tile.png" Width="28" Height="28"
+                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="JBU CodeLens" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock x:Name="AboutVersionText" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16,0,14"/>
+
+                    <TextBlock Text="LANGUAGE MODEL" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock x:Name="AboutModelText" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button x:Name="ReloadModelButton" Content="Reload model"
+                                Click="ReloadModel_Click" Padding="12,5" FontSize="11"
+                                ToolTip="Look for the model file again without restarting"/>
+                        <Button x:Name="ClearCacheButton" Content="Clear saved AI results"
+                                Click="ClearAiCache_Click" Padding="12,5" FontSize="11" Margin="8,0,0,0"
+                                ToolTip="Delete the stored explanations for every project scanned"/>
+                    </StackPanel>
+                    <TextBlock Text="Saved explanations keep a copy of the code they describe. Clearing them frees that, and the next scan regenerates what it needs."
+                               FontSize="10" TextWrapping="Wrap" Opacity="0.75" Margin="0,6,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16,0,14"/>
+
+                    <TextBlock Text="KEYBOARD" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Text="Ctrl+O open a folder · F5 rescan · Ctrl+F filter · Esc clear the filter or cancel"/>
+
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16,0,14"/>
+
+                    <TextBlock Text="Developed by Burair and Usaid" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock Text="Supervised by Jawad Zaidi" FontSize="11" Opacity="0.85" Margin="0,2,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                        <Button Content="Open data folder" Click="OpenDataFolder_Click"
+                                Padding="12,5" FontSize="11"
+                                ToolTip="Show the folder holding settings and saved AI results"/>
+                        <Button Content="Close" Click="CloseSettings_Click" Padding="16,5" FontSize="11"
+                                Margin="8,0,0,0"
+                                Background="{DynamicResource PrimaryBrush}"
+                                Foreground="{DynamicResource SurfaceBrush}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Popup>
     </Grid>
 </Window>
