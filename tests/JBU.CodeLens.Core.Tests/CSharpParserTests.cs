@@ -180,4 +180,91 @@ public sealed class CSharpParserTests : IDisposable
             result.Classes.Select(c => c.Name));
         Assert.Contains("IShape", result.Classes.Single(c => c.Name == "Circle").ImplementedInterfaces);
     }
+
+    [Fact]
+    public void NestedType_IsReportedUnderAQualifiedName()
+    {
+        // A nested type used to be missing from the tree, the exports and every measurement,
+        // with nothing said about it — silence that reads as "there is nothing there".
+        var result = Parse("""
+            namespace Demo
+            {
+                public class Outer
+                {
+                    public int OuterMethod() => 1;
+
+                    public class Inner
+                    {
+                        public int InnerMethod(int x) => x * 2;
+                    }
+                }
+            }
+            """);
+
+        Assert.Empty(result.Errors);
+        var inner = Assert.Single(result.Classes, c => c.Name == "Outer.Inner");
+        Assert.Equal("Demo", inner.NamespaceName);
+        Assert.Single(inner.Methods, m => m.Name == "InnerMethod");
+        Assert.Single(result.Classes, c => c.Name == "Outer");
+    }
+
+    [Fact]
+    public void DeeplyNestedType_KeepsTheWholeChainInItsName()
+    {
+        var result = Parse("""
+            public class A { public class B { public class C { public int M() => 1; } } }
+            """);
+
+        Assert.Single(result.Classes, c => c.Name == "A.B.C");
+    }
+
+    [Fact]
+    public void Constructor_IsCollectedAsAMember()
+    {
+        // A constructor with real branching contributed nothing to the complexity figures and
+        // had no limits worked out for its parameters, despite being the member every caller of
+        // the type has to get right.
+        var result = Parse("""
+            public class Account
+            {
+                public Account(string owner, int startingBalance)
+                {
+                    if (owner is null) throw new System.ArgumentNullException(nameof(owner));
+                    if (startingBalance < 0) throw new System.ArgumentOutOfRangeException(nameof(startingBalance));
+                    Owner = owner;
+                }
+
+                public string Owner { get; }
+            }
+            """);
+
+        var constructor = Assert.Single(
+            result.Classes.Single().Methods, m => m.Name == "Account");
+
+        Assert.Equal(3, constructor.CyclomaticComplexity);
+        Assert.Equal(2, constructor.Parameters.Count);
+        Assert.Contains("ArgumentNullException", constructor.ThrownExceptions, StringComparer.Ordinal);
+        Assert.Equal("Account", constructor.ReturnType);
+    }
+
+    [Fact]
+    public void ConstructorParameters_GetTheirValueLimits()
+    {
+        var result = Parse("""
+            public class Account
+            {
+                public Account(int startingBalance)
+                {
+                    if (startingBalance < 0) throw new System.ArgumentOutOfRangeException(nameof(startingBalance));
+                }
+            }
+            """);
+
+        var constructor = Assert.Single(result.Classes.Single().Methods);
+        var analysis = new JBU.CodeLens.Core.Analysis.InferenceEngine().Analyze(constructor);
+
+        Assert.Equal(
+            "0 or greater",
+            Assert.Single(analysis.VariableLimits, l => l.Name == "startingBalance").Limit);
+    }
 }

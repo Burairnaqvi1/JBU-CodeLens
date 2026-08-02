@@ -97,29 +97,65 @@ public static class MetricsCalculator
     }
 
     /// <summary>
-    /// Simplified maintainability index driven by average cyclomatic complexity and the fraction
-    /// of classes carrying a documentation summary (a proxy for comment density, since the parser
-    /// doesn't track raw line/comment counts).
+    /// How complex the code is set against how well it is described, as a score out of 100.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the project's own score, not the maintainability index published by Microsoft.
+    /// That one needs Halstead volume, which is derived from operator and operand counts this
+    /// parser does not gather, so it cannot be computed here honestly.
+    /// </para>
+    /// <para>
+    /// An earlier attempt kept the shape of the published formula and fed the documented-class
+    /// ratio into the term meant for lines of code. Because that term is subtracted, documenting
+    /// the code <em>lowered</em> the score: a project with nothing documented scored 100 and one
+    /// documented throughout scored 89. The clamp at 100 hid the rest of the problem, leaving the
+    /// figure almost unmoved by complexity — an average of 100 still scored 83.
+    /// </para>
+    /// <para>
+    /// The score is now built from the two things this parser does measure, each pointing the way
+    /// round it should:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>Complexity, worth 70. Full marks at an average of 2 or below, nothing at 20 or above.</item>
+    /// <item>Documentation, worth 30, in direct proportion to the share of classes carrying a summary.</item>
+    /// </list>
+    /// <para>
+    /// Complexity carries the larger share because it is what actually makes code hard to change;
+    /// documentation helps a reader but cannot rescue a tangled method.
+    /// </para>
+    /// </remarks>
     private static double CalculateMaintainabilityIndex(ProjectIR ir)
     {
+        const double simpleEnough = 2;
+        const double tooComplex = 20;
+        const double complexityWeight = 70;
+        const double documentationWeight = 30;
+
         var avgComplexity = ir.Methods.Count > 0
             ? ir.Methods.Average(m => m.CyclomaticComplexity)
-            : 1;
+            : simpleEnough;
+
         var documentedRatio = ir.Classes.Count > 0
             ? ir.Classes.Count(c => c.Documentation is not null) / (double)ir.Classes.Count
             : 0;
 
         // A count of matching classes divided by the total can only land in [0, 1]. If it ever does
-        // not, the numerator and denominator have drifted apart and the index below is meaningless.
+        // not, the numerator and denominator have drifted apart and the score below is meaningless.
         Debug.Assert(
             documentedRatio is >= 0 and <= 1,
             $"Documented-class ratio out of range: {documentedRatio}.");
 
-        var mi = 171
-            - 5.2 * Math.Log(Math.Max(1, avgComplexity))
-            - 16.2 * Math.Log(Math.Max(1, documentedRatio * 100 + 1));
+        var complexityHealth = Math.Clamp(
+            (tooComplex - avgComplexity) / (tooComplex - simpleEnough), 0, 1);
 
-        return Math.Round(Math.Max(0, Math.Min(100, mi)), 2);
+        var score = (complexityHealth * complexityWeight) + (documentedRatio * documentationWeight);
+
+        // Both parts are already bounded, so the total cannot leave 0..100. Asserted because the
+        // figure is printed on the dashboard and in the exported report: a score outside the range
+        // it claims would be read as fact.
+        Debug.Assert(score is >= 0 and <= 100, $"Maintainability score out of range: {score}.");
+
+        return Math.Round(score, 2);
     }
 }

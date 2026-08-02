@@ -17,12 +17,12 @@ public class CSharpParser : ILanguageParser
     /// methods, properties, and any XML documentation summaries.
     /// </summary>
     /// <remarks>
-    /// Only types (classes, records, structs, and interfaces) that sit directly inside the
-    /// compilation unit or a namespace are reported; types nested inside other types are
-    /// intentionally ignored for now. Likewise, only the
-    /// methods and properties declared directly within each type are collected. Any I/O or
-    /// parsing failure is captured in <see cref="ParseResult.Errors"/> rather than thrown, so
-    /// callers can safely run this across many files in a loop.
+    /// Every type (class, record, struct or interface) in the file is reported, including those
+    /// nested inside another type, which appear under a qualified name such as
+    /// <c>Outer.Inner</c>. Methods, constructors, properties and fields declared directly within
+    /// each type are collected. Any I/O or parsing failure is captured in
+    /// <see cref="ParseResult.Errors"/> rather than thrown, so callers can safely run this across
+    /// many files in a loop.
     /// </remarks>
     /// <param name="filePath">Path to the C# file to parse.</param>
     /// <returns>A <see cref="ParseResult"/> with the discovered classes and any errors.</returns>
@@ -65,9 +65,9 @@ public class CSharpParser : ILanguageParser
             var syntaxTree = CSharpSyntaxTree.ParseText(sourceText);
             var root = syntaxTree.GetCompilationUnitRoot();
 
-            foreach (var (typeDeclaration, namespaceName) in GetTopLevelTypes(root.Members, string.Empty))
+            foreach (var (typeDeclaration, namespaceName, namePrefix) in GetTopLevelTypes(root.Members, string.Empty))
             {
-                result.Classes.Add(BuildClassInfo(typeDeclaration, filePath, namespaceName));
+                result.Classes.Add(BuildClassInfo(typeDeclaration, filePath, namespaceName, namePrefix));
             }
         }
         catch (Exception ex)
@@ -79,19 +79,34 @@ public class CSharpParser : ILanguageParser
     }
 
     /// <summary>
-    /// Yields the type declarations — classes, records (including record structs), structs, and
-    /// interfaces — that are direct members of the compilation unit or of a namespace (block,
-    /// nested block, and file-scoped forms), excluding types nested within other types.
+    /// Yields every type declaration in the file — classes, records (including record structs),
+    /// structs and interfaces — whether declared directly in the compilation unit, inside a
+    /// namespace in any of its forms, or nested within another type.
     /// </summary>
-    private static IEnumerable<(TypeDeclarationSyntax Type, string NamespaceName)> GetTopLevelTypes(
-        SyntaxList<MemberDeclarationSyntax> members, string namespacePrefix)
+    /// <remarks>
+    /// Nested types are reported under a qualified name such as <c>Outer.Inner</c>, so the tree
+    /// shows where they live. They were previously skipped, which meant a type nested inside
+    /// another was absent from the tree, the exported documents and every measurement, with
+    /// nothing to tell the reader anything had been left out — silence that reads as "there is
+    /// nothing there" rather than "this was not examined".
+    /// </remarks>
+    private static IEnumerable<(TypeDeclarationSyntax Type, string NamespaceName, string NamePrefix)> GetTopLevelTypes(
+        SyntaxList<MemberDeclarationSyntax> members, string namespacePrefix, string namePrefix = "")
     {
         foreach (var member in members)
         {
             switch (member)
             {
                 case TypeDeclarationSyntax typeDeclaration:
-                    yield return (typeDeclaration, namespacePrefix);
+                    yield return (typeDeclaration, namespacePrefix, namePrefix);
+
+                    var containerName = namePrefix + typeDeclaration.Identifier.Text + ".";
+                    foreach (var nested in GetTopLevelTypes(
+                        typeDeclaration.Members, namespacePrefix, containerName))
+                    {
+                        yield return nested;
+                    }
+
                     break;
 
                 case BaseNamespaceDeclarationSyntax namespaceDeclaration:
@@ -113,12 +128,16 @@ public class CSharpParser : ILanguageParser
     /// type summary and the methods and properties declared directly within it. Positional
     /// record parameters are reported as public properties, which is what they compile to.
     /// </summary>
-    private static ClassInfo BuildClassInfo(TypeDeclarationSyntax typeDeclaration, string filePath, string namespaceName)
+    private static ClassInfo BuildClassInfo(
+        TypeDeclarationSyntax typeDeclaration,
+        string filePath,
+        string namespaceName,
+        string namePrefix = "")
     {
         var xmlDoc = ExtractXmlDocumentation(typeDeclaration);
         var classInfo = new ClassInfo
         {
-            Name = typeDeclaration.Identifier.Text,
+            Name = namePrefix + typeDeclaration.Identifier.Text,
             NamespaceName = namespaceName,
             XmlSummary = xmlDoc.GetValueOrDefault("summary"),
             SourceFilePath = filePath,
@@ -150,6 +169,10 @@ public class CSharpParser : ILanguageParser
             {
                 case MethodDeclarationSyntax method:
                     classInfo.Methods.Add(BuildMethodInfo(method, classInfo));
+                    break;
+
+                case ConstructorDeclarationSyntax constructor:
+                    classInfo.Methods.Add(BuildMethodInfo(constructor, classInfo));
                     break;
 
                 case PropertyDeclarationSyntax property:
@@ -229,32 +252,53 @@ public class CSharpParser : ILanguageParser
     /// Maps a <see cref="MethodDeclarationSyntax"/> to a <see cref="MethodInfo"/>, formatting each
     /// parameter as <c>"Type name"</c>.
     /// </summary>
-    private static MethodInfo BuildMethodInfo(MethodDeclarationSyntax method, ClassInfo parentClass)
+    private static MethodInfo BuildMethodInfo(MethodDeclarationSyntax method, ClassInfo parentClass) =>
+        BuildMethodInfo(method, parentClass, method.Identifier.Text, method.ReturnType.ToString());
+
+    /// <summary>
+    /// Maps a constructor to a <see cref="MethodInfo"/>, so it is measured and described like any
+    /// other member.
+    /// </summary>
+    /// <remarks>
+    /// Constructors were previously skipped altogether, so a long one with real branching
+    /// contributed nothing to the complexity figures, never appeared in the tree, and had no
+    /// value limits worked out for its parameters — despite being the one member every caller of
+    /// the type has to get right. The return type is recorded as the type being built, which is
+    /// what a constructor produces.
+    /// </remarks>
+    private static MethodInfo BuildMethodInfo(ConstructorDeclarationSyntax constructor, ClassInfo parentClass) =>
+        BuildMethodInfo(constructor, parentClass, constructor.Identifier.Text, parentClass.Name);
+
+    private static MethodInfo BuildMethodInfo(
+        BaseMethodDeclarationSyntax declaration,
+        ClassInfo parentClass,
+        string name,
+        string returnType)
     {
-        var xmlDoc = ExtractXmlDocumentation(method);
+        var xmlDoc = ExtractXmlDocumentation(declaration);
         var methodInfo = new MethodInfo
         {
-            Name = method.Identifier.Text,
-            ReturnType = method.ReturnType.ToString(),
+            Name = name,
+            ReturnType = returnType,
             XmlSummary = xmlDoc.GetValueOrDefault("summary"),
             XmlDocTags = xmlDoc,
-            AccessModifier = GetAccessModifier(method.Modifiers),
+            AccessModifier = GetAccessModifier(declaration.Modifiers),
             ParentClass = parentClass,
         };
 
-        foreach (var parameter in method.ParameterList.Parameters)
+        foreach (var parameter in declaration.ParameterList.Parameters)
         {
             var type = parameter.Type?.ToString() ?? "var";
             methodInfo.Parameters.Add($"{type} {parameter.Identifier.Text}");
         }
 
-        CollectBodyFacts(method, methodInfo);
-        methodInfo.SyntaxNode = method;
+        CollectBodyFacts(declaration, methodInfo);
+        methodInfo.SyntaxNode = declaration;
 
         // Expose the method body to the deterministic analyzers. Without this, every source-body
         // based rule (pre/post conditions, runtime risks, design constraints, dependencies) is
         // skipped for C#, because MethodAnalysisContext reads the body from XmlDocTags["sourceCode"].
-        var bodyText = method.Body?.ToString() ?? method.ExpressionBody?.ToString();
+        var bodyText = declaration.Body?.ToString() ?? declaration.ExpressionBody?.ToString();
         if (!string.IsNullOrWhiteSpace(bodyText))
         {
             methodInfo.XmlDocTags["sourceCode"] = bodyText;
@@ -269,7 +313,7 @@ public class CSharpParser : ILanguageParser
     /// guard-clause operational limits. Replaces eight separate <c>DescendantNodes()</c>
     /// enumerations per method (calls, complexity, throws ×2, locals ×2, limits ×2).
     /// </summary>
-    private static void CollectBodyFacts(MethodDeclarationSyntax method, MethodInfo methodInfo)
+    private static void CollectBodyFacts(BaseMethodDeclarationSyntax method, MethodInfo methodInfo)
     {
         var calls = new List<string>();
         var exceptions = new List<string>();

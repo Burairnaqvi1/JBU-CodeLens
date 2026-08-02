@@ -689,6 +689,55 @@ public class VariableLimitTests
     }
 
     [Fact]
+    public void ADivisorTheMethodChecksAndHandles_IsNotReportedAsRestricted()
+    {
+        // The method deals with zero itself and returns, so a caller may legitimately pass it.
+        // This is the same substitution-versus-refusal distinction applied everywhere else: the
+        // division is only a restriction when nothing stands between it and a zero.
+        var limits = Analyze(Context(
+            """
+            public int Operate(int total, int divisor)
+            {
+                if (divisor == 0) return 0;
+                return total / divisor;
+            }
+            """,
+            parameters: ["int total", "int divisor"]));
+
+        Assert.DoesNotContain("zero", Assert.Single(limits, l => l.Name == "divisor").Limit,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ADivisorGuardedByAThrow_IsStillReportedAsRestricted()
+    {
+        // Refusing zero is not the same as handling it: here the caller really must not pass one.
+        var limits = Analyze(Context(
+            """
+            public int Operate(int total, int divisor)
+            {
+                if (divisor == 0) throw new DivideByZeroException();
+                return total / divisor;
+            }
+            """,
+            parameters: ["int total", "int divisor"]));
+
+        Assert.Contains("must not be zero", Assert.Single(limits, l => l.Name == "divisor").Limit,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnUncheckedDivisor_IsStillReportedAsRestricted()
+    {
+        var limits = Analyze(Context(
+            "public int Operate(int total, int divisor) { return total / divisor; }",
+            parameters: ["int total", "int divisor"]));
+
+        Assert.Contains("must not be zero", Assert.Single(limits, l => l.Name == "divisor").Limit,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DividingByAMemberDoesNotConstrainTheObjectItBelongsTo()
     {
         // Found in this project's own MetricsCalculator: "total / ir.Classes.Count" made ir

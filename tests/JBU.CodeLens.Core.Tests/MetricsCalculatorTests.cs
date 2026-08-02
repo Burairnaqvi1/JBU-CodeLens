@@ -76,4 +76,70 @@ public class MetricsCalculatorTests
 
         Assert.Equal(2, MetricsCalculator.Calculate(ir).MaxInheritanceDepth);
     }
+
+    /// <summary>Builds a project of one class holding methods of the given complexities.</summary>
+    private static ProjectIR IrWithComplexity(bool documented, params int[] complexities)
+    {
+        var ir = new ProjectIR();
+        var type = new TypeInfo { Name = "Sample", FullName = "Sample" };
+        if (documented)
+        {
+            type.Documentation = new DocumentComment { Summary = "A documented class." };
+        }
+
+        foreach (var complexity in complexities)
+        {
+            var method = new MethodInfo
+            {
+                Name = $"M{complexity}",
+                FullName = $"Sample.M{complexity}",
+                CyclomaticComplexity = complexity,
+            };
+            type.Methods.Add(method);
+            ir.Methods.Add(method);
+        }
+
+        ir.Classes.Add(type);
+        return ir;
+    }
+
+    [Fact]
+    public void Maintainability_RisesWhenTheCodeIsDocumented()
+    {
+        // The score used to fall as documentation was added, because the documented share was fed
+        // into a term that is subtracted. Documenting the code must never make it look worse.
+        var undocumented = MetricsCalculator.Calculate(IrWithComplexity(documented: false, 4, 4)).MaintainabilityIndex;
+        var documented = MetricsCalculator.Calculate(IrWithComplexity(documented: true, 4, 4)).MaintainabilityIndex;
+
+        Assert.True(
+            documented > undocumented,
+            $"documenting lowered the score: {undocumented} -> {documented}");
+    }
+
+    [Fact]
+    public void Maintainability_FallsAsComplexityRises()
+    {
+        // The old formula was almost unmoved by complexity: an average of 100 still scored 83.
+        var simple = MetricsCalculator.Calculate(IrWithComplexity(documented: true, 2, 2)).MaintainabilityIndex;
+        var tangled = MetricsCalculator.Calculate(IrWithComplexity(documented: true, 40, 40)).MaintainabilityIndex;
+
+        Assert.True(simple > tangled, $"complexity did not lower the score: {simple} vs {tangled}");
+        Assert.True(tangled <= 30, $"a project this complex should score poorly, got {tangled}");
+    }
+
+    [Fact]
+    public void Maintainability_StaysWithinTheRangeItClaims()
+    {
+        foreach (var ir in new[]
+        {
+            IrWithComplexity(documented: true, 1),
+            IrWithComplexity(documented: false, 500),
+            IrWithComplexity(documented: true, 1, 200, 3),
+            new ProjectIR(),
+        })
+        {
+            var score = MetricsCalculator.Calculate(ir).MaintainabilityIndex;
+            Assert.InRange(score, 0, 100);
+        }
+    }
 }

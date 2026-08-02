@@ -335,6 +335,11 @@ public sealed class VariableLimitAnalyzer
                 CodeOnly(context),
                 $@"[/%]\s*{Regex.Escape(name)}\b(?!\s*[.\[(])")) continue;
 
+            // A method that tests for zero and leaves without dividing has handled the case, so
+            // the caller may pass one. Only an unhandled division is a restriction — the same
+            // distinction between refusing a value and coping with it that the guard rules draw.
+            if (HandlesZeroBeforeDividing(context, name)) continue;
+
             yield return Build(name, declared, "must not be zero",
                 $"used as a divisor: / {name}",
                 VariableLimitSource.Guard, AnalysisConfidence.Medium, VariableLimitKind.Range);
@@ -712,6 +717,46 @@ public sealed class VariableLimitAnalyzer
 
         index = -1;
         return null;
+    }
+
+    /// <summary>
+    /// True when the method tests the name against zero and leaves without dividing.
+    /// </summary>
+    /// <remarks>
+    /// A <c>return</c> or <c>continue</c> means the zero case is dealt with, so the caller is free
+    /// to pass one and no restriction should be reported. A <c>throw</c> deliberately does not
+    /// count: refusing a value is not the same as coping with it, and there the restriction is
+    /// real. The check requires the exit to precede the division, so a zero test made after the
+    /// damage is done is not mistaken for a safeguard.
+    /// </remarks>
+    private static bool HandlesZeroBeforeDividing(MethodAnalysisContext context, string name)
+    {
+        var code = CodeOnly(context);
+        var escaped = Regex.Escape(name);
+
+        var division = SafeRegex.Match(code, $@"[/%]\s*{escaped}\b(?!\s*[.\[(])");
+        if (!division.Success) return false;
+
+        // The search stops at the statement the division belongs to. Without that boundary the
+        // "return" of "return total / divisor;" is itself found, and every guarded division would
+        // look handled — including one guarded by a throw, where the restriction is real.
+        var statementStart = code.LastIndexOfAny([';', '{', '}'], division.Index);
+        if (statementStart < 0) return false;
+
+        foreach (Match test in SafeRegex.Matches(
+            code, $@"\b{escaped}\s*==\s*0\b|\b0\s*==\s*{escaped}\b"))
+        {
+            if (test.Index >= statementStart) continue;
+
+            // The exit has to belong to this test, so only the text between the two is searched.
+            var between = code[test.Index..statementStart];
+            if (SafeRegex.IsMatch(between, @"\breturn\b|\bcontinue\b"))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
