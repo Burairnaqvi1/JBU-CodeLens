@@ -33,3 +33,7 @@ Thumbs.db
 
 ## Build/publish output
 publish/
+
+# Installer output
+/dist-installer/
+
