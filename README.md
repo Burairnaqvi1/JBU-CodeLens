@@ -1,9 +1,9 @@
 # JBU CodeLens
 
 A Windows desktop application that reads a folder of C# or C++ source code and produces
-documentation of it: a browsable view of the project, complexity and maintainability
-measurements, an automatic description of what each method does, and exports to Word, Markdown
-and JSON.
+documentation of it: a browsable view of the project, per-method complexity, the limits each
+method places on its inputs, an automatic description of what each method does, and exports to
+Word, Markdown and JSON.
 
 Everything runs on the local machine. There is no network call and no source code leaves the
 computer — the optional plain-English explanations come from a language model that runs in-process.

@@ -206,16 +206,6 @@ public static class WordExporter
             document.InsertParagraph($"Namespaces: {metrics.TotalNamespaces}")
                 .SpacingAfter(4d);
             document.InsertParagraph($"Relationships: {metrics.TotalRelationships}")
-                .SpacingAfter(4d);
-            // Invariant culture: this is a document that gets shared and read elsewhere, so the
-            // decimal separator must not follow the machine that happened to produce it.
-            document.InsertParagraph(string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"Maintainability index: {metrics.MaintainabilityIndex:F0}"))
-                .SpacingAfter(4d);
-            document.InsertParagraph(string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"Average complexity: {metrics.AverageComplexity:F2} (max {metrics.MaxComplexity})"))
                 .SpacingAfter(16d);
         }
 

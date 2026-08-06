@@ -30,11 +30,6 @@ public static class JsonExporter
                 ["totalFields"] = ir.Metrics.TotalFields,
                 ["totalNamespaces"] = ir.Metrics.TotalNamespaces,
                 ["totalRelationships"] = ir.Metrics.TotalRelationships,
-                ["averageComplexity"] = ir.Metrics.AverageComplexity,
-                ["maxComplexity"] = ir.Metrics.MaxComplexity,
-                ["maxInheritanceDepth"] = ir.Metrics.MaxInheritanceDepth,
-                ["averageCoupling"] = ir.Metrics.AverageCoupling,
-                ["maintainabilityIndex"] = ir.Metrics.MaintainabilityIndex,
             } : null,
             ["namespaces"] = ir.Namespaces.Select(ns => new Dictionary<string, object>
             {

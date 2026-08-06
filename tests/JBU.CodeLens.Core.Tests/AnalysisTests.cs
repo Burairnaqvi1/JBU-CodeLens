@@ -27,16 +27,15 @@ public class AnalysisTests
     public void MetricsCalculator_CalculatesCorrectCounts()
     {
         var ir = new ProjectIR();
-        ir.Classes.Add(new TypeInfo { Name = "A", FullName = "A", Methods = { new MethodInfo { Name = "Foo", FullName = "A.Foo", CyclomaticComplexity = 2 } } });
-        ir.Classes.Add(new TypeInfo { Name = "B", FullName = "B", Methods = { new MethodInfo { Name = "Bar", FullName = "B.Bar", CyclomaticComplexity = 1 } } });
+        ir.Classes.Add(new TypeInfo { Name = "A", FullName = "A", Methods = { new MethodInfo { Name = "Foo", FullName = "A.Foo" } } });
+        ir.Classes.Add(new TypeInfo { Name = "B", FullName = "B", Methods = { new MethodInfo { Name = "Bar", FullName = "B.Bar" } } });
         ir.Methods = ir.Classes.SelectMany(c => c.Methods).ToList();
 
         var metrics = MetricsCalculator.Calculate(ir);
 
         Assert.Equal(2, metrics.TotalClasses);
         Assert.Equal(2, metrics.TotalMethods);
-        Assert.Equal(1.5, metrics.AverageComplexity);
-        Assert.Equal(2, metrics.MaxComplexity);
+        Assert.Equal(1, metrics.AverageMethodsPerClass);
     }
 
     [Fact]

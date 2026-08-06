@@ -27,8 +27,7 @@ public static class MarkdownExporter
         sb.AppendLine(CultureInfo.InvariantCulture, $"| Properties | {m?.TotalProperties ?? 0} |");
         sb.AppendLine(CultureInfo.InvariantCulture, $"| Namespaces | {m?.TotalNamespaces ?? 0} |");
         sb.AppendLine(CultureInfo.InvariantCulture, $"| Relationships | {m?.TotalRelationships ?? 0} |");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"| Avg Complexity | {m?.AverageComplexity:F2} |");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"| Maintainability | {m?.MaintainabilityIndex:F0} |");
+
         sb.AppendLine();
 
         sb.AppendLine("## Namespaces");

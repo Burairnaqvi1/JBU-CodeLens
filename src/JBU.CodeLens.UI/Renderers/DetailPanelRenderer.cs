@@ -224,10 +224,9 @@ internal static class DetailPanelRenderer
     // ── Metrics dashboard ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Renders the computed project metrics as a scannable dashboard: stat tiles grouped into
-    /// size and quality, a maintainability tile colored by band, and a "most complex methods"
-    /// bar list that points straight at refactoring candidates. All values are already computed
-    /// during the scan — this is presentation only.
+    /// Renders the computed project metrics as a scannable dashboard: stat tiles counting what
+    /// the scan found, and a "most complex methods" bar list that points straight at refactoring
+    /// candidates. All values are already computed during the scan — this is presentation only.
     /// </summary>
     public static void RenderMetricsDashboard(
         StackPanel host,
@@ -250,27 +249,6 @@ internal static class DetailPanelRenderer
         sizeTiles.Children.Add(CreateStatTile("Namespaces", metrics.TotalNamespaces.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Namespaces)));
         sizeTiles.Children.Add(CreateStatTile("Relationships", metrics.TotalRelationships.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Relationships)));
         host.Children.Add(sizeTiles);
-
-        AddSection(host, "Quality", resourceRoot);
-        var qualityTiles = new WrapPanel { Margin = new Thickness(0, 2, 0, 4) };
-        // Maintainability index: green ≥ 85, amber 65–84, red below (standard MI bands).
-        var miBrushKey = metrics.MaintainabilityIndex switch
-        {
-            >= 85 => "SecondaryBrush",
-            >= 65 => "WarningBrush",
-            _ => "ErrorBrush",
-        };
-        qualityTiles.Children.Add(CreateStatTile(
-            "Maintainability", metrics.MaintainabilityIndex.ToString("F0", CultureInfo.InvariantCulture), miBrushKey, resourceRoot));
-        qualityTiles.Children.Add(CreateStatTile(
-            "Avg complexity", metrics.AverageComplexity.ToString("F1", CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot));
-        qualityTiles.Children.Add(CreateStatTile(
-            "Max complexity", metrics.MaxComplexity.ToString(CultureInfo.InvariantCulture), metrics.MaxComplexity >= 15 ? "WarningBrush" : "PrimaryBrush", resourceRoot));
-        qualityTiles.Children.Add(CreateStatTile(
-            "Avg coupling", metrics.AverageCoupling.ToString("F1", CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot));
-        qualityTiles.Children.Add(CreateStatTile(
-            "Max inheritance", metrics.MaxInheritanceDepth.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot));
-        host.Children.Add(qualityTiles);
 
         var topMethods = (ir?.Methods ?? [])
             .OrderByDescending(m => m.CyclomaticComplexity)

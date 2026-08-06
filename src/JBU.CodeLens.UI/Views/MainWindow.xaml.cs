@@ -583,8 +583,8 @@ public partial class MainWindow : Window
             // call-to-action no longer applies now that a project is open.
             ShowPlaceholder();
 
-            var metricsSuffix = _lastMetrics is { } m
-                ? $", MI={m.MaintainabilityIndex:F0}, {_lastProjectIr?.Namespaces.Count ?? 0} namespaces"
+            var metricsSuffix = _lastMetrics is not null
+                ? $", {_lastProjectIr?.Namespaces.Count ?? 0} namespaces"
                 : string.Empty;
             StatusBarText.Text =
                 $"Scan complete — {scanResult.ParseResults.Count} files, {_classCount} classes, {_methodCount} methods{metricsSuffix}";
@@ -847,9 +847,6 @@ public partial class MainWindow : Window
                 TotalMethods = metrics.TotalMethods,
                 TotalNamespaces = metrics.TotalNamespaces,
                 TotalRelationships = metrics.TotalRelationships,
-                MaintainabilityIndex = metrics.MaintainabilityIndex,
-                AverageComplexity = metrics.AverageComplexity,
-                MaxComplexity = metrics.MaxComplexity,
             };
 
     private bool EnsureScanResultsForExport(string title)
@@ -868,7 +865,7 @@ public partial class MainWindow : Window
         var item = new TreeViewItem
         {
             Header = CreateMutedHeader(
-                $"Metrics — {metrics.TotalClasses} classes, {metrics.TotalMethods} methods, MI={metrics.MaintainabilityIndex:F0}"),
+                $"Metrics — {metrics.TotalClasses} classes, {metrics.TotalMethods} methods"),
             Tag = "metrics",
             IsExpanded = false,
         };
@@ -1492,10 +1489,6 @@ public partial class MainWindow : Window
             sb.AppendLine(
                 CultureInfo.InvariantCulture,
                 $"Metrics: {m.TotalClasses} classes, {m.TotalMethods} methods, {m.TotalNamespaces} namespaces.");
-            sb.AppendLine(
-                CultureInfo.InvariantCulture,
-                $"Average cyclomatic complexity {m.AverageComplexity:F1} (max {m.MaxComplexity}); " +
-                $"maintainability index {m.MaintainabilityIndex:F0}.");
         }
 
         var namespaces = ir.Namespaces

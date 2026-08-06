@@ -121,14 +121,10 @@ public sealed class EndToEndPipelineTests : IDisposable
         Assert.NotNull(metrics);
         Assert.Equal(2, metrics.TotalClasses);
         Assert.True(metrics.TotalMethods >= 4, $"Expected at least 4 methods, got {metrics.TotalMethods}.");
-
-        // The invariant asserted inside MetricsCalculator, checked here from the outside so it is
-        // covered in Release builds too, where Debug.Assert is compiled out.
-        Assert.True(
-            metrics.MaxComplexity >= metrics.AverageComplexity,
-            $"MaxComplexity {metrics.MaxComplexity} < AverageComplexity {metrics.AverageComplexity}.");
-        Assert.InRange(metrics.MaintainabilityIndex, 0, 100);
-        Assert.True(metrics.MaxInheritanceDepth >= 2, "Circle : Shape should give a depth of at least 2.");
+        Assert.True(metrics.TotalRelationships > 0, "Circle : Shape should produce at least one relationship.");
+        Assert.Equal(
+            Math.Round((double)metrics.TotalMethods / metrics.TotalClasses, 2),
+            metrics.AverageMethodsPerClass);
 
         // --- knowledge graph -------------------------------------------------------------------
         Assert.NotNull(result.Graph);
@@ -179,8 +175,9 @@ public sealed class EndToEndPipelineTests : IDisposable
         Assert.Equal(first.ClassCount, second.ClassCount);
         Assert.Equal(first.MethodCount, second.MethodCount);
         Assert.Equal(first.Ir!.Relationships.Count, second.Ir!.Relationships.Count);
-        Assert.Equal(first.Metrics!.MaxComplexity, second.Metrics!.MaxComplexity);
-        Assert.Equal(first.Metrics.MaintainabilityIndex, second.Metrics.MaintainabilityIndex);
+        Assert.Equal(first.Metrics!.TotalClasses, second.Metrics!.TotalClasses);
+        Assert.Equal(first.Metrics.TotalRelationships, second.Metrics.TotalRelationships);
+        Assert.Equal(first.Metrics.AverageMethodsPerClass, second.Metrics.AverageMethodsPerClass);
     }
 
     [Fact]

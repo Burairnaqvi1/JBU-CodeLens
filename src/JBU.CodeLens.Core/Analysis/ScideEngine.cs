@@ -301,7 +301,7 @@ public sealed class ScideEngine : IProjectAnalyzer
 
         var m = ir.Metrics;
         return m != null
-            ? $"## Project Summary: {ir.ProjectName}\n\n**Metrics:** {m.TotalClasses} classes, {m.TotalMethods} methods, {m.TotalNamespaces} namespaces, MI={m.MaintainabilityIndex:F0}"
+            ? $"## Project Summary: {ir.ProjectName}\n\n**Metrics:** {m.TotalClasses} classes, {m.TotalMethods} methods, {m.TotalNamespaces} namespaces"
             : $"## Project Summary: {ir.ProjectName}";
     }
 

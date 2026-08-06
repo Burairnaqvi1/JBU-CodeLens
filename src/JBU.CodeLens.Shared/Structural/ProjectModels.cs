@@ -121,9 +121,4 @@ public class MetricsResult
 
     public double AverageMethodsPerClass { get; set; }
     public double AveragePropertiesPerClass { get; set; }
-    public double AverageComplexity { get; set; }
-    public int MaxComplexity { get; set; }
-    public int MaxInheritanceDepth { get; set; }
-    public double AverageCoupling { get; set; }
-    public double MaintainabilityIndex { get; set; }
 }

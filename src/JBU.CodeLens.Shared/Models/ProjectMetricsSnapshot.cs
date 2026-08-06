@@ -9,7 +9,4 @@ public sealed class ProjectMetricsSnapshot
     public int TotalMethods { get; init; }
     public int TotalNamespaces { get; init; }
     public int TotalRelationships { get; init; }
-    public double MaintainabilityIndex { get; init; }
-    public double AverageComplexity { get; init; }
-    public int MaxComplexity { get; init; }
 }
