@@ -35,6 +35,25 @@
     <Copy SourceFiles="$(_LibClangSource)" DestinationFiles="$(OutputPath)libclang.dll" SkipUnchangedFiles="true" Condition="Exists('$(_LibClangSource)')" />
   </Target>
 
+  <!--
+    LLamaSharp.Backend.Cpu carries native llama/ggml binaries for every platform it supports, and
+    publishing keeps all of them even with a win-x64 RuntimeIdentifier. That is roughly 77 MB of
+    Linux, macOS and ARM libraries this app can never load, in a folder that is already large
+    because the language model ships inside it. Removed after publish so what gets handed to
+    someone else is only what runs.
+  -->
+  <Target Name="TrimForeignRuntimes" AfterTargets="Publish">
+    <ItemGroup>
+      <_ForeignRuntimeDir Include="$([System.IO.Directory]::GetDirectories('$(PublishDir)runtimes'))"
+                          Condition="Exists('$(PublishDir)runtimes')" />
+      <!-- GetDirectories returns paths with no trailing separator, so %(Filename) is the RID. -->
+      <_KeepRuntimeDir Include="@(_ForeignRuntimeDir)" Condition="'%(Filename)' == '$(RuntimeIdentifier)'" />
+      <_DropRuntimeDir Include="@(_ForeignRuntimeDir)" Exclude="@(_KeepRuntimeDir)" />
+    </ItemGroup>
+    <RemoveDir Directories="@(_DropRuntimeDir)" Condition="'@(_DropRuntimeDir)' != ''" />
+    <Message Importance="high" Text="Trimmed runtimes: removed @(_DropRuntimeDir->'%(Filename)', ', ')" Condition="'@(_DropRuntimeDir)' != ''" />
+  </Target>
+
   <ItemGroup>
     <ApplicationDefinition Include="Theme\App.xaml" />
     <Page Remove="Theme\App.xaml" />
