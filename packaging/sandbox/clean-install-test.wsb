@@ -1,0 +1,43 @@
+<Configuration>
+  <!--
+    A throwaway Windows with nothing installed on it: no Visual Studio, no .NET runtime, no
+    Visual C++ Redistributable. Installing here is the only way to find out what the application
+    was quietly relying on from the build machine — the build machine has all three and cannot
+    tell you what it is covering up.
+
+    Run with:
+      Start-Process "$env:SystemRoot\System32\WindowsSandbox.exe" packaging\sandbox\clean-install-test.wsb
+
+    Requires the Windows Sandbox feature (Containers-DisposableClientVM), which needs a restart
+    after being enabled.
+
+    HostFolder must be an absolute path — the .wsb format expands neither environment variables
+    nor relative paths — so the two below are hard-coded for this machine and are the only lines
+    to change on another one.
+  -->
+
+  <!-- Off, which also demonstrates that nothing about the application needs the internet. -->
+  <Networking>Disable</Networking>
+  <VGpu>Disable</VGpu>
+
+  <!-- The model needs roughly 2 GB while loaded; this leaves room for Windows around it. -->
+  <MemoryInMB>8192</MemoryInMB>
+
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\Users\admin\Downloads</HostFolder>
+      <SandboxFolder>C:\host-downloads</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <!-- Writable so the result file survives the sandbox being thrown away. -->
+    <MappedFolder>
+      <HostFolder>C:\Users\admin\JBU.CodeLens\packaging\sandbox</HostFolder>
+      <SandboxFolder>C:\out</SandboxFolder>
+      <ReadOnly>false</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+
+  <LogonCommand>
+    <Command>powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Normal -File C:\out\Test-CleanInstall.ps1</Command>
+  </LogonCommand>
+</Configuration>

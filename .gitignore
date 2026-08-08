@@ -41,3 +41,7 @@ publish/
 # Compiled test harness output
 packaging/JBU-CodeLens-SerialTest.exe
 
+
+# Written by the sandbox clean-install test
+packaging/sandbox/clean-install-result.txt
+
