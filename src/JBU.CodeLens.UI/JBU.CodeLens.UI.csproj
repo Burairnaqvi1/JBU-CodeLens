@@ -36,6 +36,26 @@
   </Target>
 
   <!--
+    The Visual C++ runtime, shipped beside the executable.
+
+    The llama/ggml native libraries are built with MSVC and import MSVCP140, VCRUNTIME140,
+    VCRUNTIME140_1 and VCOMP140. Those are NOT part of Windows — they arrive with the Visual C++
+    Redistributable, which a developer machine has and a clean one does not. Without them the app
+    starts and then fails to load the model, which is the worst possible shape for the failure:
+    it looks like the AI is broken rather than like something is missing.
+
+    Deployed app-local rather than by chaining the redistributable installer, because setup runs
+    per user and app-local needs no administrator. Microsoft permits this form of redistribution.
+    packaging\Test-Dependencies.ps1 fails the build check if any of them stops being copied.
+  -->
+  <ItemGroup>
+    <None Include="..\..\packaging\vcredist\*.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>%(Filename)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
+  <!--
     LLamaSharp.Backend.Cpu carries native llama/ggml binaries for every platform it supports, and
     publishing keeps all of them even with a win-x64 RuntimeIdentifier. That is roughly 77 MB of
     Linux, macOS and ARM libraries this app can never load, in a folder that is already large
@@ -52,6 +72,34 @@
     </ItemGroup>
     <RemoveDir Directories="@(_DropRuntimeDir)" Condition="'@(_DropRuntimeDir)' != ''" />
     <Message Importance="high" Text="Trimmed runtimes: removed @(_DropRuntimeDir->'%(Filename)', ', ')" Condition="'@(_DropRuntimeDir)' != ''" />
+  </Target>
+
+  <!--
+    The same Visual C++ runtime files, also placed beside the native libraries that import them.
+
+    LLamaSharp picks a CPU variant at run time and loads llama.dll from
+    runtimes\win-x64\native\<variant> by full path. Which directory the loader then searches for
+    that DLL's own dependencies depends on the flags LLamaSharp passes, and observing it here
+    proves nothing: this machine has the redistributable in System32, so the loader finds it
+    there and never reaches either copy. Rather than depend on loader search-order subtleties we
+    cannot see, the files go in both places. Four variants at roughly a megabyte each is nothing
+    beside the model in the same package.
+
+    Runs after TrimForeignRuntimes so it only fills the variant folders that survive.
+  -->
+  <Target Name="CopyVcRuntimeBesideNatives" AfterTargets="Publish">
+    <ItemGroup>
+      <_VcRuntimeFile Include="$(MSBuildThisFileDirectory)..\..\packaging\vcredist\*.dll" />
+      <_NativeVariantDir Include="$([System.IO.Directory]::GetDirectories('$(PublishDir)runtimes\win-x64\native'))"
+                         Condition="Exists('$(PublishDir)runtimes\win-x64\native')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_VcRuntimeFile)"
+          DestinationFolder="%(_NativeVariantDir.Identity)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_NativeVariantDir)' != ''" />
+    <Message Importance="high"
+             Text="VC++ runtime copied beside natives in @(_NativeVariantDir->'%(Filename)', ', ')"
+             Condition="'@(_NativeVariantDir)' != ''" />
   </Target>
 
   <ItemGroup>

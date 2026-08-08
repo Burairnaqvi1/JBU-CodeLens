@@ -32,3 +32,30 @@ jobs:
 
       - name: Test
         run: dotnet test JBU.CodeLens.sln --configuration Release --no-build --verbosity normal
+
+      # Publishes and then reads the import tables of everything produced, failing if anything
+      # would have to be installed separately on the target machine. This exists because the
+      # llama/ggml libraries import the Visual C++ runtime, which is present on any machine with
+      # Visual Studio and absent on a clean one — a difference that is invisible until the
+      # application is run somewhere else.
+      - name: Publish
+        run: dotnet publish src/JBU.CodeLens.UI/JBU.CodeLens.UI.csproj --configuration Release --runtime win-x64 --self-contained true --output publish
+
+      - name: Check deployment dependencies
+        shell: pwsh
+        run: ./packaging/Test-Dependencies.ps1 -PublishDir publish
+
+      # The serial number check ships in the installer, so it is tested like any other code.
+      - name: Test the installer's serial validation
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Host "Inno Setup not present on this runner; skipping."
+            exit 0
+          }
+          & $iscc packaging/SerialCheck.Tests.iss
+          & ./packaging/JBU-CodeLens-SerialTest.exe /VERYSILENT /SUPPRESSMSGBOXES /out=$PWD/serial-results.txt
+          Start-Sleep -Seconds 2
+          Get-Content $PWD/serial-results.txt
+          if ((Get-Content $PWD/serial-results.txt -Raw) -notmatch 'ALL PASSED') { exit 1 }
