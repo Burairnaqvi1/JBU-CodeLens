@@ -1,6 +1,17 @@
 <Project>
 
   <!--
+    One version for the whole solution. It is stamped onto every assembly, and the installer
+    reads it back off the executable rather than carrying a number of its own, so the wizard
+    title, the entry in Apps & features and the About panel can never disagree with the build.
+  -->
+  <PropertyGroup>
+    <Version>1.1.0</Version>
+    <Product>JBU CodeLens</Product>
+    <Company>Burair and Usaid</Company>
+  </PropertyGroup>
+
+  <!--
     Solution-wide code-analysis configuration.
 
     The build was warning-free before this file existed, but only because the analyzers were

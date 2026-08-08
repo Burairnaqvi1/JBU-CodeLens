@@ -101,6 +101,32 @@ Filename: "{app}\JBU.CodeLens.UI.exe"; Description: "Launch JBU CodeLens"; \
 // this exact code rather than a second copy of it.
 #include "SerialCheck.iss"
 
+procedure InitializeWizard();
+var
+  Shift: Integer;
+begin
+  { The organisation is not recorded or used anywhere, so asking for it is a question with no
+    consequence. Inno's user information page has no switch to omit a single field, so the two
+    organisation controls are hidden and the serial fields moved up into the gap they leave. }
+  Shift := WizardForm.UserInfoSerialLabel.Top - WizardForm.UserInfoOrgLabel.Top;
+  WizardForm.UserInfoOrgLabel.Visible := False;
+  WizardForm.UserInfoOrgEdit.Visible := False;
+  WizardForm.UserInfoSerialLabel.Top := WizardForm.UserInfoSerialLabel.Top - Shift;
+  WizardForm.UserInfoSerialEdit.Top := WizardForm.UserInfoSerialEdit.Top - Shift;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  { A newly installed copy must open as a new copy. Settings and saved AI results live in
+    %APPDATA% and deliberately survive uninstall, so without this an install onto a machine that
+    had the app before came up offering to reopen a project the person had never seen, with the
+    previous session's AI answers already cached against it. }
+  if CurStep = ssPostInstall then
+  begin
+    DelTree(ExpandConstant('{userappdata}\JBU.CodeLens'), True, True, True);
+  end;
+end;
+
 [UninstallDelete]
 ; Uninstall removes the program but deliberately leaves %APPDATA%\JBU.CodeLens
 ; alone: it holds the person's settings and saved AI explanations, and a

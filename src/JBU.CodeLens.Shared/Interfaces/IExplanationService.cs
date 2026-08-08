@@ -71,4 +71,10 @@ public interface IExplanationService : IDisposable
     /// controls in the detail panel.
     /// </summary>
     void Forget(MethodInfo methodInfo);
+
+    /// <summary>
+    /// Discards one section's cached answer, leaving the method's other sections intact. Backs
+    /// the per-section Regenerate controls.
+    /// </summary>
+    void Forget(MethodInfo methodInfo, AiSection section);
 }

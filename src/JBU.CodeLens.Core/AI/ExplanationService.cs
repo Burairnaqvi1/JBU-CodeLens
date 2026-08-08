@@ -742,6 +742,29 @@ public sealed class ExplanationService : IExplanationService
         }
     }
 
+    /// <summary>
+    /// Drops one section's cached answer, leaving the method's other sections alone.
+    /// </summary>
+    /// <remarks>
+    /// Each section has its own Regenerate control. Clearing all of them for one press would
+    /// silently discard an explanation the reader was part-way through.
+    /// </remarks>
+    public void Forget(MethodInfo methodInfo, AiSection section)
+    {
+        ArgumentNullException.ThrowIfNull(methodInfo);
+        _resultCache.TryRemove(BuildCacheKey(OperationNameOf(section), methodInfo), out _);
+    }
+
+    private static string OperationNameOf(AiSection section) => section switch
+    {
+        AiSection.Brief => "brief",
+        AiSection.PrePost => "prepost",
+        AiSection.Design => "design",
+        AiSection.Errors => "errors",
+        AiSection.Explanation => "explain",
+        _ => throw new ArgumentOutOfRangeException(nameof(section), section, "Unknown AI section."),
+    };
+
     private static string BuildCacheKey(string operation, MethodInfo methodInfo)
     {
         var path = methodInfo.ParentClass?.SourceFilePath ?? string.Empty;

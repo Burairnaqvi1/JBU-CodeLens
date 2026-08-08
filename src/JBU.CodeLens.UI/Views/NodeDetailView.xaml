@@ -1,6 +1,7 @@
 <UserControl x:Class="JBU.CodeLens.UI.Views.NodeDetailView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:helpers="clr-namespace:JBU.CodeLens.UI.Helpers">
 
     <Grid Background="{DynamicResource BackgroundBrush}">
         <Grid.RowDefinitions>
@@ -41,6 +42,7 @@
                       x:Name="DetailScroll"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
+                      helpers:SmoothScroll.FollowSystemSetting="True"
                       Padding="24,20,24,20">
             <StackPanel x:Name="DetailHost"/>
         </ScrollViewer>

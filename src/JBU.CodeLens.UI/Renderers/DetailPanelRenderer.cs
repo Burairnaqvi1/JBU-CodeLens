@@ -6,6 +6,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 
 using MethodDetailContext = JBU.CodeLens.Shared.Structural.MethodDetailContext;
@@ -564,16 +566,23 @@ internal static class DetailPanelRenderer
         PopulateScideStructuralSection(designOrganicHost, context, resourceRoot);
         PopulateExecutionStepsSection(designOrganicHost, organicAnalysis.ExecutionSteps, resourceRoot);
         PopulateInferenceDesignSection(designOrganicHost, organicAnalysis, resourceRoot);
-        prePostAiHost.Children.Add(CreateItalicPlaceholder("Click Generate Analysis to add an AI review of the pre & post conditions.", resourceRoot));
-        designAiHost.Children.Add(CreateItalicPlaceholder("Click Generate Analysis to add an AI review of the design requirements.", resourceRoot));
+        prePostAiHost.Children.Add(CreateItalicPlaceholder("No AI review of the pre & post conditions yet.", resourceRoot));
+        designAiHost.Children.Add(CreateItalicPlaceholder("No AI review of the design requirements yet.", resourceRoot));
+
+        // Each AI section carries its own button, so one can be asked for without paying for the
+        // others. A single "Generate Analysis" meant waiting on both to read either.
+        var prePostBtn = CreateRegenerateButton("Generate", () => { }, resourceRoot, marginTop: 10);
+        var designBtn = CreateRegenerateButton("Generate", () => { }, resourceRoot, marginTop: 10);
 
         var prePostHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
         prePostHost.Children.Add(prePostOrganicHost);
         prePostHost.Children.Add(prePostAiHost);
+        prePostHost.Children.Add(prePostBtn);
 
         var designHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
         designHost.Children.Add(designOrganicHost);
         designHost.Children.Add(designAiHost);
+        designHost.Children.Add(designBtn);
 
         var row2 = new Grid { Margin = new Thickness(0, 0, 0, 12) };
         row2.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -592,48 +601,75 @@ internal static class DetailPanelRenderer
         row2.Children.Add(designCard);
         host.Children.Add(row2);
 
+        // "Generate all" sits directly beneath the three cards it fills rather than below the
+        // limits table, so the control is next to the sections it acts on.
+        var generateAllBtn = CreateRegenerateButton("Generate all AI sections", () => { }, resourceRoot);
+        var analysisRow = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 20) };
+        analysisRow.Children.Add(generateAllBtn);
+        host.Children.Add(analysisRow);
+
         // Full width rather than a fourth column: each row names a variable, its permitted range
         // and the line of code that range was read from, and that does not fit a third of a row.
         host.Children.Add(BuildVariableLimitsCard(context, resourceRoot));
 
-        // Generate Analysis button
-        var analysisRow = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 20) };
-        var generateAnalysisBtn = CreateRegenerateButton("Generate Analysis", () => { }, resourceRoot);
-        analysisRow.Children.Add(generateAnalysisBtn);
-        host.Children.Add(analysisRow);
+        prePostBtn.Click += (_, _) => RunPrePost();
+        designBtn.Click += (_, _) => RunDesign();
 
-        generateAnalysisBtn.Click += (_, _) =>
+        void RunPrePost()
         {
             if (explanationService is null || !explanationService.IsReady)
             {
-                var unavailable = GetAiUnavailableMessage(explanationService);
-                ShowAnalysisPlaceholder(prePostAiHost, unavailable);
-                ShowAnalysisPlaceholder(designAiHost, unavailable);
+                ShowAnalysisPlaceholder(prePostAiHost, GetAiUnavailableMessage(explanationService));
                 return;
             }
 
-            // Once the button reads "Regenerate", pressing it is a request for a different
-            // answer — so the cached one has to go, or the service replays it verbatim.
-            if (generateAnalysisBtn.Content is string label && label.StartsWith("Regenerate", StringComparison.Ordinal))
+            // Once the button reads "Regenerate", pressing it asks for a different answer, so the
+            // cached one has to go or the service replays it verbatim. Only this section's cache
+            // is dropped — the others are still on screen and still being read.
+            if (prePostBtn.Content is string label && label.StartsWith("Regenerate", StringComparison.Ordinal))
             {
-                explanationService.Forget(method);
+                explanationService.Forget(method, AiSection.PrePost);
             }
 
-            generateAnalysisBtn.IsEnabled = false;
-            generateAnalysisBtn.Content = "Generating…";
+            prePostBtn.IsEnabled = false;
+            prePostBtn.Content = "Generating…";
             ShowAnalysisPlaceholder(prePostAiHost, "Generating pre & post conditions…");
+
+            var svc = explanationService;
+            var m = method;
+            Task.Run(() =>
+            {
+                var prePost = svc.GeneratePrePostConditions(m);
+                Application.Current.Dispatcher.BeginInvoke(() =>
+                {
+                    ShowPrePostAiResult(prePost);
+                    prePostBtn.Content = "Regenerate";
+                    prePostBtn.IsEnabled = true;
+                });
+            });
+        }
+
+        void RunDesign()
+        {
+            if (explanationService is null || !explanationService.IsReady)
+            {
+                ShowAnalysisPlaceholder(designAiHost, GetAiUnavailableMessage(explanationService));
+                return;
+            }
+
+            if (designBtn.Content is string label && label.StartsWith("Regenerate", StringComparison.Ordinal))
+            {
+                explanationService.Forget(method, AiSection.Design);
+            }
+
+            designBtn.IsEnabled = false;
+            designBtn.Content = "Generating…";
             ShowAnalysisPlaceholder(designAiHost, "Generating design requirements…");
 
             var svc = explanationService;
             var m = method;
             Task.Run(() =>
             {
-                // Two sequential model calls on one worker — the service serializes inference
-                // anyway, so each card is filled the moment its own result lands rather than
-                // both sitting on a placeholder until the slower one finishes.
-                var prePost = svc.GeneratePrePostConditions(m);
-                Application.Current.Dispatcher.BeginInvoke(() => ShowPrePostAiResult(prePost));
-
                 var design = svc.GenerateDesignConstraints(m);
                 Application.Current.Dispatcher.BeginInvoke(() =>
                 {
@@ -642,11 +678,11 @@ internal static class DetailPanelRenderer
                         CreateAiEnhancementBlock(designAiHost, "AI DESIGN REQUIREMENTS", resourceRoot),
                         design,
                         resourceRoot);
-                    generateAnalysisBtn.Content = "Regenerate Analysis";
-                    generateAnalysisBtn.IsEnabled = true;
+                    designBtn.Content = "Regenerate";
+                    designBtn.IsEnabled = true;
                 });
             });
-        };
+        }
 
         void ShowAnalysisPlaceholder(StackPanel aiHost, string message)
         {
@@ -704,7 +740,7 @@ internal static class DetailPanelRenderer
         }
 
         // Errors / Exceptions
-        host.Children.Add(BuildErrorsCard(context, resourceRoot, explanationService));
+        host.Children.Add(BuildErrorsCard(context, resourceRoot, explanationService, out var startErrors));
 
         host.Children.Add(new Border { Height = 1, Background = Brush(resourceRoot, "BorderBrush"), Margin = new Thickness(0, 16, 0, 16) });
 
@@ -714,7 +750,18 @@ internal static class DetailPanelRenderer
         host.Children.Add(new Border { Height = 1, Background = Brush(resourceRoot, "BorderBrush"), Margin = new Thickness(0, 16, 0, 16) });
 
         // AI Q&A
-        host.Children.Add(BuildAiExplanationCard(method, resourceRoot, explanationService, method.XmlSummary, aiBriefText));
+        host.Children.Add(BuildAiExplanationCard(
+            method, resourceRoot, explanationService, method.XmlSummary, aiBriefText, out var startExplanation));
+
+        // Wired last: the error and explanation cards are built after this button, so their
+        // generate actions do not exist until now.
+        generateAllBtn.Click += (_, _) =>
+        {
+            RunPrePost();
+            RunDesign();
+            startErrors();
+            startExplanation();
+        };
     }
 
     // ── Cards ─────────────────────────────────────────────────────────────────
@@ -1327,7 +1374,15 @@ internal static class DetailPanelRenderer
         }
     }
 
-    private static Border BuildErrorsCard(MethodDetailContext context, FrameworkElement resourceRoot, IExplanationService? explanationService)
+    /// <param name="startGeneration">
+    /// Receives the card's own generate action, so "Generate all AI sections" can drive it
+    /// without the caller having to reach into the card's controls.
+    /// </param>
+    private static Border BuildErrorsCard(
+        MethodDetailContext context,
+        FrameworkElement resourceRoot,
+        IExplanationService? explanationService,
+        out Action startGeneration)
     {
         var method = context.Method;
         var stack = new StackPanel();
@@ -1417,6 +1472,7 @@ internal static class DetailPanelRenderer
         }
 
         generateErrorBtn.Click += (_, _) => RunErrorAnalysis(isAuto: false);
+        startGeneration = () => RunErrorAnalysis(isAuto: false);
 
         if (organicExceptions.Count == 0 && runtimeRisks.Count == 0 && explanationService is { IsReady: true })
             RunErrorAnalysis(isAuto: true);
@@ -1510,12 +1566,17 @@ internal static class DetailPanelRenderer
     /// </summary>
     private static readonly ConditionalWeakTable<MethodInfo, MethodChatState> ChatStates = new();
 
+    /// <param name="startGeneration">
+    /// Receives the card's own generate action, so "Generate all AI sections" can drive it
+    /// without the caller having to reach into the card's controls.
+    /// </param>
     private static Border BuildAiExplanationCard(
         MethodInfo method,
         FrameworkElement resourceRoot,
         IExplanationService? explanationService,
         string? existingSummary,
-        TextBlock? aiBriefText)
+        TextBlock? aiBriefText,
+        out Action startGeneration)
     {
         var state = ChatStates.GetOrCreateValue(method);
 
@@ -1916,6 +1977,10 @@ internal static class DetailPanelRenderer
             }, token);
         };
 
+        // Raised rather than called directly: the handler above closes over the busy flag and the
+        // cancellation plumbing, and duplicating that here is how the two would drift apart.
+        startGeneration = () => generateBtn.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
         RebuildTranscript();
         RefreshStarters();
         if (!string.IsNullOrWhiteSpace(state.OpeningExplanation))
@@ -2082,16 +2147,64 @@ internal static class DetailPanelRenderer
         return card;
     }
 
+    /// <summary>
+    /// The accent dot beside a card heading, breathing gently in and out.
+    /// </summary>
+    /// <remarks>
+    /// The glow is a <see cref="DropShadowEffect"/> with no offset, so it reads as light coming
+    /// off the dot rather than as a shadow under it. Both animations repeat forever and are
+    /// deliberately slow — a fast pulse beside every heading on the page would pull the eye away
+    /// from the text it is meant to mark.
+    /// </remarks>
+    private static Ellipse CreatePulsingHeaderDot(FrameworkElement resourceRoot)
+    {
+        var accent = Brush(resourceRoot, "PrimaryBrush");
+        var dot = new Ellipse
+        {
+            Width = 8,
+            Height = 8,
+            Fill = accent,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0),
+            Effect = new DropShadowEffect
+            {
+                Color = accent is SolidColorBrush solid ? solid.Color : Colors.DodgerBlue,
+                ShadowDepth = 0,
+                BlurRadius = 10,
+                Opacity = 0,
+            },
+        };
+
+        var pulse = new DoubleAnimation
+        {
+            From = 0.25,
+            To = 1.0,
+            Duration = TimeSpan.FromSeconds(1.4),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+        };
+
+        // Started here rather than through a Storyboard: these dots are built in code and never
+        // named, and a Storyboard needs a target it can resolve by name.
+        dot.Effect.BeginAnimation(DropShadowEffect.OpacityProperty, pulse);
+        dot.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation
+        {
+            From = 0.55,
+            To = 1.0,
+            Duration = TimeSpan.FromSeconds(1.4),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+        });
+
+        return dot;
+    }
+
     private static StackPanel AddCardHeader(StackPanel stack, string title, FrameworkElement resourceRoot)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
-        row.Children.Add(new Ellipse
-        {
-            Width = 8, Height = 8,
-            Fill = Brush(resourceRoot, "PrimaryBrush"),
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 10, 0),
-        });
+        row.Children.Add(CreatePulsingHeaderDot(resourceRoot));
         row.Children.Add(new TextBlock
         {
             Text = title,
