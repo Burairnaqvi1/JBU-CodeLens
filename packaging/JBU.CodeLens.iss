@@ -36,6 +36,11 @@ DefaultGroupName=JBU CodeLens
 DisableProgramGroupPage=yes
 AllowNoIcons=yes
 
+; Adds the name / organisation / serial number page to the wizard. The serial is
+; checked by CheckSerial in the [Code] section below, and setup will not move
+; past the page until a valid one is entered.
+UserInfoPage=yes
+
 ; The app is a 64-bit build and will not run anywhere else.
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -60,6 +65,14 @@ SolidCompression=no
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Messages]
+; The page description renders as a single line and does not expand %n, so the
+; expected format goes on the field label, right beside the box being typed into.
+; The names below must match Default.isl exactly — Inno accepts an unrecognised
+; entry here without complaining and simply keeps its own default text.
+UserInfoDesc=Please enter your details and the serial number supplied with JBU CodeLens.
+UserInfoSerial=&Serial Number (JBUC-XXXXX-XXXXX-XXXXX):
+
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
 
@@ -82,6 +95,11 @@ Name: "{autodesktop}\JBU CodeLens"; Filename: "{app}\JBU.CodeLens.UI.exe"; Tasks
 [Run]
 Filename: "{app}\JBU.CodeLens.UI.exe"; Description: "Launch JBU CodeLens"; \
     Flags: nowait postinstall skipifsilent
+
+[Code]
+// The validation itself lives in its own file so the test harness can exercise
+// this exact code rather than a second copy of it.
+#include "SerialCheck.iss"
 
 [UninstallDelete]
 ; Uninstall removes the program but deliberately leaves %APPDATA%\JBU.CodeLens

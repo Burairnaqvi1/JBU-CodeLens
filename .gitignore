@@ -37,3 +37,7 @@ publish/
 # Installer output
 /dist-installer/
 
+
+# Compiled test harness output
+packaging/JBU-CodeLens-SerialTest.exe
+
