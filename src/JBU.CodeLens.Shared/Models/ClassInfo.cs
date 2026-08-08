@@ -146,12 +146,6 @@ public class MethodInfo
     public List<string> CalledMethodNames { get; set; } = new();
 
     /// <summary>
-    /// Cyclomatic complexity (1 + number of branching constructs in the body). Computed for C#;
-    /// defaults to 1 for C++, matching the parser's existing capability split.
-    /// </summary>
-    public int CyclomaticComplexity { get; set; } = 1;
-
-    /// <summary>
     /// The class that declares this method. Set during parsing for relationship context in the UI.
     /// </summary>
     public ClassInfo? ParentClass { get; set; }

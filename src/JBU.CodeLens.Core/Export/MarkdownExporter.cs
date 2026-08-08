@@ -64,12 +64,12 @@ public static class MarkdownExporter
             {
                 sb.AppendLine("#### Methods");
                 sb.AppendLine();
-                sb.AppendLine("| Name | Return | Params | Complexity |");
-                sb.AppendLine("|------|--------|--------|------------|");
+                sb.AppendLine("| Name | Return | Params |");
+                sb.AppendLine("|------|--------|--------|");
                 foreach (var method in cls.Methods)
                 {
                     var p = string.Join(", ", method.Parameters.Select(p => $"{p.TypeName} {p.Name}"));
-                    sb.AppendLine(CultureInfo.InvariantCulture, $"| `{method.Name}` | `{method.ReturnType}` | {p} | {method.CyclomaticComplexity} |");
+                    sb.AppendLine(CultureInfo.InvariantCulture, $"| `{method.Name}` | `{method.ReturnType}` | {p} |");
                 }
                 sb.AppendLine();
             }

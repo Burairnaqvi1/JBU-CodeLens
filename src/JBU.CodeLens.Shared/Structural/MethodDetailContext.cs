@@ -5,7 +5,7 @@ namespace JBU.CodeLens.Shared.Structural;
 
 /// <summary>
 /// Unified view model for the method detail panel. Merges JBU.CodeLens parser/inference data with
-/// SCIDE project IR metadata (call targets, complexity) for the same method.
+/// SCIDE project IR metadata (call targets, modifiers) for the same method.
 /// </summary>
 public sealed class MethodDetailContext
 {
@@ -33,8 +33,6 @@ public sealed class MethodDetailContext
             : ScideMethod?.Documentation?.Summary?.Trim();
 
     public IReadOnlyList<string> ScideCallTargets => ScideMethod?.Calls ?? [];
-
-    public int ScideComplexity => ScideMethod?.CyclomaticComplexity ?? 0;
 
     public IReadOnlyList<string> ScideModifiers
     {

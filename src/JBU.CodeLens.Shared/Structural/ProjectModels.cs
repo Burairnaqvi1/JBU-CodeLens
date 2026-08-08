@@ -60,7 +60,6 @@ public class MethodInfo
     public bool IsOverride { get; set; }
     public bool IsAsync { get; set; }
 
-    public int CyclomaticComplexity { get; set; } = 1;
     public List<ParameterInfo> Parameters { get; set; } = new();
     public List<string> Calls { get; set; } = new();
     public DocumentComment? Documentation { get; set; }

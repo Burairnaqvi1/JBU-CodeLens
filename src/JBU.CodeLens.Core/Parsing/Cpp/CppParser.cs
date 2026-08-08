@@ -933,7 +933,6 @@ public class CppParser : ILanguageParser
         }
 
         methodInfo.LocalVariables = ExtractLocalVariables(cursor, sourceCode);
-        methodInfo.CyclomaticComplexity = CountCyclomaticComplexity(sourceCode);
         // Merged, not replaced: the documented list comes from Doxygen @throws tags and the two
         // do not necessarily agree — a method may document an exception it no longer throws, or
         // throw one nobody documented, and the reader is served by seeing both.
@@ -1042,57 +1041,6 @@ public class CppParser : ILanguageParser
         return thrown;
     }
 
-    /// <summary>
-    /// Counts the decision points in a C++ method body, giving McCabe's cyclomatic complexity.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Without this every C++ method was left at the default of 1, so a C++ project reported an
-    /// average complexity of 1.0 however involved its code was, and no C++ method could ever
-    /// appear in the "most complex methods" list. The measurement was silently C#-only.
-    /// </para>
-    /// <para>
-    /// The same constructs are counted as on the C# side — one for the method itself, then one
-    /// for each branch, loop, case, catch and conditional expression — so the two languages
-    /// produce comparable figures and the project-wide average means something.
-    /// </para>
-    /// <para>
-    /// Comments and string literals are blanked first, so the word "if" inside a comment or a
-    /// message does not raise the count.
-    /// </para>
-    /// </remarks>
-    private static int CountCyclomaticComplexity(string methodSource)
-    {
-        if (string.IsNullOrEmpty(methodSource))
-        {
-            return 1;
-        }
-
-        try
-        {
-            var code = SourceText.StripCommentsAndStrings(methodSource, keepCharacterLiterals: false);
-
-            var complexity = 1;
-            complexity += SafeRegex.Matches(code, @"\b(?:if|while|for|case|catch)\b").Count;
-
-            // Short-circuit operators are decisions in their own right, counted here so a C++
-            // figure means the same as a C# one.
-            complexity += SafeRegex.Matches(code, @"&&|\|\|").Count;
-
-            // Every conditional expression contains exactly one question mark, and C++ has no
-            // other use for the character once comments and strings are blanked. Counting the
-            // marks is therefore both simpler and steadier than the pattern used before, which
-            // tried to match "? ... :" and miscounted as soon as two were nested.
-            complexity += code.Count(character => character == '?');
-
-            return complexity;
-        }
-        catch (RegexMatchTimeoutException)
-        {
-            // A pathological body is not worth failing the parse for; the default stands.
-            return 1;
-        }
-    }
 
     private static void ApplyVariableOperationalLimits(MethodInfo methodInfo, string methodSource)
     {
@@ -1247,13 +1195,12 @@ public class CppParser : ILanguageParser
             }
 
             // Returned whole. This text is what every deterministic analyser reads, so cutting it
-            // short silently truncated the analysis rather than the display: a method longer than
-            // the old 800-character cap had its later branches uncounted, so its complexity came
-            // out too low, and any guard or division past that point was invisible — one function
-            // here divides by a count on its last line and was never reported as needing it
-            // non-zero. The C# parser has always stored the whole body, which is why only C++ was
-            // affected. The language model path caps the snippet separately when building a
-            // prompt, so nothing downstream depends on the cap being applied here.
+            // short silently truncated the analysis rather than the display: any guard or division
+            // past the old 800-character cap was invisible — one function here divides by a count
+            // on its last line and was never reported as needing it non-zero. The C# parser has
+            // always stored the whole body, which is why only C++ was affected. The language model
+            // path caps the snippet separately when building a prompt, so nothing downstream
+            // depends on the cap being applied here.
             return Encoding.UTF8.GetString(fileBytes, (int)startOffset, length);
         }
         catch (Exception ex)

@@ -137,35 +137,11 @@ public sealed class CppParserTests : IDisposable
     }
 
     [Fact]
-    public void Parse_BranchingFunction_ReportsCyclomaticComplexity()
-    {
-        // Complexity was never computed for C++ at all, so every method sat at the default of 1.
-        // A C++ project therefore reported an average complexity of 1.0 however involved it was,
-        // and no C++ method could reach the "most complex methods" list.
-        var result = Parse("branching.cpp", """
-            int classify(int score, bool strict) {
-                if (score < 0) { return -1; }
-                if (score > 90) { return 4; }
-                else if (score > 70) { return 3; }
-                else if (score > 50) { return 2; }
-                for (int i = 0; i < 3; ++i) { score += i; }
-                return strict ? 1 : 0;
-            }
-            """);
-
-        Assert.Empty(result.Errors);
-        var method = result.Classes.SelectMany(c => c.Methods).Single(m => m.Name == "classify");
-
-        // One for the method, plus four ifs, a for and a conditional expression.
-        Assert.Equal(7, method.CyclomaticComplexity);
-    }
-
-    [Fact]
     public void Parse_LongMethod_IsAnalysedToItsEnd()
     {
         // The stored body used to be cut at 800 characters, which truncated the analysis rather
-        // than the display: branches past the cut went uncounted and any guard or division there
-        // was invisible. Padding pushes the final branch beyond that old limit.
+        // than the display: any guard or division past the cut was invisible. Padding pushes the
+        // final statement beyond that old limit.
         var padding = string.Join("\n", Enumerable.Range(0, 60).Select(i => $"    int filler{i} = {i};"));
         var result = Parse("long.cpp", $$"""
             int summarise(int total, int divisor) {
@@ -182,7 +158,10 @@ public sealed class CppParserTests : IDisposable
         Assert.True(
             method.XmlDocTags["sourceCode"].Length > 800,
             "the fixture must exceed the old cap for this test to mean anything");
-        Assert.Equal(3, method.CyclomaticComplexity);
+
+        // The last statement sits well past the old cut, so its presence is what proves the
+        // whole body reaches the analysers rather than just the opening 800 characters.
+        Assert.Contains("return total / divisor;", method.XmlDocTags["sourceCode"], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -245,78 +224,6 @@ public sealed class CppParserTests : IDisposable
         Assert.Contains("std::out_of_range", method.ThrownExceptions, StringComparer.Ordinal);
     }
 
-    [Fact]
-    public void Complexity_CountsShortCircuitOperators()
-    {
-        // "a && b" can leave the condition by two routes, and McCabe counts both.
-        var result = Parse("shortcircuit.cpp", """
-            int check(int a, int b) {
-                if (a > 0 && b > 0) { return 1; }
-                return 0;
-            }
-            """);
-
-        var method = result.Classes.SelectMany(c => c.Methods).Single(m => m.Name == "check");
-
-        // One for the method, one for the if, one for the &&.
-        Assert.Equal(3, method.CyclomaticComplexity);
-    }
-
-    [Fact]
-    public void Complexity_CountsNestedTernariesSeparately()
-    {
-        // The pattern used before tried to match "? ... :" and lost count once two were nested.
-        var result = Parse("ternary.cpp", """
-            int band(int n) { return n > 10 ? 2 : n > 5 ? 1 : 0; }
-            """);
-
-        var method = result.Classes.SelectMany(c => c.Methods).Single(m => m.Name == "band");
-
-        // One for the method plus one for each of the two conditionals.
-        Assert.Equal(3, method.CyclomaticComplexity);
-    }
-
-    /// <summary>
-    /// The same logic written in each language must produce the same figure.
-    /// </summary>
-    /// <remarks>
-    /// The two counters share no code — one walks a syntax tree, the other matches patterns —
-    /// so nothing but a test stops them drifting apart. A project-wide average mixing the two
-    /// languages would then mean nothing, and neither would a comparison between them.
-    /// </remarks>
-    [Theory]
-    [InlineData("if (a > 0) { return 1; } return 0;", 2)]
-    [InlineData("if (a > 0 && b > 0) { return 1; } return 0;", 3)]
-    [InlineData("if (a > 0 || b > 0) { return 1; } return 0;", 3)]
-    [InlineData("for (int i = 0; i < 3; ++i) { a += i; } return a;", 2)]
-    [InlineData("while (a > 0) { a--; } return a;", 2)]
-    [InlineData("return a > 0 ? 1 : 0;", 2)]
-    [InlineData("if (a > 0) { if (b > 0) { return 2; } return 1; } return 0;", 3)]
-    [InlineData("return 0;", 1)]
-    public void Complexity_AgreesBetweenTheTwoLanguages(string body, int expected)
-    {
-        var cpp = Parse("parity.cpp", $"int probe(int a, int b) {{ {body} }}")
-            .Classes.SelectMany(c => c.Methods).Single(m => m.Name == "probe");
-
-        var csharpPath = Path.Combine(_tempDir, "parity.cs");
-        File.WriteAllText(csharpPath, $"public class P {{ public int Probe(int a, int b) {{ {body} }} }}");
-        var csharp = new JBU.CodeLens.Core.Parsing.CSharp.CSharpParser().Parse(csharpPath)
-            .Classes.SelectMany(c => c.Methods).Single(m => m.Name == "Probe");
-
-        Assert.Equal(expected, cpp.CyclomaticComplexity);
-        Assert.Equal(expected, csharp.CyclomaticComplexity);
-    }
-
-    [Fact]
-    public void Parse_SimpleFunction_HasComplexityOfOne()
-    {
-        var result = Parse("plain.cpp", """
-            int twice(int value) { return value * 2; }
-            """);
-
-        var method = result.Classes.SelectMany(c => c.Methods).Single(m => m.Name == "twice");
-        Assert.Equal(1, method.CyclomaticComplexity);
-    }
 
     [Fact]
     public void Parse_FreeFunctionTakingAQualifiedType_IsNotFiledUnderAPhantomClass()

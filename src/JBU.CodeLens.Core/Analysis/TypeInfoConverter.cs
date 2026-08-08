@@ -65,7 +65,6 @@ internal static class TypeInfoConverter
                 DeclaringType = fullName,
                 ReturnType = method.ReturnType,
                 AccessModifier = method.AccessModifier,
-                CyclomaticComplexity = method.CyclomaticComplexity,
                 Calls = new List<string>(method.CalledMethodNames),
                 Documentation = string.IsNullOrWhiteSpace(method.XmlSummary)
                     ? null

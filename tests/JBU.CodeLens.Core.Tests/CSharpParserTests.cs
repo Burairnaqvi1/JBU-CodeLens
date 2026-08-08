@@ -221,9 +221,9 @@ public sealed class CSharpParserTests : IDisposable
     [Fact]
     public void Constructor_IsCollectedAsAMember()
     {
-        // A constructor with real branching contributed nothing to the complexity figures and
-        // had no limits worked out for its parameters, despite being the member every caller of
-        // the type has to get right.
+        // A constructor was skipped entirely: it never appeared in the tree and had no limits
+        // worked out for its parameters, despite being the member every caller of the type has
+        // to get right.
         var result = Parse("""
             public class Account
             {
@@ -241,7 +241,6 @@ public sealed class CSharpParserTests : IDisposable
         var constructor = Assert.Single(
             result.Classes.Single().Methods, m => m.Name == "Account");
 
-        Assert.Equal(3, constructor.CyclomaticComplexity);
         Assert.Equal(2, constructor.Parameters.Count);
         Assert.Contains("ArgumentNullException", constructor.ThrownExceptions, StringComparer.Ordinal);
         Assert.Equal("Account", constructor.ReturnType);

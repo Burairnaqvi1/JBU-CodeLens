@@ -261,7 +261,7 @@ public class CSharpParser : ILanguageParser
     /// </summary>
     /// <remarks>
     /// Constructors were previously skipped altogether, so a long one with real branching
-    /// contributed nothing to the complexity figures, never appeared in the tree, and had no
+    /// never appeared in the tree, and had no
     /// value limits worked out for its parameters — despite being the one member every caller of
     /// the type has to get right. The return type is recorded as the type being built, which is
     /// what a constructor produces.
@@ -309,9 +309,9 @@ public class CSharpParser : ILanguageParser
 
     /// <summary>
     /// Walks the method body <b>once</b> and derives every body-based fact in a single pass:
-    /// called method names, cyclomatic complexity, thrown exception types, local variables, and
+    /// called method names, thrown exception types, local variables, and
     /// guard-clause operational limits. Replaces eight separate <c>DescendantNodes()</c>
-    /// enumerations per method (calls, complexity, throws ×2, locals ×2, limits ×2).
+    /// enumerations per method (calls, throws ×2, locals ×2, limits ×2).
     /// </summary>
     private static void CollectBodyFacts(BaseMethodDeclarationSyntax method, MethodInfo methodInfo)
     {
@@ -319,28 +319,9 @@ public class CSharpParser : ILanguageParser
         var exceptions = new List<string>();
         var locals = new List<VariableInfo>();
         var limits = new List<string>();
-        var complexity = 1;
 
         foreach (var node in method.DescendantNodes())
         {
-            if (node.IsKind(SyntaxKind.IfStatement) ||
-                node.IsKind(SyntaxKind.WhileStatement) ||
-                node.IsKind(SyntaxKind.ForStatement) ||
-                node.IsKind(SyntaxKind.ForEachStatement) ||
-                node.IsKind(SyntaxKind.CaseSwitchLabel) ||
-                node.IsKind(SyntaxKind.ConditionalExpression) ||
-                node.IsKind(SyntaxKind.CatchClause) ||
-                // Each short-circuit operator is its own decision: "a && b" can leave the
-                // condition by two different routes, and McCabe counts both. Leaving them out
-                // meant a method guarded by one long condition scored the same as one guarded by
-                // a single test, and the figure had to be published with a caveat attached.
-                node.IsKind(SyntaxKind.LogicalAndExpression) ||
-                node.IsKind(SyntaxKind.LogicalOrExpression) ||
-                node.IsKind(SyntaxKind.CoalesceExpression))
-            {
-                complexity++;
-            }
-
             switch (node)
             {
                 case InvocationExpressionSyntax invocation:
@@ -411,7 +392,6 @@ public class CSharpParser : ILanguageParser
         methodInfo.ThrownExceptions = exceptions;
         methodInfo.LocalVariables = locals;
         methodInfo.OperationalLimits = limits;
-        methodInfo.CyclomaticComplexity = complexity;
     }
 
     /// <summary>
