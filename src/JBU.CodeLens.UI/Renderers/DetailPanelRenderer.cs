@@ -1050,12 +1050,18 @@ internal static class DetailPanelRenderer
             return WrapInCard(stack, resourceRoot);
         }
 
-        var code = CreateSelectableText(display, resourceRoot);
+        // Coloured the way an editor would colour it, so structure is visible at a glance rather
+        // than having to be read for. A rich text box keeps both the colouring and the ability to
+        // select and copy, which a plain text box cannot do together.
+        var isDark = IsDarkTheme(resourceRoot);
+        var code = CreateSelectableRichText(
+            resourceRoot,
+            SourceColouriser.Colourise(display, isDark).ToArray());
         code.FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont");
         code.FontSize = 12;
         // Never wrapped: wrapping code silently changes where its lines break, and the
         // horizontal scrollbar below is what keeps indentation honest.
-        code.TextWrapping = TextWrapping.NoWrap;
+        code.Document.PageWidth = 2400;
 
         var scroller = new ScrollViewer
         {
@@ -1174,9 +1180,7 @@ internal static class DetailPanelRenderer
         var grid = new Grid { Margin = new Thickness(0, 4, 0, 0) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // name
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // range
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // evidence
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // range
 
         AddLimitHeaderRow(grid, resourceRoot);
 
@@ -1194,7 +1198,6 @@ internal static class DetailPanelRenderer
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         AddToGrid(grid, CreateCapsLabel("VARIABLE", resourceRoot), 0, 0);
         AddToGrid(grid, CreateCapsLabel("ALLOWED VALUES", resourceRoot), 0, 2);
-        AddToGrid(grid, CreateCapsLabel("READ FROM", resourceRoot), 0, 4);
     }
 
     private static void AddLimitRow(Grid grid, VariableLimit limit, int row, FrameworkElement resourceRoot)
@@ -1224,19 +1227,9 @@ internal static class DetailPanelRenderer
         };
         AddToGrid(grid, value, row, 2);
 
-        var evidence = new TextBlock
-        {
-            Text = limit.Evidence,
-            FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont"),
-            FontSize = 11,
-            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 6, 0, 0),
-            Opacity = 0.85,
-        };
-        evidence.ToolTip = $"{limit.Evidence}\n\n{DescribeLimitSource(limit)}";
-        AddToGrid(grid, evidence, row, 4);
+        // The line the limit was read from stays reachable on hover, where it still informs
+        // without taking a third of every row to say it.
+        value.ToolTip = $"Read from: {limit.Evidence}\n\n{DescribeLimitSource(limit)}";
     }
 
     private static void AddToGrid(Grid grid, UIElement element, int row, int column)
@@ -2838,6 +2831,24 @@ internal static class DetailPanelRenderer
             Template = new ControlTemplate(typeof(TextBox)) { VisualTree = host },
         };
     }
+    /// <summary>
+    /// Which of the two themes is showing, read from the background brush rather than from a
+    /// flag, so the source colouring follows a theme switch without a second source of truth.
+    /// </summary>
+    private static bool IsDarkTheme(FrameworkElement resourceRoot)
+    {
+        if (resourceRoot.TryFindResource("BackgroundBrush") is SolidColorBrush background)
+        {
+            // Rec. 601 luma; anything below the midpoint is a dark surface.
+            var luma = (0.299 * background.Color.R)
+                + (0.587 * background.Color.G)
+                + (0.114 * background.Color.B);
+            return luma < 128;
+        }
+
+        return true;
+    }
+
 
     /// <summary>
     /// Selectable text that keeps mixed formatting on one line — a bold label beside a plain
