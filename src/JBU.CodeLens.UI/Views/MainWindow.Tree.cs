@@ -204,9 +204,6 @@ public partial class MainWindow
             case "project":
                 ShowProjectSummary();
                 break;
-            case "metrics":
-                ShowMetricsSummary();
-                break;
             case ClassInfo classInfo:
                 ShowClassDetails(classInfo);
                 break;

@@ -74,7 +74,14 @@ public class MethodDescriptionBuilderTests
 
         // Regression guard: the subject and the "based on" clause must not both be the
         // parameter name ("Determines whether input, based on input.").
-        Assert.Equal("Determines whether input.", text);
+        //
+        // The expected sentence changed when bool-returning methods named with a plain verb were
+        // moved onto the action path. "Determines whether input." was grammatical only by accident
+        // — it states a condition and then names a parameter instead of the condition. The guard
+        // this test exists for is unchanged and asserted directly below.
+        Assert.Equal("Validates the given input, returning true when the condition holds, otherwise false.", text);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"\binput\b"));
+        Assert.DoesNotContain("based on", text, StringComparison.Ordinal);
     }
 
     [Fact]

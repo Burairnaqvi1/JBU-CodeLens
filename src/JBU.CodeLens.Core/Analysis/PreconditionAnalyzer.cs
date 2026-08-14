@@ -56,6 +56,12 @@ public sealed class PreconditionAnalyzer
             yield break;
         }
 
+        var parameterNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (_, parameterName) in SourcePatternHelpers.ParseParameters(context.Method))
+        {
+            parameterNames.Add(parameterName);
+        }
+
         const string pattern = @"if\s*\(\s*([A-Za-z_][\w]*)\s*==\s*0\s*\)";
         foreach (var match in SourcePatternHelpers.MatchGuardThrows(context.SourceBody, pattern))
         {
@@ -63,7 +69,7 @@ public sealed class PreconditionAnalyzer
             var usedAsDivisor = SourcePatternHelpers.IsUsedAsDivisor(context.SourceBody, name);
             yield return CreatePrecondition(
                 name,
-                AnalysisMessageBuilder.GuardZero(name, usedAsDivisor),
+                AnalysisMessageBuilder.GuardZero(name, usedAsDivisor, parameterNames.Contains(name)),
                 "guard-eq-zero");
         }
     }
@@ -341,11 +347,28 @@ public sealed class PreconditionAnalyzer
             @"if\s*\(\s*([A-Za-z_][\w]*)\s*<\s*[^|]+\|\|\s*\1\s*>\s*[^)]+\)",
         };
 
+        // The patterns capture whatever identifier precedes a comparison, and the sentence they
+        // produce calls it a parameter. Neither assumption is checked by the regex: in C++,
+        // `static_cast<size_t>(size)` presents its template bracket as a "<", so the cast operator
+        // was reported as a parameter that callers must keep in range, and a local computed inside
+        // the method was described as something the caller passes. Emitting only for names that
+        // really are parameters removes both.
+        var parameterNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (_, parameterName) in SourcePatternHelpers.ParseParameters(context.Method))
+        {
+            parameterNames.Add(parameterName);
+        }
+
         foreach (var pattern in patterns)
         {
             foreach (var match in SourcePatternHelpers.MatchGuardThrows(context.SourceBody, pattern))
             {
                 var name = match.Groups[1].Value;
+                if (!parameterNames.Contains(name))
+                {
+                    continue;
+                }
+
                 yield return CreatePrecondition(
                     name,
                     $"Parameter {name} must be within the valid range accepted by this method",

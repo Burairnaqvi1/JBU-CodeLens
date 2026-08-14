@@ -56,6 +56,10 @@ public partial class MainWindow : Window
     private string? _selectedFolderPath;
     private bool _hasScanResults;
 
+    // Set when a scan finished but found no source files, so the placeholder can say that
+    // rather than falling back to the pre-scan invitation. Cleared by any successful scan.
+    private string? _lastEmptyScanFolder;
+
     // What the detail panel currently shows ("project", "metrics", a file path, ClassInfo, or
     // LensMethod — mirroring tree Tag values). Used to re-render after a theme switch, because
     // detail-panel elements are built in code and would otherwise keep the old theme's brushes.
@@ -522,6 +526,16 @@ public partial class MainWindow : Window
                 {
                     ShowNotification("Scan canceled.");
                 }
+                else if (scanResult.NoSourceFiles)
+                {
+                    // Not an error: the folder is simply not a C#/C++ project. Reporting it in
+                    // red as a failure sent people looking for something that had gone wrong.
+                    // The panel says the same thing, because the status bar sits at the bottom
+                    // of a large window and was easy to miss.
+                    _lastEmptyScanFolder = folderPath;
+                    ShowPlaceholder();
+                    ShowNotification("That folder has no .cs, .cpp, .hpp, or .h files to read.");
+                }
                 else
                 {
                     ShowNotification($"Scan failed: {message}", NotificationKind.Error);
@@ -533,8 +547,15 @@ public partial class MainWindow : Window
             if (scanResult.ParseResults.Count == 0)
             {
                 StatusBarText.Text = "Scan complete — no .cs, .cpp, .hpp, or .h source files found.";
+                // Say so on the panel too, and stop offering to reopen the folder that just came
+                // up empty: the status bar sits at the bottom of a large window and the panel was
+                // still showing the generic "Open a project to get started" invitation.
+                _lastEmptyScanFolder = folderPath;
+                ShowPlaceholder();
                 return;
             }
+
+            _lastEmptyScanFolder = null;
 
             _lastProjectIr = scanResult.Ir;
             _lastMetrics = scanResult.Metrics;
@@ -559,16 +580,10 @@ public partial class MainWindow : Window
                 IsExpanded = true,
             };
 
-            if (_lastMetrics is not null)
-            {
-                rootItem.Items.Add(BuildMetricsNode(_lastMetrics));
-            }
-
-            if (_lastProjectIr?.Namespaces.Count > 0)
-            {
-                rootItem.Items.Add(BuildNamespacesNode(_lastProjectIr));
-            }
-
+            // Files only, under the project root. The "Metrics" node repeated counts that are
+            // already on the project page and the status bar; the "Namespaces" node was tagged
+            // with a string, so selecting it fell through to the file handler and rendered a
+            // bogus "Parse error" page. Browsing lives on the project page now.
             foreach (var parseResult in scanResult.ParseResults)
             {
                 rootItem.Items.Add(BuildFileNode(parseResult.FilePath, parseResult));
@@ -584,10 +599,11 @@ public partial class MainWindow : Window
             ShowPlaceholder();
 
             var metricsSuffix = _lastMetrics is not null
-                ? $", {_lastProjectIr?.Namespaces.Count ?? 0} namespaces"
+                ? $", {Count(_lastProjectIr?.Namespaces.Count ?? 0, "namespace")}"
                 : string.Empty;
             StatusBarText.Text =
-                $"Scan complete — {scanResult.ParseResults.Count} files, {_classCount} classes, {_methodCount} methods{metricsSuffix}";
+                $"Scan complete — {Count(scanResult.ParseResults.Count, "file")}, " +
+                $"{Count(_classCount, "class", "classes")}, {Count(_methodCount, "method")}{metricsSuffix}";
 
             // Keep the tree page in sync with the new scan; a node-detail page would be
             // showing stale objects, so step it back to the refreshed tree.
@@ -858,51 +874,6 @@ public partial class MainWindow : Window
 
         ShowNotification($"{title}: scan a project first.");
         return false;
-    }
-
-    private static TreeViewItem BuildMetricsNode(MetricsResult metrics)
-    {
-        var item = new TreeViewItem
-        {
-            Header = CreateMutedHeader(
-                $"Metrics — {metrics.TotalClasses} classes, {metrics.TotalMethods} methods"),
-            Tag = "metrics",
-            IsExpanded = false,
-        };
-        return item;
-    }
-
-    private static TreeViewItem BuildNamespacesNode(ProjectIR ir)
-    {
-        var nsRoot = new TreeViewItem
-        {
-            Header = CreateMutedHeader($"Namespaces ({ir.Namespaces.Count})"),
-            Tag = "namespaces",
-            IsExpanded = false,
-        };
-
-        foreach (var ns in ir.Namespaces.OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase))
-        {
-            var nsItem = new TreeViewItem
-            {
-                Header = ns.Name,
-                Tag = $"ns:{ns.Name}",
-                IsExpanded = false,
-            };
-
-            foreach (var cls in ns.Classes)
-            {
-                nsItem.Items.Add(new TreeViewItem
-                {
-                    Header = $"{cls.Name} (class)",
-                    IsEnabled = false,
-                });
-            }
-
-            nsRoot.Items.Add(nsItem);
-        }
-
-        return nsRoot;
     }
 
     // Marks the single placeholder child that gives a collapsed file node its expander arrow
@@ -1271,6 +1242,15 @@ public partial class MainWindow : Window
             (path, _) => _exportService.ExportJson(ir, results, path));
     }
 
+    /// <summary>
+    /// "1 class", "11 classes" — a count with its noun in the right number. The scan summary
+    /// stated every total in the plural, so a single-file project reported "1 files, 1 classes".
+    /// </summary>
+    private static string Count(int value, string singular, string? plural = null) =>
+        value == 1
+            ? $"{value} {singular}"
+            : $"{value} {plural ?? singular + "s"}";
+
     // ── Detail panel ─────────────────────────────────────────────────────────
 
     private void ShowPlaceholder()
@@ -1285,6 +1265,17 @@ public partial class MainWindow : Window
             PlaceholderSubtitle.Text = "Pick an item in the Project Explorer to see its documentation";
             PlaceholderOpenButton.Visibility = Visibility.Collapsed;
             PlaceholderShortcutHint.Visibility = Visibility.Collapsed;
+            PlaceholderReopenButton.Visibility = Visibility.Collapsed;
+        }
+        else if (_lastEmptyScanFolder is not null)
+        {
+            var emptyName = Path.GetFileName(
+                _lastEmptyScanFolder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            PlaceholderTitle.Text = $"Nothing to read in {emptyName}";
+            PlaceholderSubtitle.Text = "CodeLens reads .cs, .cpp, .hpp, and .h files. Try a folder that contains some.";
+            PlaceholderOpenButton.Visibility = Visibility.Visible;
+            PlaceholderShortcutHint.Visibility = Visibility.Visible;
+            // No "Reopen" here — it would point back at the folder that just came up empty.
             PlaceholderReopenButton.Visibility = Visibility.Collapsed;
         }
         else
@@ -1326,9 +1317,6 @@ public partial class MainWindow : Window
         {
             case "project":
                 ShowProjectSummary();
-                break;
-            case "metrics":
-                ShowMetricsSummary();
                 break;
             case ClassInfo classInfo:
                 ShowClassDetails(classInfo);
@@ -1400,10 +1388,28 @@ public partial class MainWindow : Window
             });
         }
 
+        // The toolbar "Tree" button was being missed, so the project page — where a scan
+        // lands — offers the same thing in the place the user is already looking.
+        var treeButton = new Button
+        {
+            Content = "Build the project tree diagram",
+            Padding = new Thickness(16, 8, 16, 8),
+            Margin = new Thickness(0, 6, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Background = (Brush)FindResource("AccentGradientBrush"),
+            Foreground = (Brush)FindResource("OnAccentBrush"),
+            BorderThickness = new Thickness(0),
+            FontWeight = FontWeights.SemiBold,
+            IsEnabled = _hasScanResults,
+            ToolTip = "Draw the whole project as a tree, where it can also be saved as an image",
+        };
+        treeButton.Click += VisualizeButton_Click;
+        DetailContentHost.Children.Add(treeButton);
+
         if (_lastMetrics is { } m)
         {
-            DetailPanelRenderer.RenderMetricsDashboard(
-                DetailContentHost, m, _lastProjectIr, this,
+            DetailPanelRenderer.RenderBrowseSection(
+                DetailContentHost, m, this,
                 category => ShowMetricDrillDown(category, ShowProjectSummary));
         }
 
@@ -1514,36 +1520,6 @@ public partial class MainWindow : Window
         return sb.ToString();
     }
 
-    private void ShowMetricsSummary()
-    {
-        ShowDetailContent();
-        _currentDetailContext = "metrics";
-        DetailPanelRenderer.Clear(DetailContentHost);
-
-        if (_lastMetrics is not { } m)
-        {
-            DetailContentHost.Children.Add(new TextBlock
-            {
-                Text = "No metrics available.",
-                Foreground = (Brush)FindResource("TextSecondaryBrush"),
-            });
-            return;
-        }
-
-        DetailContentHost.Children.Add(new TextBlock
-        {
-            Text = "Project Metrics",
-            FontSize = 22,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)FindResource("TextPrimaryBrush"),
-            Margin = new Thickness(0, 0, 0, 4),
-        });
-
-        DetailPanelRenderer.RenderMetricsDashboard(
-            DetailContentHost, m, _lastProjectIr, this,
-            category => ShowMetricDrillDown(category, ShowMetricsSummary));
-    }
-
     /// <summary>
     /// Shows the items behind a clicked metric tile — the actual classes, methods, properties,
     /// etc. it counts — each navigable to its own detail. Relationships render as a breakdown by
@@ -1568,6 +1544,7 @@ public partial class MainWindow : Window
         string title;
         List<DrillDownItem> items;
 
+
         switch (category)
         {
             case MetricCategory.Classes:
@@ -1591,7 +1568,7 @@ public partial class MainWindow : Window
                     .ToList();
                 break;
 
-            case MetricCategory.Properties:
+            default: // Properties
                 title = "Properties";
                 items = classes
                     .SelectMany(c => c.Properties.Select(p => (Class: c, Prop: p)))
@@ -1599,65 +1576,12 @@ public partial class MainWindow : Window
                     .Select(x => new DrillDownItem($"{x.Prop.Name} : {x.Prop.Type}", $"in {x.Class.Name}", () => ShowClassDetails(x.Class, BackToHere)))
                     .ToList();
                 break;
-
-            case MetricCategory.Fields:
-                title = "Fields";
-                items = classes
-                    .SelectMany(c => c.Fields.Select(f => (Class: c, Field: f)))
-                    .OrderBy(x => x.Field.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(x => new DrillDownItem($"{x.Field.Name} : {x.Field.Type}", $"in {x.Class.Name}", () => ShowClassDetails(x.Class, BackToHere)))
-                    .ToList();
-                break;
-
-            case MetricCategory.Namespaces:
-                title = "Namespaces";
-                items = _lastProjectIr.Namespaces
-                    .OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(n => new DrillDownItem(
-                        string.IsNullOrEmpty(n.Name) ? "(global namespace)" : n.Name,
-                        $"{n.Classes.Count} {(n.Classes.Count == 1 ? "class" : "classes")}",
-                        () => ShowNamespaceClasses(n.Name, BackToHere)))
-                    .ToList();
-                break;
-
-            default: // Relationships — a breakdown by kind, not a navigable list.
-                title = "Relationships";
-                items = _lastProjectIr.Relationships
-                    .GroupBy(r => r.Kind)
-                    .OrderByDescending(g => g.Count())
-                    .Select(g => new DrillDownItem(DescribeRelationshipKind(g.Key), g.Count().ToString(CultureInfo.InvariantCulture), null))
-                    .ToList();
-                break;
         }
 
-        DetailPanelRenderer.RenderDrillDown(DetailContentHost, title, items, onBack, this);
+        DetailPanelRenderer.RenderDrillDown(
+            DetailContentHost, title, items, onBack, this,
+            DetailPanelRenderer.DescribeMetric(category));
     }
-
-    private void ShowNamespaceClasses(string namespaceName, Action onBack)
-    {
-        ShowDetailContent();
-        _currentDetailContext = (Action)(() => ShowNamespaceClasses(namespaceName, onBack));
-
-        void BackToHere() => ShowNamespaceClasses(namespaceName, onBack);
-
-        var items = _parseCache.Values
-            .SelectMany(p => p.Classes)
-            .Where(c => string.Equals(c.NamespaceName ?? string.Empty, namespaceName ?? string.Empty, StringComparison.Ordinal))
-            .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(c => new DrillDownItem(c.Name, $"{c.Methods.Count} methods", () => ShowClassDetails(c, BackToHere)))
-            .ToList();
-
-        var title = string.IsNullOrEmpty(namespaceName) ? "(global namespace)" : namespaceName;
-        DetailPanelRenderer.RenderDrillDown(DetailContentHost, title, items, onBack, this);
-    }
-
-    private static string DescribeRelationshipKind(string kind) => kind switch
-    {
-        "INHERITS" => "Inherits from",
-        "IMPLEMENTS" => "Implements",
-        "CALLS" => "Calls",
-        _ => kind,
-    };
 
     private void ShowClassDetails(ClassInfo classInfo, Action? onBack = null)
     {

@@ -7,10 +7,18 @@ namespace JBU.CodeLens.Core.Analysis;
 /// </summary>
 internal static class AnalysisMessageBuilder
 {
-    internal static string GuardZero(string parameterName, bool usedAsDivisor) =>
-        usedAsDivisor
-            ? $"Parameter {parameterName} must not be zero — division by zero will throw an exception"
-            : $"Parameter {parameterName} must not be zero — method throws if zero is passed";
+    /// <summary>
+    /// The zero guard. <paramref name="isParameter"/> distinguishes something the caller supplies
+    /// from something the method computes: a guard on a local derived inside the body was still
+    /// announced as a "Parameter", telling the reader to pass a value that is not passed at all.
+    /// </summary>
+    internal static string GuardZero(string name, bool usedAsDivisor, bool isParameter = true)
+    {
+        var subject = isParameter ? $"Parameter {name}" : $"Value {name}, computed in this method,";
+        return usedAsDivisor
+            ? $"{subject} must not be zero — division by zero will throw an exception"
+            : $"{subject} must not be zero — the method throws when it is zero";
+    }
 
     internal static string GuardNull(string parameterName) =>
         $"Parameter {parameterName} must not be null before calling this method";
@@ -19,7 +27,7 @@ internal static class AnalysisMessageBuilder
         $"Parameter {parameterName} must not be null or empty before calling this method";
 
     internal static string GuardPositive(string parameterName) =>
-        $"Parameter {parameterName} must be a positive value — negative values are rejected";
+        $"Parameter {parameterName} must not be negative — negative values are rejected";
 
     internal static string GuardNonPositive(string parameterName) =>
         $"Parameter {parameterName} must be greater than zero — zero or negative values are rejected";

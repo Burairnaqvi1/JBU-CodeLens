@@ -25,9 +25,14 @@ public static class OperationalLimitFormatter
 
         var subject = string.Empty;
         var condition = text;
-        if (text.Contains(':', StringComparison.Ordinal))
+
+        // Limits arrive as "subject: condition". A C++ expression carries its own colons in the
+        // scope operator, so splitting on the first one turned `std::fabs(x) < 1e-12` into a
+        // requirement about something called "std" — an entity that does not exist. Only a colon
+        // that is not part of "::" separates a subject.
+        var colon = IndexOfSubjectColon(text);
+        if (colon > 0)
         {
-            var colon = text.IndexOf(':', StringComparison.Ordinal);
             subject = text[..colon].Trim();
             condition = text[(colon + 1)..].Trim();
         }
@@ -80,7 +85,8 @@ public static class OperationalLimitFormatter
 
         if (IsNegativeCheck(condition))
         {
-            return SubjectPrefix(subject, "must be a positive value — negative values are rejected");
+            // A "< 0" guard permits zero, so "positive" overstates it.
+            return SubjectPrefix(subject, "must not be negative — negative values are rejected");
         }
 
         if (IsNonPositiveCheck(condition))
@@ -134,7 +140,19 @@ public static class OperationalLimitFormatter
 
     private static string HumanizeRemaining(string text, string subject, MethodAnalysisContext context)
     {
-        if (LooksLikeCodeExpression(text))
+        // A limit that reaches this point came from a guard of the form `if (condition) throw`, so
+        // the expression describes when the method REJECTS its input, not what the caller must
+        // supply. Printing it unchanged states the opposite of the truth: `!File.Exists(path)`
+        // became "the file must not exist", and `iterations < 1` became a demand for fewer than one
+        // iteration. Where the expression can be inverted safely the positive requirement is shown;
+        // where it cannot, it is labelled as the rejection it actually is.
+        var required = TryNegate(text);
+        if (!string.IsNullOrEmpty(required))
+        {
+            return SubjectPrefix(subject, $"must satisfy the required condition described by {DescribeExpression(required)}");
+        }
+
+        if (LooksLikeCodeExpression(text) || LooksLikeBareGuard(text) || LooksLikeCallOrIndex(text))
         {
             var reformatted = TryFormatCondition(subject, text, context);
             if (!string.IsNullOrEmpty(reformatted))
@@ -142,7 +160,7 @@ public static class OperationalLimitFormatter
                 return reformatted;
             }
 
-            return SubjectPrefix(subject, $"must satisfy the required condition described by {DescribeExpression(text)}");
+            return CapitalizeSentence($"the method rejects input where {DescribeExpression(text)}");
         }
 
         if (text.Contains("Potential ", StringComparison.OrdinalIgnoreCase))
@@ -174,6 +192,30 @@ public static class OperationalLimitFormatter
         return char.ToUpperInvariant(trimmed[0]) + trimmed[1..];
     }
 
+    /// <summary>
+    /// Position of the colon separating "subject: condition", skipping the C++ scope operator.
+    /// Returns -1 when the text carries no subject.
+    /// </summary>
+    private static int IndexOfSubjectColon(string text)
+    {
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] != ':')
+            {
+                continue;
+            }
+
+            var partOfScopeOperator = (i + 1 < text.Length && text[i + 1] == ':') ||
+                                      (i > 0 && text[i - 1] == ':');
+            if (!partOfScopeOperator)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     private static string ExtractSubject(string text)
     {
         var match = SafeRegex.Match(text, @"\b([A-Za-z_][\w]*)\s*(==|<=|<|!=|>=|>)");
@@ -201,6 +243,77 @@ public static class OperationalLimitFormatter
     private static bool IsNonPositiveCheck(string condition) =>
         SafeRegex.IsMatch(condition, @"\b[A-Za-z_][\w]*\s*<=\s*0\b");
 
+    /// <summary>
+    /// Inverts a guard condition into the requirement it implies, or returns null when the
+    /// expression cannot be inverted without changing its meaning.
+    /// </summary>
+    /// <remarks>
+    /// Only single-operator expressions and a leading logical NOT are handled. A compound joined by
+    /// &amp;&amp; or || inverts to a form whose English reading is no longer obvious, so those are
+    /// reported as rejections rather than guessed at — a limit stated backwards is worse than one
+    /// stated cautiously.
+    /// </remarks>
+    private static string? TryNegate(string text)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.Length == 0 ||
+            trimmed.Contains("&&", StringComparison.Ordinal) ||
+            trimmed.Contains("||", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (trimmed[0] == '!' && !trimmed.StartsWith("!=", StringComparison.Ordinal))
+        {
+            var inner = trimmed[1..].Trim();
+            return inner.Length > 0 ? inner : null;
+        }
+
+        // Two-character operators are tested first: finding '<' inside "<=" would invert it wrongly.
+        (string Operator, string Inverse)[] operators =
+        [
+            ("==", "!="), ("!=", "=="), ("<=", ">"), (">=", "<"), ("<", ">="), (">", "<="),
+        ];
+
+        foreach (var (op, inverse) in operators)
+        {
+            var index = trimmed.IndexOf(op, StringComparison.Ordinal);
+            if (index <= 0 || index + op.Length >= trimmed.Length)
+            {
+                continue;
+            }
+
+            // A second comparison means more than one relation to invert; leave it alone.
+            var rest = trimmed[(index + op.Length)..];
+            if (rest.Contains('<', StringComparison.Ordinal) || rest.Contains('>', StringComparison.Ordinal) ||
+                rest.Contains("==", StringComparison.Ordinal) || rest.Contains("!=", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return string.Concat(trimmed.AsSpan(0, index), inverse, rest);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// A guard carrying no comparison operator: a bare flag as in <c>if (inQuotes) throw</c>, or a
+    /// predicate call as in <c>if (string.Equals(from, to)) throw</c>. Both still describe when the
+    /// method rejects its input, so both must be labelled rather than printed as requirements.
+    /// </summary>
+    private static bool LooksLikeBareGuard(string text)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.Length == 0 || !(char.IsLetter(trimmed[0]) || trimmed[0] == '_'))
+        {
+            return false;
+        }
+
+        return !trimmed.Contains(' ', StringComparison.Ordinal) ||
+               SafeRegex.IsMatch(trimmed, @"^[A-Za-z_][\w.]*\s*\(");
+    }
+
     private static bool LooksLikeCodeExpression(string text) =>
         text.Contains("==", StringComparison.Ordinal) ||
         text.Contains("!=", StringComparison.Ordinal) ||
@@ -210,13 +323,28 @@ public static class OperationalLimitFormatter
         text.Contains("&&", StringComparison.Ordinal) ||
         text.Contains("||", StringComparison.Ordinal);
 
+    /// <summary>
+    /// An expression that calls or indexes something, and so is code rather than prose.
+    /// </summary>
+    private static bool LooksLikeCallOrIndex(string text) =>
+        text.Contains('(', StringComparison.Ordinal) || text.Contains('[', StringComparison.Ordinal);
+
+    /// <summary>
+    /// Renders comparison operators as words.
+    /// </summary>
+    /// <remarks>
+    /// Only spaced operators are rewritten. C++ template arguments carry unspaced angle brackets, so
+    /// rewriting every one of them turned <c>static_cast&lt;size_t&gt;(size) &gt; matrix.size()</c>
+    /// into "static_cast is less than size_t is greater than (size)…". Conditions come from
+    /// whitespace-normalised source, where a real comparison always has spaces around it.
+    /// </remarks>
     private static string DescribeExpression(string text) =>
-        text.Replace("==", " equals ", StringComparison.Ordinal)
-            .Replace("!=", " does not equal ", StringComparison.Ordinal)
-            .Replace("<=", " is less than or equal to ", StringComparison.Ordinal)
-            .Replace(">=", " is greater than or equal to ", StringComparison.Ordinal)
-            .Replace("<", " is less than ", StringComparison.Ordinal)
-            .Replace(">", " is greater than ", StringComparison.Ordinal);
+        text.Replace(" == ", " equals ", StringComparison.Ordinal)
+            .Replace(" != ", " does not equal ", StringComparison.Ordinal)
+            .Replace(" <= ", " is less than or equal to ", StringComparison.Ordinal)
+            .Replace(" >= ", " is greater than or equal to ", StringComparison.Ordinal)
+            .Replace(" < ", " is less than ", StringComparison.Ordinal)
+            .Replace(" > ", " is greater than ", StringComparison.Ordinal);
 
     private static string? FindDivisorParameter(MethodAnalysisContext context)
     {

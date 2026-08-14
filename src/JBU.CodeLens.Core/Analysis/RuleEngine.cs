@@ -163,8 +163,48 @@ internal static class SourcePatternHelpers
                source.Contains($"foreach (auto", StringComparison.Ordinal) && source.Contains(identifier, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A type that holds many values rather than being one: an array, or a generic container.
+    /// </summary>
+    /// <remarks>
+    /// The scalar tests below match on substrings, so <c>double[,]</c> satisfied "contains double"
+    /// and <c>std::vector&lt;std::string&gt;</c> satisfied "contains string". A matrix parameter was
+    /// then told to "be a finite numeric value" and to "stay within valid index bounds" — statements
+    /// that are not merely unhelpful but untrue of the thing they name. An aggregate is excluded
+    /// from every scalar classification so those rules cannot fire on it.
+    /// </remarks>
+    internal static bool IsAggregateType(string type)
+    {
+        var simple = type.Trim().TrimEnd('&', '*');
+        if (simple.Contains('[', StringComparison.Ordinal) || simple.Contains('<', StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        string[] containers =
+        [
+            "vector", "list", "map", "set", "array", "span", "collection", "dictionary",
+            "queue", "stack", "IEnumerable",
+        ];
+
+        foreach (var container in containers)
+        {
+            if (simple.Contains(container, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     internal static bool IsNumericType(string type)
     {
+        if (IsAggregateType(type))
+        {
+            return false;
+        }
+
         var simple = type.Trim().TrimEnd('&', '*');
         return simple is "double" or "float" or "decimal" or "int" or "long" or "short" or "byte" or "size_t" ||
                simple.Contains("double", StringComparison.Ordinal) ||
@@ -174,6 +214,11 @@ internal static class SourcePatternHelpers
 
     internal static bool IsFloatingType(string type)
     {
+        if (IsAggregateType(type))
+        {
+            return false;
+        }
+
         var simple = type.Trim().TrimEnd('&', '*');
         return simple is "double" or "float" or "decimal" ||
                simple.Contains("double", StringComparison.Ordinal) ||
@@ -182,6 +227,11 @@ internal static class SourcePatternHelpers
 
     internal static bool IsStringType(string type)
     {
+        if (IsAggregateType(type))
+        {
+            return false;
+        }
+
         var simple = type.Trim().TrimEnd('&', '*');
         return simple is "string" or "std::string" or "String" ||
                simple.Contains("string", StringComparison.OrdinalIgnoreCase) ||

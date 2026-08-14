@@ -116,7 +116,28 @@ public sealed class DesignConstraintAnalyzer
             yield break;
         }
 
-        if (SafeRegex.IsMatch(context.SourceBody, $@"\b{Regex.Escape(methodName)}\s*\("))
+        var escaped = Regex.Escape(methodName);
+        var body = context.SourceBody;
+
+        // Without a body there is no call to find, and the only occurrence of the name is the
+        // declaration itself. Claiming recursion from that is claiming it from nothing.
+        if (!body.Contains('{', StringComparison.Ordinal))
+        {
+            yield break;
+        }
+
+        // The C++ parser records a function's declaration along with its body, so the signature
+        // itself matched "name(" and every C++ function was reported as recursive — the rule fired
+        // on the definition rather than on a call. Anything ahead of the opening brace is the
+        // declaration, so it is dropped before looking for a call, but only when it really is the
+        // signature; C# bodies arrive already brace-first and are left untouched.
+        var brace = body.IndexOf('{', StringComparison.Ordinal);
+        if (brace > 0 && SafeRegex.IsMatch(body[..brace], $@"\b{escaped}\s*\("))
+        {
+            body = body[(brace + 1)..];
+        }
+
+        if (SafeRegex.IsMatch(body, $@"\b{escaped}\s*\("))
         {
             yield return Create(DesignConstraintKind.UsesRecursion, "Calls itself recursively.", "uses-recursion");
         }

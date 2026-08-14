@@ -45,6 +45,7 @@ public sealed class ScideEngine : IProjectAnalyzer
             if (filePaths.Count == 0)
             {
                 result.Error = "No C# or C++ source files found";
+                result.NoSourceFiles = true;
                 return result;
             }
 

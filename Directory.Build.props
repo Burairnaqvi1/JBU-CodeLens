@@ -6,7 +6,7 @@
     title, the entry in Apps & features and the About panel can never disagree with the build.
   -->
   <PropertyGroup>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>JBU CodeLens</Product>
     <Company>Burair and Usaid</Company>
   </PropertyGroup>

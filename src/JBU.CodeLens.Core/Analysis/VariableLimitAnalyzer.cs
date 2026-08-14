@@ -43,13 +43,13 @@ public sealed class VariableLimitAnalyzer
     public VariableLimitAnalyzer()
     {
         _engine = new RuleEngine<VariableLimit>()
+            .Register("limit-single-guard", "Value rejected beyond one bound", RuleSingleBoundGuard)
             .Register("limit-range-guard", "Value rejected outside a range", RuleRangeGuard)
             .Register("limit-allowed-values", "Only a few values admitted", RuleAllowedValues)
             .Register("limit-clamp", "Value forced into a range", RuleClamp)
             .Register("limit-character-range", "Character restricted to a span", RuleCharacterRange)
             .Register("limit-symbolic-range", "Range bounded by other variables", RuleSymbolicRangeGuard)
             .Register("limit-length-guard", "Length rejected outside a bound", RuleLengthGuard)
-            .Register("limit-single-guard", "Value rejected beyond one bound", RuleSingleBoundGuard)
             .Register("limit-not-null", "Value rejected when absent", RuleNotNull)
             .Register("limit-divisor", "Value used as a divisor", RuleDivisor)
             .Register("limit-comparison", "Bounds the code relies on", RuleComparisonBounds)
@@ -144,6 +144,8 @@ public sealed class VariableLimitAnalyzer
 
         foreach (var line in RejectionLineList(context))
         {
+            if (SpansSeveralVariables(line, known)) continue;
+
             foreach (Match match in SafeRegex.Matches(
                 line,
                 @"\b([A-Za-z_]\w*)\s*<(=?)\s*" + ValuePattern + @"\s*\|\|\s*\1\s*>(=?)\s*" + ValuePattern))
@@ -156,10 +158,10 @@ public sealed class VariableLimitAnalyzer
                 // The guard states what is refused, so "< 0" leaves 0 itself permitted while
                 // "<= 0" refuses 0 as well.
                 var low = match.Groups[2].Value == "="
-                    ? Exclude(lowValue, raising: true)
+                    ? Exclude(lowValue, raising: true, declared.Type)
                     : new Bound(lowValue, Inclusive: true);
                 var high = match.Groups[4].Value == "="
-                    ? Exclude(highValue, raising: false)
+                    ? Exclude(highValue, raising: false, declared.Type)
                     : new Bound(highValue, Inclusive: true);
                 if (low.Value > high.Value) continue;
 
@@ -188,6 +190,8 @@ public sealed class VariableLimitAnalyzer
 
         foreach (var line in RejectionLineList(context))
         {
+            if (SpansSeveralVariables(line, known)) continue;
+
             foreach (Match match in SafeRegex.Matches(
                 line, @"\b([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*" + ValuePattern + @"\b"))
             {
@@ -209,6 +213,31 @@ public sealed class VariableLimitAnalyzer
             }
         }
 
+        // Second pass, after every ordinary bound is in: a guard refusing "x == 0" lifts the floor
+        // off zero. Read on its own it says nothing about a range, but combined with the bounds
+        // already gathered it is what turns "at most 256" into "1 to 256" and stops a size that
+        // the method explicitly refuses from being reported as acceptable.
+        foreach (var line in RejectionLineList(context))
+        {
+            if (SpansSeveralVariables(line, known)) continue;
+
+            foreach (Match match in SafeRegex.Matches(line, @"\b([A-Za-z_]\w*)\s*==\s*0\b"))
+            {
+                var name = match.Groups[1].Value;
+                if (!known.TryGetValue(name, out var declaredZero)) continue;
+                if (IsLengthExpression(line, name)) continue;
+
+                // Only where zero already sits at or below the floor. On a signed value with no
+                // lower bound, "x == 0" refuses one value out of the middle of the range, which
+                // is not a floor and must not be reported as one.
+                var floorIsZero = lower.TryGetValue(name, out var existingLow) && existingLow.Bound.Value == 0;
+                if (!IsUnsignedType(declaredZero.Type) && !floorIsZero) continue;
+
+                Narrow(lower, name, Exclude(0m, raising: true, declaredZero.Type),
+                    Condense(match.Value), isLower: true);
+            }
+        }
+
         foreach (var name in lower.Keys.Union(upper.Keys, StringComparer.Ordinal))
         {
             var hasLow = lower.TryGetValue(name, out var low);
@@ -217,9 +246,19 @@ public sealed class VariableLimitAnalyzer
 
             if (hasLow && hasHigh)
             {
-                if (low.Bound.Value > high.Bound.Value) continue;
+                // With both ends known the range reads better as whole numbers — "1 to 4" rather
+                // than "greater than 0, less than 5". Exclude leaves a floating-point bound
+                // exclusive, where stepping to the next whole number would forbid legal values.
+                var lowBound = low.Bound.Inclusive
+                    ? low.Bound
+                    : Exclude(low.Bound.Value, raising: true, declared.Type);
+                var highBound = high.Bound.Inclusive
+                    ? high.Bound
+                    : Exclude(high.Bound.Value, raising: false, declared.Type);
+
+                if (IsEmptyRange(lowBound, highBound)) continue;
                 yield return Build(
-                    name, declared, DescribeRange(low.Bound, high.Bound),
+                    name, declared, DescribeRange(lowBound, highBound),
                     $"{low.Evidence}; {high.Evidence}",
                     VariableLimitSource.Guard, AnalysisConfidence.High);
             }
@@ -520,21 +559,29 @@ public sealed class VariableLimitAnalyzer
         var lower = new Dictionary<string, (Bound Bound, string Evidence)>(StringComparer.Ordinal);
         var upper = new Dictionary<string, (Bound Bound, string Evidence)>(StringComparer.Ordinal);
 
-        foreach (Match match in SafeRegex.Matches(
-            CodeOnly(context), @"\b([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*" + NumberPattern + @"\b"))
+        // Read a line at a time so a conjunct can be skipped: inside "a > 0 && b > a" neither
+        // half bounds anything by itself, and pairing the two halves of a checked-arithmetic
+        // guard produced the impossible "greater than 0, less than 0".
+        foreach (var line in CodeOnly(context).Split('\n'))
         {
-            var name = match.Groups[1].Value;
-            if (!known.ContainsKey(name)) continue;
-            if (!TryParse(match.Groups[3].Value, out var value)) continue;
+            if (SpansSeveralVariables(line, known)) continue;
 
-            var evidence = Condense(match.Value);
-            switch (match.Groups[2].Value)
+            foreach (Match match in SafeRegex.Matches(
+                line, @"\b([A-Za-z_]\w*)\s*(>=|<=|>|<)\s*" + NumberPattern + @"\b"))
             {
-                case ">=": Narrow(lower, name, new Bound(value, true), evidence, isLower: true); break;
-                case ">": Narrow(lower, name, new Bound(value, false), evidence, isLower: true); break;
-                case "<=": Narrow(upper, name, new Bound(value, true), evidence, isLower: false); break;
-                case "<": Narrow(upper, name, new Bound(value, false), evidence, isLower: false); break;
-                default: break;
+                var name = match.Groups[1].Value;
+                if (!known.ContainsKey(name)) continue;
+                if (!TryParse(match.Groups[3].Value, out var value)) continue;
+
+                var evidence = Condense(match.Value);
+                switch (match.Groups[2].Value)
+                {
+                    case ">=": Narrow(lower, name, new Bound(value, true), evidence, isLower: true); break;
+                    case ">": Narrow(lower, name, new Bound(value, false), evidence, isLower: true); break;
+                    case "<=": Narrow(upper, name, new Bound(value, true), evidence, isLower: false); break;
+                    case "<": Narrow(upper, name, new Bound(value, false), evidence, isLower: false); break;
+                    default: break;
+                }
             }
         }
 
@@ -548,7 +595,7 @@ public sealed class VariableLimitAnalyzer
         foreach (var (name, low) in lower)
         {
             if (!upper.TryGetValue(name, out var high)) continue;
-            if (low.Bound.Value > high.Bound.Value) continue;
+            if (IsEmptyRange(low.Bound, high.Bound)) continue;
 
             yield return Build(
                 name, known[name], DescribeRange(low.Bound, high.Bound),
@@ -1069,15 +1116,110 @@ public sealed class VariableLimitAnalyzer
     /// exact and reads better ("1 to 4"); fractions have none, so the bound stays exclusive and
     /// the wording carries the meaning.
     /// </summary>
-    private static Bound Exclude(decimal value, bool raising)
+    private static Bound Exclude(decimal value, bool raising, string? declaredType = null)
     {
-        if (decimal.Truncate(value) != value)
+        // Stepping to the neighbouring whole number is only sound for a variable that counts in
+        // whole numbers. On a floating-point variable "factor <= 0.0" refuses zero and everything
+        // below it, and 0.5 stays perfectly legal — reporting "1 or more" would forbid a value
+        // the method accepts, which is a rule the caller does not have to obey.
+        if (decimal.Truncate(value) != value || IsFractionalType(declaredType))
         {
             return new Bound(value, Inclusive: false);
         }
 
         var neighbour = raising ? value + 1 : value - 1;
         return new Bound(neighbour, Inclusive: true);
+    }
+
+    /// <summary>
+    /// True when no value at all satisfies both ends, so the "range" describes nothing.
+    /// </summary>
+    /// <remarks>
+    /// A pair of bounds that cross is already rejected, but a pair that meets at one value can
+    /// still be empty: "greater than 0" together with "less than 0" admits nothing, and printing
+    /// it states a restriction no caller could ever satisfy.
+    /// </remarks>
+    private static bool IsEmptyRange(Bound low, Bound high) =>
+        low.Value > high.Value ||
+        (low.Value == high.Value && (!low.Inclusive || !high.Inclusive));
+
+    /// <summary>True when the declared type cannot hold a value below zero.</summary>
+    private static bool IsUnsignedType(string? declaredType)
+    {
+        if (string.IsNullOrEmpty(declaredType))
+        {
+            return false;
+        }
+
+        var bare = declaredType
+            .Replace("const", string.Empty, StringComparison.Ordinal)
+            .Replace("&", string.Empty, StringComparison.Ordinal)
+            .Replace("std::", string.Empty, StringComparison.Ordinal)
+            .Trim();
+
+        return bare.StartsWith("uint", StringComparison.OrdinalIgnoreCase)
+            || bare.StartsWith("unsigned", StringComparison.OrdinalIgnoreCase)
+            || bare.Equals("size_t", StringComparison.OrdinalIgnoreCase)
+            || bare.Equals("byte", StringComparison.OrdinalIgnoreCase)
+            || bare.Equals("ulong", StringComparison.OrdinalIgnoreCase)
+            || bare.Equals("ushort", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>True when the declared type holds values between the whole numbers.</summary>
+    private static bool IsFractionalType(string? declaredType)
+    {
+        if (string.IsNullOrEmpty(declaredType))
+        {
+            return false;
+        }
+
+        var bare = declaredType
+            .Replace("const", string.Empty, StringComparison.Ordinal)
+            .Replace("&", string.Empty, StringComparison.Ordinal)
+            .Trim();
+
+        return bare.Equals("double", StringComparison.OrdinalIgnoreCase)
+            || bare.Equals("float", StringComparison.OrdinalIgnoreCase)
+            || bare.Equals("decimal", StringComparison.OrdinalIgnoreCase)
+            || bare.Equals("long double", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True when a condition joins comparisons of <em>different</em> variables with
+    /// <c>&amp;&amp;</c>, so no one of them bounds anything by itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>if (right &gt; 0 &amp;&amp; left &gt; max - right) throw</c> rejects no particular value
+    /// of <c>right</c>: a caller may pass any <c>right</c> at all and stay inside the contract by
+    /// choosing <c>left</c>. Read as two independent bounds, the two guards of a checked addition
+    /// combine into "right must be exactly 0" — a rule the method does not impose and the caller
+    /// does not have to obey. Saying nothing is the correct answer.
+    /// </para>
+    /// <para>
+    /// A conjunction over a single variable is the opposite case and must be kept:
+    /// <c>if (age &gt;= 18 &amp;&amp; age &lt;= 65)</c> is exactly how a range is written, and both
+    /// halves narrow the same value.
+    /// </para>
+    /// </remarks>
+    private static bool SpansSeveralVariables(string line, Dictionary<string, (string Type, VariableScopeKind Scope)> known)
+    {
+        if (!line.Contains("&&", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var compared = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Match match in SafeRegex.Matches(line, @"\b([A-Za-z_]\w*)\s*(?:>=|<=|==|!=|>|<)"))
+        {
+            var name = match.Groups[1].Value;
+            if (known.ContainsKey(name))
+            {
+                compared.Add(name);
+            }
+        }
+
+        return compared.Count > 1;
     }
 
     /// <summary>Trims the trailing zeros a decimal keeps, so "1.50" reads as "1.5".</summary>

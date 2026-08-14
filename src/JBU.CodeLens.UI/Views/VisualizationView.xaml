@@ -104,13 +104,21 @@
                             Click="FitButton_Click"
                             ToolTip="Fit the whole tree in the view"
                             AutomationProperties.Name="Fit the whole tree in the view"/>
+                    <!-- Labelled, not a bare glyph: users could not find where the diagram is
+                         turned into an image file. -->
                     <Button x:Name="SaveImageButton"
                             Style="{StaticResource ToolbarIconButton}"
-                            Content="&#xE8B9;"
                             Click="SaveImageButton_Click"
-                            Margin="4,0,0,0"
-                            ToolTip="Save the diagram as a PNG image"
-                            AutomationProperties.Name="Save the diagram as a PNG image"/>
+                            Margin="8,0,0,0"
+                            Background="{DynamicResource AccentGradientBrush}"
+                            Foreground="{DynamicResource OnAccentBrush}"
+                            ToolTip="Save this tree diagram as a PNG image file"
+                            AutomationProperties.Name="Save this tree diagram as a PNG image file">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8B9;" FontFamily="{DynamicResource IconFont}" FontSize="15" VerticalAlignment="Center"/>
+                            <TextBlock Text="Save image" FontFamily="{DynamicResource UiFont}" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
@@ -146,7 +154,7 @@
                     BorderThickness="1"
                     Opacity="0.9"
                     IsHitTestVisible="False">
-                <TextBlock Text="Scroll or + / &#x2212; to zoom · Ctrl+0 to fit · drag to pan · click a node to open it"
+                <TextBlock Text="Scroll or + / &#x2212; to zoom · Ctrl+0 to fit · drag to pan · click a node to open it · &quot;Save image&quot; writes this diagram to a PNG file"
                            FontSize="11"
                            Foreground="{DynamicResource TextSecondaryBrush}"/>
             </Border>

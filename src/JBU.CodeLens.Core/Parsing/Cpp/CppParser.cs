@@ -505,6 +505,10 @@ public class CppParser : ILanguageParser
 
             switch (kind)
             {
+                // A class template is walked exactly as a class: its members arrive under the same
+                // cursor kinds, so everything below this point applies unchanged.
+                case CXCursorKind.CXCursor_ClassTemplate:
+                case CXCursorKind.CXCursor_ClassTemplatePartialSpecialization:
                 case CXCursorKind.CXCursor_ClassDecl:
                 case CXCursorKind.CXCursor_StructDecl:
                     if (!IsTopLevelTypeParent(parentKind))
@@ -536,6 +540,11 @@ public class CppParser : ILanguageParser
 
                     return CXChildVisitResult.CXChildVisit_Continue;
 
+                // FunctionTemplate is handled on the same path as a plain function: libclang
+                // reports a template definition under this kind instead, and everything the walk
+                // needs from it — spelling, arguments, return type, comment, extent — is available
+                // exactly as it is for FunctionDecl.
+                case CXCursorKind.CXCursor_FunctionTemplate:
                 case CXCursorKind.CXCursor_FunctionDecl:
                     if (!IsTopLevelTypeParent(parentKind) && !IsOutOfClassDefinition(cursor))
                     {
@@ -595,6 +604,9 @@ public class CppParser : ILanguageParser
                     ProcessVariableDecl(cursor, classInfo);
                     break;
 
+                // A member function template arrives as FunctionTemplate rather than CXXMethod, so
+                // without it here a templated member is silently dropped from its class.
+                case CXCursorKind.CXCursor_FunctionTemplate:
                 case CXCursorKind.CXCursor_CXXMethod:
                 case CXCursorKind.CXCursor_Constructor:
                 case CXCursorKind.CXCursor_Destructor:
@@ -633,7 +645,7 @@ public class CppParser : ILanguageParser
 
             var semanticParent = clang_getCursorSemanticParent(cursor);
             var parentKind = clang_getCursorKind(semanticParent);
-            if (parentKind is CXCursorKind.CXCursor_ClassDecl or CXCursorKind.CXCursor_StructDecl)
+            if (IsTypeDeclaration(parentKind))
             {
                 return !IsFromMainFile(semanticParent);
             }
@@ -655,7 +667,7 @@ public class CppParser : ILanguageParser
             for (var depth = 0; depth < 16; depth++)
             {
                 var kind = clang_getCursorKind(current);
-                if (kind is CXCursorKind.CXCursor_ClassDecl or CXCursorKind.CXCursor_StructDecl)
+                if (IsTypeDeclaration(kind))
                 {
                     return false;
                 }
@@ -776,7 +788,7 @@ public class CppParser : ILanguageParser
             for (var depth = 0; depth < 16; depth++)
             {
                 var kind = clang_getCursorKind(current);
-                if (kind is CXCursorKind.CXCursor_ClassDecl or CXCursorKind.CXCursor_StructDecl)
+                if (IsTypeDeclaration(kind))
                 {
                     var name = GetSpelling(current);
                     return string.IsNullOrEmpty(name) ? null : name;
@@ -926,6 +938,18 @@ public class CppParser : ILanguageParser
             methodInfo.Parameters.Add($"{paramType} {paramName}");
         }
 
+        // clang_Cursor_getNumArguments answers -1 for a template, because a template has no
+        // arguments until it is instantiated. Every templated function therefore arrived with an
+        // empty parameter list — reported to the reader as taking nothing at all, which is worse
+        // than saying nothing. The parameters are still present as child declarations.
+        if (argCount <= 0)
+        {
+            foreach (var parameter in CollectParameterDeclarations(cursor))
+            {
+                methodInfo.Parameters.Add(parameter);
+            }
+        }
+
         var sourceCode = ExtractSourceText(cursor, fileBytes);
         if (!string.IsNullOrEmpty(sourceCode))
         {
@@ -946,7 +970,212 @@ public class CppParser : ILanguageParser
         ApplyVariableOperationalLimits(methodInfo, sourceCode);
         methodInfo.OperationalLimits.AddRange(DetectPotentialRuntimeIssuesCpp(methodInfo, sourceCode));
 
+        // The C# parser records the condition of every `if (...) throw` as an operational limit,
+        // which is where a method's real input requirements are stated. Without the same here, a
+        // C++ method's stated contract — the dimension agreement in a matrix multiply, the
+        // squareness check in a solver — never reached the reader at all.
+        foreach (var guard in ExtractGuardConditionsCpp(sourceCode))
+        {
+            AddOperationalLimit(methodInfo.OperationalLimits, guard);
+        }
+
         return methodInfo;
+    }
+
+    /// <summary>
+    /// Reads a function's parameters from its child declarations, for cursors whose argument list
+    /// the C API will not report.
+    /// </summary>
+    private static List<string> CollectParameterDeclarations(CXCursor cursor)
+    {
+        var parameters = new List<string>();
+        var handle = GCHandle.Alloc(parameters);
+
+        try
+        {
+            CXCursorVisitor visitor = VisitParameterDeclaration;
+            // Non-zero means the walk was stopped early; this visitor never stops it.
+            var stoppedEarly = clang_visitChildren(cursor, visitor, GCHandle.ToIntPtr(handle));
+            GC.KeepAlive(visitor);
+            if (stoppedEarly != 0)
+            {
+                parameters.Clear();
+            }
+        }
+        finally
+        {
+            handle.Free();
+        }
+
+        return parameters;
+    }
+
+    private static CXChildVisitResult VisitParameterDeclaration(CXCursor cursor, CXCursor parent, IntPtr clientData)
+    {
+        try
+        {
+            if (clang_getCursorKind(cursor) == CXCursorKind.CXCursor_ParmDecl)
+            {
+                var parameters = (List<string>)GCHandle.FromIntPtr(clientData).Target!;
+                var name = GetSpelling(cursor);
+                var type = GetTypeSpellingStr(clang_getCursorType(cursor));
+                parameters.Add(string.IsNullOrEmpty(name) ? type : $"{type} {name}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NoteSuppressed(ex);
+        }
+
+        // Parameters are direct children; descending further would reach into the body.
+        return CXChildVisitResult.CXChildVisit_Continue;
+    }
+
+    /// <summary>
+    /// Returns the condition of every <c>if (...) throw</c> guard in a method body.
+    /// </summary>
+    /// <remarks>
+    /// Scanned by hand rather than by regular expression because the conditions contain nested
+    /// calls — <c>std::fabs(m[best][pivot]) &lt; 1e-12</c> — and a pattern that stops at the first
+    /// closing bracket truncates them into something that no longer means anything.
+    /// </remarks>
+    private static List<string> ExtractGuardConditionsCpp(string source)
+    {
+        var conditions = new List<string>();
+        if (string.IsNullOrEmpty(source))
+        {
+            return conditions;
+        }
+
+        var i = 0;
+        while (i + 2 < source.Length)
+        {
+            if (source[i] != 'i' || source[i + 1] != 'f')
+            {
+                i++;
+                continue;
+            }
+
+            // "elif" and identifiers ending in "if" are not the keyword.
+            if (i > 0 && (char.IsLetterOrDigit(source[i - 1]) || source[i - 1] == '_'))
+            {
+                i++;
+                continue;
+            }
+
+            var open = i + 2;
+            while (open < source.Length && char.IsWhiteSpace(source[open]))
+            {
+                open++;
+            }
+
+            if (open >= source.Length || source[open] != '(')
+            {
+                i++;
+                continue;
+            }
+
+            var depth = 0;
+            var close = open;
+            while (close < source.Length)
+            {
+                if (source[close] == '(')
+                {
+                    depth++;
+                }
+                else if (source[close] == ')')
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        break;
+                    }
+                }
+
+                close++;
+            }
+
+            if (close >= source.Length)
+            {
+                break;
+            }
+
+            if (ThrowsImmediately(source, close + 1))
+            {
+                var condition = NormalizeWhitespace(source[(open + 1)..close]).Trim();
+                if (condition.Length > 0)
+                {
+                    conditions.Add(condition);
+                }
+            }
+
+            // Resume past this guard: a nested `if` inside it is found on the next pass.
+            i = close + 1;
+        }
+
+        return conditions;
+    }
+
+    /// <summary>
+    /// Whether the statement beginning at <paramref name="index"/> throws, so the condition guarding
+    /// it describes when the method rejects its input.
+    /// </summary>
+    private static bool ThrowsImmediately(string source, int index)
+    {
+        var i = index;
+        while (i < source.Length && char.IsWhiteSpace(source[i]))
+        {
+            i++;
+        }
+
+        if (i >= source.Length)
+        {
+            return false;
+        }
+
+        // A braced body ends at its matching brace; a bare statement ends at its semicolon.
+        int end;
+        if (source[i] == '{')
+        {
+            var depth = 0;
+            for (end = i; end < source.Length; end++)
+            {
+                if (source[end] == '{')
+                {
+                    depth++;
+                }
+                else if (source[end] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            end = source.IndexOf(';', i);
+            if (end < 0)
+            {
+                end = source.Length - 1;
+            }
+        }
+
+        var statement = source[i..Math.Min(end + 1, source.Length)];
+
+        // A guard throws directly. An ordinary branch that merely contains a nested check is not
+        // stating a requirement of its own, and recording it as one describes the method wrongly.
+        if (statement.Contains("if", StringComparison.Ordinal) &&
+            SafeRegex.IsMatch(statement, @"\bif\s*\("))
+        {
+            var firstNested = SafeRegex.Match(statement, @"\bif\s*\(").Index;
+            var firstThrow = SafeRegex.Match(statement, @"\bthrow\b");
+            return firstThrow.Success && firstThrow.Index < firstNested;
+        }
+
+        return SafeRegex.IsMatch(statement, @"\bthrow\b");
     }
 
     /// <summary>
@@ -1139,8 +1368,7 @@ public class CppParser : ILanguageParser
                 // ParmDecl is not VarDecl; this branch handles direct children only.
             }
 
-            if (parentKind is CXCursorKind.CXCursor_ClassDecl or CXCursorKind.CXCursor_StructDecl
-                or CXCursorKind.CXCursor_FieldDecl)
+            if (IsTypeDeclaration(parentKind) || parentKind is CXCursorKind.CXCursor_FieldDecl)
             {
                 return CXChildVisitResult.CXChildVisit_Recurse;
             }
@@ -1201,13 +1429,74 @@ public class CppParser : ILanguageParser
             // always stored the whole body, which is why only C++ was affected. The language model
             // path caps the snippet separately when building a prompt, so nothing downstream
             // depends on the cap being applied here.
-            return Encoding.UTF8.GetString(fileBytes, (int)startOffset, length);
+            var text = Encoding.UTF8.GetString(fileBytes, (int)startOffset, length);
+
+            // A const member function of a class template reports an extent that stops at the end
+            // of its declaration, so its body never reached the analysers. The method then appeared
+            // to throw nothing and require nothing, and the recursion rule — finding the name in
+            // what was left, which is only the signature — reported it as calling itself. When the
+            // very next thing after the extent is an opening brace, that body belongs to this
+            // cursor and is taken with it.
+            if (!text.Contains('{', StringComparison.Ordinal))
+            {
+                var bodyEnd = FindInlineBodyEnd(fileBytes, (int)startOffset + length);
+                if (bodyEnd > startOffset)
+                {
+                    return Encoding.UTF8.GetString(fileBytes, (int)startOffset, bodyEnd - (int)startOffset);
+                }
+            }
+
+            return text;
         }
         catch (Exception ex)
         {
             NoteSuppressed(ex);
             return string.Empty;
         }
+    }
+
+    /// <summary>
+    /// Index just past the closing brace of a body starting at <paramref name="from"/>, or -1 when
+    /// no body follows.
+    /// </summary>
+    /// <remarks>
+    /// Only an immediate opening brace counts. A declaration ending in <c>;</c>, <c>= default</c> or
+    /// <c>= 0</c> has no body of its own, and extending to the next brace would attach the following
+    /// function's code to it.
+    /// </remarks>
+    private static int FindInlineBodyEnd(byte[] fileBytes, int from)
+    {
+        var index = from;
+        while (index < fileBytes.Length && char.IsWhiteSpace((char)fileBytes[index]))
+        {
+            index++;
+        }
+
+        if (index >= fileBytes.Length || fileBytes[index] != (byte)'{')
+        {
+            return -1;
+        }
+
+        var depth = 0;
+        while (index < fileBytes.Length)
+        {
+            if (fileBytes[index] == (byte)'{')
+            {
+                depth++;
+            }
+            else if (fileBytes[index] == (byte)'}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return index + 1;
+                }
+            }
+
+            index++;
+        }
+
+        return -1;
     }
 
     private static string? InferOperationalLimitCpp(string name, string type, string methodSource)
@@ -1488,6 +1777,17 @@ public class CppParser : ILanguageParser
         parentKind is CXCursorKind.CXCursor_TranslationUnit
             or CXCursorKind.CXCursor_Namespace
             or CXCursorKind.CXCursor_LinkageSpec;
+
+    /// <summary>
+    /// Whether the cursor declares a type. A class template declares one just as a plain class
+    /// does, and the checks that decide whether something is a member, or which class encloses it,
+    /// are wrong for every templated type unless both kinds are accepted here.
+    /// </summary>
+    private static bool IsTypeDeclaration(CXCursorKind kind) =>
+        kind is CXCursorKind.CXCursor_ClassDecl
+            or CXCursorKind.CXCursor_StructDecl
+            or CXCursorKind.CXCursor_ClassTemplate
+            or CXCursorKind.CXCursor_ClassTemplatePartialSpecialization;
 
     private static bool LooksLikeInterface(string name) =>
         name.Length >= 2 && name[0] == 'I' && char.IsUpper(name[1]);
@@ -1844,6 +2144,12 @@ public class CppParser : ILanguageParser
         CXCursor_FieldDecl = 6,
         CXCursor_FunctionDecl = 8,
         CXCursor_VarDecl = 9,
+        // A template is reported under its own kind, never as FunctionDecl or ClassDecl. Without
+        // these a templated function or class is invisible to the walk: it is not a parse failure,
+        // so nothing is reported, and the code simply never appears in the results.
+        CXCursor_FunctionTemplate = 30,
+        CXCursor_ClassTemplate = 31,
+        CXCursor_ClassTemplatePartialSpecialization = 32,
         CXCursor_ParmDecl = 10,
         CXCursor_CXXMethod = 21,
         CXCursor_Namespace = 22,

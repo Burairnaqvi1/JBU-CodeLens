@@ -14,8 +14,8 @@ using MethodDetailContext = JBU.CodeLens.Shared.Structural.MethodDetailContext;
 
 namespace JBU.CodeLens.UI.Renderers;
 
-/// <summary>Which metric category a dashboard tile drills into.</summary>
-public enum MetricCategory { Classes, Methods, Properties, Fields, Namespaces, Relationships }
+/// <summary>Which kind of item a Browse row drills into.</summary>
+public enum MetricCategory { Classes, Methods, Properties }
 
 /// <summary>
 /// One row in a metric drill-down list: a primary label, an optional detail string, and an
@@ -223,104 +223,78 @@ internal static class DetailPanelRenderer
             marginTop: 10));
     }
 
-    // ── Metrics dashboard ─────────────────────────────────────────────────────
+    // ── Browse the project ────────────────────────────────────────────────────
 
     /// <summary>
-    /// Renders the computed project metrics as a row of stat tiles counting what the scan found.
-    /// All values are already computed during the scan — this is presentation only.
+    /// Renders the way into everything the scan found: one row per kind of item, each opening
+    /// the list behind it.
+    ///
+    /// This was a dashboard of six large stat tiles. The counts are the least useful thing on
+    /// the page — the status bar and the project header already state them, and no count here
+    /// has a threshold or a judgment attached, so none of them ever changed a decision. What
+    /// people used the tiles for was the drill-down: this is the only place that lists every
+    /// class or method in the project, since the explorer is per-file. So the navigation stays
+    /// and the counts demote to a detail beside each row.
     /// </summary>
-    public static void RenderMetricsDashboard(
+    public static void RenderBrowseSection(
         StackPanel host,
         JBU.CodeLens.Shared.Structural.MetricsResult metrics,
-        JBU.CodeLens.Shared.Structural.ProjectIR? ir,
         FrameworkElement resourceRoot,
         Action<MetricCategory>? onCategoryClick = null)
     {
-        // The size tiles drill into the actual items they count; a null handler leaves them
-        // as plain stat cards.
-        Action? Drill(MetricCategory category) =>
-            onCategoryClick is null ? null : () => onCategoryClick(category);
+        AddSection(host, "Browse the project", resourceRoot);
+        host.Children.Add(CreateMutedText(
+            "Jump to everything the scan found.", resourceRoot, marginTop: 0));
 
-        AddSection(host, "Size", resourceRoot);
-        var sizeTiles = new WrapPanel { Margin = new Thickness(0, 2, 0, 4) };
-        sizeTiles.Children.Add(CreateStatTile("Classes", metrics.TotalClasses.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Classes)));
-        sizeTiles.Children.Add(CreateStatTile("Methods", metrics.TotalMethods.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Methods)));
-        sizeTiles.Children.Add(CreateStatTile("Properties", metrics.TotalProperties.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Properties)));
-        sizeTiles.Children.Add(CreateStatTile("Fields", metrics.TotalFields.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Fields)));
-        sizeTiles.Children.Add(CreateStatTile("Namespaces", metrics.TotalNamespaces.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Namespaces)));
-        sizeTiles.Children.Add(CreateStatTile("Relationships", metrics.TotalRelationships.ToString(CultureInfo.InvariantCulture), "PrimaryBrush", resourceRoot, Drill(MetricCategory.Relationships)));
-        host.Children.Add(sizeTiles);
+        var rows = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+        void AddRow(MetricCategory category, int count)
+        {
+            var row = CreateDrillRow(
+                new DrillDownItem(
+                    MetricLabel(category),
+                    count.ToString(CultureInfo.InvariantCulture),
+                    onCategoryClick is null ? null : () => onCategoryClick(category)),
+                resourceRoot);
+
+            // The plain-words explanation still has to be reachable — it moves to a hover hint
+            // now that there is no room for a caption under a label.
+            row.ToolTip = DescribeMetric(category);
+            rows.Children.Add(row);
+        }
+
+        // Only the things a reader can name without being taught the language's vocabulary.
+        // Fields, namespaces and relationships were dropped because explaining them cost more
+        // than the row was worth; their counts survive in the exports for anyone who wants them.
+        AddRow(MetricCategory.Classes, metrics.TotalClasses);
+        AddRow(MetricCategory.Methods, metrics.TotalMethods);
+        AddRow(MetricCategory.Properties, metrics.TotalProperties);
+
+        host.Children.Add(WrapInCard(rows, resourceRoot));
     }
 
-    private static FrameworkElement CreateStatTile(
-        string label, string value, string valueBrushKey, FrameworkElement resourceRoot, Action? onClick = null)
+    /// <summary>The row label for a kind of item — also the title of its drill-down list.</summary>
+    public static string MetricLabel(MetricCategory category) => category switch
     {
-        var stack = new StackPanel();
-        stack.Children.Add(new TextBlock
-        {
-            Text = value,
-            FontSize = 40,
-            FontWeight = FontWeights.Bold,
-            Foreground = Brush(resourceRoot, valueBrushKey),
-        });
+        MetricCategory.Classes => "Classes",
+        MetricCategory.Methods => "Methods",
+        _ => "Properties",
+    };
 
-        // Clickable tiles get a small "view" affordance next to the label so it's clear they
-        // drill in, not just a hover flourish.
-        var labelRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
-        labelRow.Children.Add(new TextBlock
-        {
-            Text = label.ToUpperInvariant(),
-            FontSize = 12,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-        if (onClick is not null)
-        {
-            labelRow.Children.Add(new TextBlock
-            {
-                Text = "",
-                FontFamily = (FontFamily)resourceRoot.FindResource("IconFont"),
-                FontSize = 8,
-                Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(5, 1, 0, 0),
-                Opacity = 0.8,
-            });
-        }
-
-        stack.Children.Add(labelRow);
-
-        var tile = new Border
-        {
-            Background = Brush(resourceRoot, "SurfaceBrush"),
-            BorderBrush = Brush(resourceRoot, "BorderBrush"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(22, 20, 22, 20),
-            Margin = new Thickness(0, 0, 12, 12),
-            // Wide enough that six tiles fill the panel rather than huddling at the top-left,
-            // now that the quality and complexity cards below them are gone.
-            MinWidth = 180,
-            MinHeight = 118,
-            Child = stack,
-        };
-
-        AttachHoverLift(tile, resourceRoot);
-
-        if (onClick is null)
-        {
-            return tile;
-        }
-
-        // Clickable tiles are wrapped in a chromeless Button so they are also keyboard-operable
-        // (Enter/Space) and exposed to screen readers / UI Automation as invokable — the Border
-        // still carries all the visuals and the hover lift.
-        tile.Margin = new Thickness(0);
-        var button = WrapClickable(tile, onClick, $"{label}: {value}. Show list.");
-        button.Margin = new Thickness(0, 0, 12, 12);
-        return button;
-    }
+    /// <summary>
+    /// One sentence saying, in plain words, what a kind of item is. Users could tell what
+    /// "Classes" and "Methods" meant but not the other four, so a bare one-word label is
+    /// never the only explanation: browse rows carry this as a hover hint, and each
+    /// drill-down list prints it under the title.
+    /// </summary>
+    public static string DescribeMetric(MetricCategory category) => category switch
+    {
+        MetricCategory.Classes =>
+            "A class is one type defined in the code — it groups related data and the operations on it.",
+        MetricCategory.Methods =>
+            "A method is a named block of code inside a class — an action the program can carry out.",
+        _ =>
+            "A property is a named value a class exposes to the outside, with controlled reading and writing.",
+    };
 
     // ── Metric drill-down list ────────────────────────────────────────────────
 
@@ -356,7 +330,8 @@ internal static class DetailPanelRenderer
         string title,
         IReadOnlyList<DrillDownItem> items,
         Action onBack,
-        FrameworkElement resourceRoot)
+        FrameworkElement resourceRoot,
+        string? description = null)
     {
         host.Children.Add(CreateBackButton(onBack, resourceRoot));
 
@@ -366,8 +341,16 @@ internal static class DetailPanelRenderer
             FontSize = 20,
             FontWeight = FontWeights.SemiBold,
             Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
-            Margin = new Thickness(0, 0, 0, 10),
+            Margin = new Thickness(0, 0, 0, description is null ? 10 : 4),
         });
+
+        // Says what this kind of item is before listing them, so the list is readable by
+        // someone who does not already know the term in the title.
+        if (!string.IsNullOrEmpty(description))
+        {
+            host.Children.Add(CreateMutedText(description, resourceRoot, marginTop: 0));
+            host.Children.Add(new Border { Height = 10 });
+        }
 
         if (items.Count == 0)
         {
@@ -450,54 +433,6 @@ internal static class DetailPanelRenderer
             string.IsNullOrEmpty(item.Secondary) ? item.Primary : $"{item.Primary}, {item.Secondary}");
     }
 
-    /// <summary>
-    /// Gives a card a subtle lift on hover — it rises a few pixels, gains a soft shadow, and its
-    /// border picks up the accent — so the dashboard feels responsive without implying the tile
-    /// is a button. Animations are short (≈140 ms) and eased.
-    /// </summary>
-    private static void AttachHoverLift(Border card, FrameworkElement resourceRoot)
-    {
-        var lift = new TranslateTransform(0, 0);
-        card.RenderTransform = lift;
-        var shadow = new System.Windows.Media.Effects.DropShadowEffect
-        {
-            BlurRadius = 16,
-            ShadowDepth = 3,
-            Direction = 270,
-            Opacity = 0,
-            // Not a theme colour. A drop shadow is an absence of light rather than a hue, so it
-            // is black in both themes; the strength is carried by Opacity below, which is what
-            // the animation varies. A themed colour here would also be misleading, because
-            // DropShadowEffect ignores the alpha channel of the colour it is given.
-            Color = Colors.Black,
-        };
-        card.Effect = shadow;
-
-        var ease = new System.Windows.Media.Animation.CubicEase
-        {
-            EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut,
-        };
-        var restBorder = Brush(resourceRoot, "BorderBrush");
-        var accentBorder = FindAccentBrush(resourceRoot);
-
-        card.MouseEnter += (_, _) =>
-        {
-            card.BorderBrush = accentBorder;
-            lift.BeginAnimation(TranslateTransform.YProperty,
-                new System.Windows.Media.Animation.DoubleAnimation(-4, TimeSpan.FromMilliseconds(140)) { EasingFunction = ease });
-            shadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty,
-                new System.Windows.Media.Animation.DoubleAnimation(0.22, TimeSpan.FromMilliseconds(140)));
-        };
-        card.MouseLeave += (_, _) =>
-        {
-            card.BorderBrush = restBorder;
-            lift.BeginAnimation(TranslateTransform.YProperty,
-                new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(160)) { EasingFunction = ease });
-            shadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty,
-                new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(160)));
-        };
-    }
-
     /// <summary>The accent gradient when defined, otherwise the flat primary brush.</summary>
     private static Brush FindAccentBrush(FrameworkElement resourceRoot) =>
         resourceRoot.TryFindResource("AccentGradientBrush") as Brush ?? Brush(resourceRoot, "PrimaryBrush");
@@ -542,7 +477,12 @@ internal static class DetailPanelRenderer
 
         host.Children.Add(new Border { Height = 1, Background = Brush(resourceRoot, "BorderBrush"), Margin = new Thickness(0, 16, 0, 16) });
 
-        TextBlock? aiBriefText = null;
+        // The code itself, before everything that describes it. Every other section on this page
+        // is a claim — inferred, or generated — and until now none of them could be checked
+        // against the thing they describe without leaving the application.
+        host.Children.Add(BuildSourceCard(method, resourceRoot));
+
+        TextBox? aiBriefText = null;
 
         // Row 1: Inputs/Outputs + Brief Description
         var row1 = new Grid { Margin = new Thickness(0, 0, 0, 12) };
@@ -861,7 +801,7 @@ internal static class DetailPanelRenderer
         MethodDetailContext context,
         FrameworkElement resourceRoot,
         IExplanationService? explanationService,
-        out TextBlock? aiBriefText)
+        out TextBox? aiBriefText)
     {
         var method = context.Method;
         aiBriefText = null;
@@ -995,6 +935,209 @@ internal static class DetailPanelRenderer
     /// worse than no range at all, because they have no way to tell a certainty from a guess —
     /// so the confidence is named and the originating line is quoted beside every row.
     /// </remarks>
+    /// <summary>
+    /// The method's own source, as the parser captured it.
+    /// </summary>
+    /// <remarks>
+    /// The two parsers store different things, so this normalises them: the C# parser keeps only
+    /// the body (<c>declaration.Body.ToString()</c>), while the C++ parser keeps the whole
+    /// declaration including its signature. Without the reconstructed signature line, the same
+    /// section would open on a bare "{" for C# and on a full declaration for C++.
+    ///
+    /// Collapsible and height-capped: a long method would otherwise push every other section off
+    /// the screen, and the point of putting the code first is that the rest stays reachable.
+    /// </remarks>
+    private static Border BuildSourceCard(MethodInfo method, FrameworkElement resourceRoot)
+    {
+        var stack = new StackPanel();
+
+        method.XmlDocTags.TryGetValue("sourceCode", out var storedBody);
+        method.XmlDocTags.TryGetValue("sourceSignature", out var storedSignature);
+        var body = storedBody?.TrimEnd() ?? string.Empty;
+        var signature = storedSignature?.Trim() ?? string.Empty;
+
+        // C++ stores the whole declaration in the body text already; prepending a signature
+        // would print it twice. C# stores the two separately and they are joined here.
+        var isCpp = LanguageFileExtensions.IsCppFile(method.ParentClass?.SourceFilePath ?? string.Empty);
+        string display;
+        if (isCpp)
+        {
+            display = Dedent(body);
+        }
+        else if (body.Length > 0)
+        {
+            display = signature.Length > 0 ? $"{signature}\n{Dedent(body)}" : Dedent(body);
+        }
+        else
+        {
+            // No body: abstract, interface, extern, partial. The signature IS the whole thing
+            // the file has to say about this method, so it is shown rather than an apology.
+            display = signature;
+        }
+
+        var headerRow = new DockPanel { LastChildFill = true };
+        if (display.Length > 0)
+        {
+            var copyButton = CreateCopyButton("Copy the source of this method", () => display, resourceRoot);
+            DockPanel.SetDock(copyButton, Dock.Right);
+            headerRow.Children.Add(copyButton);
+        }
+
+        var chevron = new TextBlock
+        {
+            Text = ChevronCollapsed,
+            FontFamily = (FontFamily)resourceRoot.FindResource("IconFont"),
+            FontSize = 9,
+            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 1, 7, 0),
+        };
+        var title = new TextBlock
+        {
+            Text = "Source",
+            FontSize = 13,
+            FontWeight = FontWeights.Bold,
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var titleRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
+        titleRow.Children.Add(chevron);
+        titleRow.Children.Add(title);
+
+        // The whole width of the header is the target, not just the arrow. WrapClickable's
+        // template is a bare ContentPresenter, which paints nothing and so is only hit-testable
+        // where its content actually is — a transparent Border stretched across the row gives
+        // the click somewhere to land, the way a disclosure row behaves everywhere else.
+        var titleTarget = new Border
+        {
+            Background = System.Windows.Media.Brushes.Transparent,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Child = titleRow,
+        };
+
+        // Declared here, assigned below — the toggle needs to reach the code surface, and the
+        // surface needs the source text that is built after this header.
+        Border? codeSurface = null;
+        headerRow.Children.Add(WrapClickable(
+            titleTarget,
+            () =>
+            {
+                if (codeSurface is null)
+                {
+                    return;
+                }
+
+                var collapsing = codeSurface.Visibility == Visibility.Visible;
+                codeSurface.Visibility = collapsing ? Visibility.Collapsed : Visibility.Visible;
+                chevron.Text = collapsing ? ChevronCollapsed : ChevronExpanded;
+            },
+            "Source — show or hide the code"));
+
+        stack.Children.Add(headerRow);
+        stack.Children.Add(new Border
+        {
+            Height = 1,
+            Background = Brush(resourceRoot, "BorderBrush"),
+            Margin = new Thickness(0, 6, 0, 8),
+        });
+
+        if (display.Length == 0)
+        {
+            stack.Children.Add(CreateItalicPlaceholder(
+                "No code was captured for this method.",
+                resourceRoot));
+            return WrapInCard(stack, resourceRoot);
+        }
+
+        var code = CreateSelectableText(display, resourceRoot);
+        code.FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont");
+        code.FontSize = 12;
+        // Never wrapped: wrapping code silently changes where its lines break, and the
+        // horizontal scrollbar below is what keeps indentation honest.
+        code.TextWrapping = TextWrapping.NoWrap;
+
+        var scroller = new ScrollViewer
+        {
+            Content = code,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            MaxHeight = 320,
+        };
+
+        codeSurface = new Border
+        {
+            Background = Brush(resourceRoot, "BackgroundBrush"),
+            BorderBrush = Brush(resourceRoot, "BorderBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 10, 12, 10),
+            Child = scroller,
+            // Closed on arrival: the reader asked for a method, not for a wall of code, and the
+            // sections below it are what most visits are for.
+            Visibility = Visibility.Collapsed,
+        };
+        stack.Children.Add(codeSurface);
+
+        var lineCount = display.AsSpan().Count('\n') + 1;
+        stack.Children.Add(CreateMutedText(
+            $"{lineCount} {(lineCount == 1 ? "line" : "lines")} as parsed from {System.IO.Path.GetFileName(method.ParentClass?.SourceFilePath ?? string.Empty)}",
+            resourceRoot,
+            marginTop: 8));
+
+        return WrapInCard(stack, resourceRoot);
+    }
+
+    /// <summary>
+    /// Removes the indentation the method carried from its position in the file, so the block
+    /// starts at the left edge of its panel.
+    /// </summary>
+    /// <remarks>
+    /// The parser stores the body verbatim, which means every line after the opening brace still
+    /// carries the file's indentation while the brace itself sits at column 0. Rendered as-is the
+    /// block looks broken — over-indented statements under a flush brace. Only whitespace common
+    /// to every non-blank line is removed, so relative indentation inside the method survives.
+    /// </remarks>
+    private static string Dedent(string text)
+    {
+        var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        if (lines.Length < 2)
+        {
+            return text;
+        }
+
+        // The first line is skipped: it is the opening brace (C#) or the signature (C++), which
+        // the parser already trimmed, so including it would always yield a common prefix of zero.
+        var common = int.MaxValue;
+        for (var i = 1; i < lines.Length; i++)
+        {
+            if (string.IsNullOrWhiteSpace(lines[i]))
+            {
+                continue;
+            }
+
+            var indent = 0;
+            while (indent < lines[i].Length && (lines[i][indent] == ' ' || lines[i][indent] == '\t'))
+            {
+                indent++;
+            }
+
+            common = Math.Min(common, indent);
+        }
+
+        if (common is 0 or int.MaxValue)
+        {
+            return string.Join('\n', lines);
+        }
+
+        for (var i = 1; i < lines.Length; i++)
+        {
+            lines[i] = lines[i].Length >= common ? lines[i][common..] : lines[i].TrimStart();
+        }
+
+        return string.Join('\n', lines);
+    }
+
     private static Border BuildVariableLimitsCard(MethodDetailContext context, FrameworkElement resourceRoot)
     {
         var stack = new StackPanel();
@@ -1575,7 +1718,7 @@ internal static class DetailPanelRenderer
         FrameworkElement resourceRoot,
         IExplanationService? explanationService,
         string? existingSummary,
-        TextBlock? aiBriefText,
+        TextBox? aiBriefText,
         out Action startGeneration)
     {
         var state = ChatStates.GetOrCreateValue(method);
@@ -2219,14 +2362,11 @@ internal static class DetailPanelRenderer
 
     private static void AddSection(StackPanel host, string title, FrameworkElement resourceRoot)
     {
-        host.Children.Add(new TextBlock
-        {
-            Text = title,
-            FontSize = 14,
-            FontWeight = FontWeights.Bold,
-            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
-            Margin = new Thickness(0, 20, 0, 0),
-        });
+        var heading = CreateSelectableText(title, resourceRoot);
+        heading.FontSize = 14;
+        heading.FontWeight = FontWeights.Bold;
+        heading.Margin = new Thickness(0, 20, 0, 0);
+        host.Children.Add(heading);
         host.Children.Add(new Border
         {
             Height = 1,
@@ -2235,16 +2375,14 @@ internal static class DetailPanelRenderer
         });
     }
 
-    private static TextBlock CreateCapsLabel(string text, FrameworkElement resourceRoot, double marginTop = 0)
+    private static TextBox CreateCapsLabel(string text, FrameworkElement resourceRoot, double marginTop = 0)
     {
-        return new TextBlock
-        {
-            Text = text,
-            FontSize = 10,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
-            Margin = new Thickness(0, marginTop, 0, 0),
-        };
+        var label = CreateSelectableText(text, resourceRoot);
+        label.FontSize = 10;
+        label.FontWeight = FontWeights.SemiBold;
+        label.Foreground = Brush(resourceRoot, "TextSecondaryBrush");
+        label.Margin = new Thickness(0, marginTop, 0, 0);
+        return label;
     }
 
     private static Button CreateRegenerateButton(string label, Action onClick, FrameworkElement resourceRoot, double marginTop = 0)
@@ -2492,25 +2630,25 @@ internal static class DetailPanelRenderer
     }
 
     /// <summary>
-    /// Single wrapping TextBlock combining a variable/property name and its type, using Runs so
+    /// Single wrapping line combining a variable/property name and its type, using Runs so
     /// the whole line reflows within the actual available width instead of overflowing a
     /// horizontal StackPanel (which measures children against infinite width).
     /// </summary>
-    private static TextBlock CreateNameTypeText(string name, string type, FrameworkElement resourceRoot)
+    private static RichTextBox CreateNameTypeText(string name, string type, FrameworkElement resourceRoot)
     {
-        var text = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        text.Inlines.Add(new Run(name)
-        {
-            FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont"),
-            FontWeight = FontWeights.SemiBold,
-            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
-        });
-        text.Inlines.Add(new Run($" ({type})")
-        {
-            Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
-            FontSize = 12,
-        });
-        return text;
+        return CreateSelectableRichText(
+            resourceRoot,
+            new Run(name)
+            {
+                FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont"),
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            },
+            new Run($" ({type})")
+            {
+                Foreground = Brush(resourceRoot, "TextSecondaryBrush"),
+                FontSize = 12,
+            });
     }
 
     private static Button CreateMethodRow(MethodInfo method, FrameworkElement resourceRoot, Action onClick)
@@ -2523,12 +2661,21 @@ internal static class DetailPanelRenderer
         var dot = new Ellipse { Width = 8, Height = 8, Fill = AccessBrush(method.AccessModifier, resourceRoot), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
         Grid.SetColumn(dot, 0);
 
+        // Deliberately NOT selectable, unlike the rest of the panel: this row is a button, and a
+        // selectable control swallows the mouse-down to start a selection, so clicking the method
+        // name stopped opening the method. Text that sits inside something clickable stays plain.
         var namePanel = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
         namePanel.Inlines.Add(new Run(method.Name) { FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextPrimaryBrush") });
         namePanel.Inlines.Add(new Run($"  {method.ReturnType}") { Foreground = Brush(resourceRoot, "TextSecondaryBrush") });
         Grid.SetColumn(namePanel, 1);
 
-        var paramCount = CreateMutedText($"{method.Parameters.Count} param{(method.Parameters.Count == 1 ? "" : "s")}", resourceRoot);
+        var paramCount = new TextBlock
+        {
+            Text = $"{method.Parameters.Count} param{(method.Parameters.Count == 1 ? "" : "s")}",
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            Opacity = 0.55,
+            TextWrapping = TextWrapping.Wrap,
+        };
         Grid.SetColumn(paramCount, 2);
 
         grid.Children.Add(dot); grid.Children.Add(namePanel); grid.Children.Add(paramCount);
@@ -2588,14 +2735,16 @@ internal static class DetailPanelRenderer
         var dot = new Ellipse { Width = 8, Height = 8, Fill = AccessBrush(property.AccessModifier, resourceRoot), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
         DockPanel.SetDock(dot, Dock.Left);
         panel.Children.Add(dot);
-        var text = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 13 };
-        text.Inlines.Add(new Run(property.Type)
-        {
-            FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont"),
-            Foreground = Brush(resourceRoot, "PrimaryBrush"),
-        });
-        text.Inlines.Add(new Run($"  {property.Name}") { FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextPrimaryBrush") });
-        text.Inlines.Add(new Run($"  ({property.AccessModifier})") { Foreground = Brush(resourceRoot, "TextSecondaryBrush") });
+        var text = CreateSelectableRichText(
+            resourceRoot,
+            new Run(property.Type)
+            {
+                FontFamily = (FontFamily)resourceRoot.FindResource("CodeFont"),
+                Foreground = Brush(resourceRoot, "PrimaryBrush"),
+            },
+            new Run($"  {property.Name}") { FontWeight = FontWeights.SemiBold, Foreground = Brush(resourceRoot, "TextPrimaryBrush") },
+            new Run($"  ({property.AccessModifier})") { Foreground = Brush(resourceRoot, "TextSecondaryBrush") });
+        text.FontSize = 13;
         panel.Children.Add(text);
         row.Child = panel;
         return row;
@@ -2609,36 +2758,145 @@ internal static class DetailPanelRenderer
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(8, 3, 8, 3),
             Margin = new Thickness(0, 4, 6, 4),
+            // Left non-selectable on purpose: a RichTextBox reports no natural content width, so
+            // it fills the pill and every chip stretched the width of the panel. A chip is one
+            // short word of decoration, which is the least of what anyone wants to copy.
             Child = new TextBlock { Text = text, Foreground = Brush(resourceRoot, "PrimaryBrush"), FontSize = 11 },
         };
     }
 
-    private static TextBlock CreateAccentTitle(string text, FrameworkElement resourceRoot, double fontSize = 20)
+    private static TextBox CreateAccentTitle(string text, FrameworkElement resourceRoot, double fontSize = 20)
     {
-        return new TextBlock { Text = text, FontSize = fontSize, FontWeight = FontWeights.Bold, Foreground = Brush(resourceRoot, "PrimaryBrush"), VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+        var title = CreateSelectableText(text, resourceRoot);
+        title.FontSize = fontSize;
+        title.FontWeight = FontWeights.Bold;
+        title.Foreground = Brush(resourceRoot, "PrimaryBrush");
+        title.VerticalAlignment = VerticalAlignment.Center;
+        title.TextWrapping = TextWrapping.Wrap;
+        return title;
     }
 
-    private static TextBlock CreateMutedText(string text, FrameworkElement resourceRoot, double marginTop = 0, double marginLeft = 0, double opacity = 0.55)
+    private static TextBox CreateMutedText(string text, FrameworkElement resourceRoot, double marginTop = 0, double marginLeft = 0, double opacity = 0.55)
     {
-        return new TextBlock { Text = text, Foreground = Brush(resourceRoot, "TextPrimaryBrush"), Opacity = opacity, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(marginLeft, marginTop, 0, 0) };
+        var muted = CreateSelectableText(text, resourceRoot);
+        muted.Opacity = opacity;
+        muted.TextWrapping = TextWrapping.Wrap;
+        muted.Margin = new Thickness(marginLeft, marginTop, 0, 0);
+        return muted;
     }
 
-    private static TextBlock CreateBodyText(string text, FrameworkElement resourceRoot, FontWeight? fontWeight = null, double marginTop = 0, double marginLeft = 0)
+    private static TextBox CreateBodyText(string text, FrameworkElement resourceRoot, FontWeight? fontWeight = null, double marginTop = 0, double marginLeft = 0)
     {
-        return new TextBlock { Text = text, Foreground = Brush(resourceRoot, "TextPrimaryBrush"), TextWrapping = TextWrapping.Wrap, FontWeight = fontWeight ?? FontWeights.Normal, Margin = new Thickness(marginLeft, marginTop, 0, 0), FontSize = 13 };
+        var body = CreateSelectableText(text, resourceRoot);
+        body.TextWrapping = TextWrapping.Wrap;
+        body.FontWeight = fontWeight ?? FontWeights.Normal;
+        body.Margin = new Thickness(marginLeft, marginTop, 0, 0);
+        body.FontSize = 13;
+        return body;
     }
 
-    private static TextBlock CreateItalicPlaceholder(string text, FrameworkElement resourceRoot, double marginTop = 0)
+    /// <summary>Chevron glyphs for a disclosure header: right when closed, down when open.</summary>
+    private const string ChevronCollapsed = "";
+
+    private const string ChevronExpanded = "";
+
+    /// <summary>
+    /// Text the reader can select with the mouse and copy, with the I-beam cursor that says so.
+    /// </summary>
+    /// <remarks>
+    /// WPF's TextBlock cannot be selected at all, so every description and every line of source
+    /// in this panel was unselectable: the only way to get any of it out of the application was
+    /// to retype it. A read-only TextBox is the standard way round that — it selects, it copies
+    /// with Ctrl+C and the context menu, and it shows an I-beam on hover.
+    ///
+    /// The explicit template matters: the window declares an implicit TextBox style for its
+    /// input fields, and without a template of its own every one of these would arrive wearing
+    /// the chrome of a text box waiting to be typed into.
+    /// </remarks>
+    private static TextBox CreateSelectableText(string text, FrameworkElement resourceRoot)
     {
-        return new TextBlock { Text = text, Foreground = Brush(resourceRoot, "TextPrimaryBrush"), Opacity = 0.55, FontStyle = FontStyles.Italic, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, marginTop, 0, 0), FontSize = 13 };
+        var host = new FrameworkElementFactory(typeof(ScrollViewer));
+        host.Name = "PART_ContentHost";
+        host.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Hidden);
+        host.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Hidden);
+        host.SetValue(FrameworkElement.FocusableProperty, false);
+
+        return new TextBox
+        {
+            Text = text,
+            IsReadOnly = true,
+            // Read-only alone still shows a caret and accepts the focus rectangle; this reads as
+            // an editable field to anyone who clicks it.
+            IsReadOnlyCaretVisible = false,
+            AcceptsReturn = true,
+            IsTabStop = false,
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            Cursor = System.Windows.Input.Cursors.IBeam,
+            Template = new ControlTemplate(typeof(TextBox)) { VisualTree = host },
+        };
+    }
+
+    /// <summary>
+    /// Selectable text that keeps mixed formatting on one line — a bold label beside a plain
+    /// value, or a type in the secondary colour beside a name in the primary one.
+    /// </summary>
+    /// <remarks>
+    /// A TextBox holds one run of formatting, so the lines built from several <see cref="Run"/>s
+    /// cannot use it without going flat. A read-only RichTextBox keeps the runs and still
+    /// selects. The FlowDocument's paragraph and page padding are both zeroed, because their
+    /// defaults would indent every one of these lines away from the text above it.
+    /// </remarks>
+    private static RichTextBox CreateSelectableRichText(FrameworkElement resourceRoot, params Inline[] inlines)
+    {
+        var paragraph = new Paragraph { Margin = new Thickness(0) };
+        foreach (var inline in inlines)
+        {
+            paragraph.Inlines.Add(inline);
+        }
+
+        var host = new FrameworkElementFactory(typeof(ScrollViewer));
+        host.Name = "PART_ContentHost";
+        host.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Hidden);
+        host.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Hidden);
+        host.SetValue(FrameworkElement.FocusableProperty, false);
+
+        return new RichTextBox
+        {
+            Document = new FlowDocument(paragraph) { PagePadding = new Thickness(0) },
+            IsReadOnly = true,
+            IsReadOnlyCaretVisible = false,
+            IsTabStop = false,
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            Foreground = Brush(resourceRoot, "TextPrimaryBrush"),
+            Cursor = System.Windows.Input.Cursors.IBeam,
+            Template = new ControlTemplate(typeof(RichTextBox)) { VisualTree = host },
+        };
+    }
+
+    private static TextBox CreateItalicPlaceholder(string text, FrameworkElement resourceRoot, double marginTop = 0)
+    {
+        var placeholder = CreateSelectableText(text, resourceRoot);
+        placeholder.Opacity = 0.55;
+        placeholder.FontStyle = FontStyles.Italic;
+        placeholder.TextWrapping = TextWrapping.Wrap;
+        placeholder.Margin = new Thickness(0, marginTop, 0, 0);
+        placeholder.FontSize = 13;
+        return placeholder;
     }
 
     private static StackPanel CreateLabeledRow(string label, string value, FrameworkElement resourceRoot, double marginTop = 0)
     {
         var panel = new StackPanel { Margin = new Thickness(0, marginTop, 0, 0) };
-        var line = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Brush(resourceRoot, "TextPrimaryBrush"), FontSize = 13 };
-        line.Inlines.Add(new Run($"{label}: ") { FontWeight = FontWeights.SemiBold });
-        line.Inlines.Add(new Run(value));
+        var line = CreateSelectableRichText(
+            resourceRoot,
+            new Run($"{label}: ") { FontWeight = FontWeights.SemiBold },
+            new Run(value));
+        line.FontSize = 13;
         panel.Children.Add(line);
         return panel;
     }

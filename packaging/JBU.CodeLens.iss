@@ -104,6 +104,7 @@ Filename: "{app}\JBU.CodeLens.UI.exe"; Description: "Launch JBU CodeLens"; \
 procedure InitializeWizard();
 var
   Shift: Integer;
+  SuppliedSerial: String;
 begin
   { The organisation is not recorded or used anywhere, so asking for it is a question with no
     consequence. Inno's user information page has no switch to omit a single field, so the two
@@ -113,6 +114,23 @@ begin
   WizardForm.UserInfoOrgEdit.Visible := False;
   WizardForm.UserInfoSerialLabel.Top := WizardForm.UserInfoSerialLabel.Top - Shift;
   WizardForm.UserInfoSerialEdit.Top := WizardForm.UserInfoSerialEdit.Top - Shift;
+
+  { Unattended installation. A silent install still runs the user information page, and a page it
+    cannot answer aborts setup during initialisation — exit code 1, nothing installed, and no
+    message, because silent mode has nowhere to show one. Supplying the answers on the command
+    line is the only way that page can be satisfied without a person:
+
+      JBU-CodeLens-Setup.exe /VERYSILENT /SERIALNUMBER=JBUC-XXXXX-XXXXX-XXXXX /NAME="..."
+
+    The serial is validated by exactly the same CheckSerial call as a typed one, so this is a way
+    to answer the question, not a way around it. }
+  SuppliedSerial := ExpandConstant('{param:SERIALNUMBER|}');
+  if SuppliedSerial <> '' then
+  begin
+    WizardForm.UserInfoSerialEdit.Text := SuppliedSerial;
+    if Trim(WizardForm.UserInfoNameEdit.Text) = '' then
+      WizardForm.UserInfoNameEdit.Text := ExpandConstant('{param:NAME|Unattended install}');
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

@@ -289,7 +289,14 @@ public class CSharpParser : ILanguageParser
         foreach (var parameter in declaration.ParameterList.Parameters)
         {
             var type = parameter.Type?.ToString() ?? "var";
-            methodInfo.Parameters.Add($"{type} {parameter.Identifier.Text}");
+
+            // Keep "out", "ref", "in" and "params". Dropping them made an output parameter read
+            // as an ordinary input everywhere the parameter list is shown — including a panel
+            // headed "Inputs / Outputs", which then stated the opposite of what the code does.
+            var modifiers = string.Join(" ", parameter.Modifiers.Select(m => m.Text));
+            methodInfo.Parameters.Add(modifiers.Length > 0
+                ? $"{modifiers} {type} {parameter.Identifier.Text}"
+                : $"{type} {parameter.Identifier.Text}");
         }
 
         CollectBodyFacts(declaration, methodInfo);
@@ -304,7 +311,41 @@ public class CSharpParser : ILanguageParser
             methodInfo.XmlDocTags["sourceCode"] = bodyText;
         }
 
+        // The declaration exactly as written, minus the body. Everything above this point has
+        // already discarded part of it — Name drops generic parameters, AccessModifier keeps only
+        // the access word (so "abstract", "static", "async" and "override" are gone), and
+        // Parameters is rebuilt as "Type name" (so "out", "ref", "params", defaults and
+        // attributes are gone). Anything displaying a signature had to reassemble it from those
+        // pieces and got something that was not what the file says. An abstract method also has
+        // no body at all, so without this there was nothing whatsoever to show for it.
+        methodInfo.XmlDocTags["sourceSignature"] = ExtractSignatureText(declaration);
+
         return methodInfo;
+    }
+
+    /// <summary>
+    /// The declaration as written in the file, with the body removed — modifiers, return type,
+    /// generic parameters, the full parameter list and any attributes, verbatim.
+    /// </summary>
+    /// <remarks>
+    /// Taken by cutting the body text off the end of the declaration rather than by rebuilding
+    /// it from tokens, so nothing can be dropped in the reassembly. A declaration with no body
+    /// (abstract, interface, extern, partial) is already only its signature and is returned
+    /// whole, semicolon included.
+    /// </remarks>
+    private static string ExtractSignatureText(BaseMethodDeclarationSyntax declaration)
+    {
+        // Node text excludes the node's own leading trivia, so the XML doc comment above the
+        // method is not part of this; attributes are child nodes and are kept.
+        var text = declaration.ToString();
+        var body = declaration.Body?.ToString() ?? declaration.ExpressionBody?.ToString();
+        if (string.IsNullOrEmpty(body))
+        {
+            return text.Trim();
+        }
+
+        var cut = text.LastIndexOf(body, StringComparison.Ordinal);
+        return (cut > 0 ? text[..cut] : text).Trim();
     }
 
     /// <summary>
@@ -409,10 +450,34 @@ public class CSharpParser : ILanguageParser
         };
     }
 
+    /// <summary>
+    /// Whether the statement is a guard body — one that throws directly rather than merely
+    /// containing something that might.
+    /// </summary>
+    /// <remarks>
+    /// Searching the whole subtree treated any branch holding a nested check as a guard, so an
+    /// ordinary branch such as <c>if (value.Contains(".."))</c> — which selects between two
+    /// readings before validating either — was recorded as a condition the caller must satisfy.
+    /// A guard rejects immediately; anything deeper belongs to the guard nested inside it, which is
+    /// recorded separately when this method is reached for that statement.
+    /// </remarks>
     private static bool ContainsThrow(StatementSyntax statement)
     {
-        return statement.DescendantNodesAndSelf().Any(node =>
-            node is ThrowStatementSyntax or ThrowExpressionSyntax);
+        if (statement is ThrowStatementSyntax)
+        {
+            return true;
+        }
+
+        if (statement is ExpressionStatementSyntax expression &&
+            expression.Expression is ThrowExpressionSyntax)
+        {
+            return true;
+        }
+
+        return statement is BlockSyntax block &&
+               block.Statements.Any(inner =>
+                   inner is ThrowStatementSyntax ||
+                   (inner is ExpressionStatementSyntax nested && nested.Expression is ThrowExpressionSyntax));
     }
 
     private static void AddLimit(List<string> limits, string description)

@@ -325,23 +325,33 @@
                         </StackPanel>
                     </Button>
 
+                    <!-- Icon + word, not a bare glyph: users reported not being able to find
+                         where the tree diagram is built, so both of these say what they do. -->
                     <Button x:Name="ScanButton"
                             Style="{StaticResource ToolbarIconButton}"
-                            Content="&#xE72C;"
                             Click="ScanButton_Click"
                             IsEnabled="False"
                             ToolTip="Rescan the current project (F5)"
                             AutomationProperties.Name="Rescan the current project"
-                            Margin="0,0,6,0"/>
+                            Margin="0,0,6,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE72C;" FontFamily="{DynamicResource IconFont}" FontSize="15" VerticalAlignment="Center"/>
+                            <TextBlock Text="Rescan" FontFamily="{DynamicResource UiFont}" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
 
                     <Button x:Name="VisualizeButton"
                             Style="{StaticResource ToolbarIconButton}"
-                            Content="&#xE8A9;"
                             Click="VisualizeButton_Click"
                             IsEnabled="False"
-                            ToolTip="Visualize the project structure as a tree diagram"
-                            AutomationProperties.Name="Visualize the project structure"
-                            Margin="0,0,10,0"/>
+                            ToolTip="Build a tree diagram of the whole project, and save it as an image"
+                            AutomationProperties.Name="Build the project tree diagram"
+                            Margin="0,0,10,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8A9;" FontFamily="{DynamicResource IconFont}" FontSize="15" VerticalAlignment="Center"/>
+                            <TextBlock Text="Tree" FontFamily="{DynamicResource UiFont}" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
 
                     <Border Width="1" Height="24" Background="{DynamicResource BorderBrush}" Margin="0,0,10,0"/>
 
