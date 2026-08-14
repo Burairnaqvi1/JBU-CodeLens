@@ -854,17 +854,6 @@ public partial class MainWindow : Window
         ExportJsonButton.IsEnabled = enabled;
     }
 
-    private static ProjectMetricsSnapshot? ToMetricsSnapshot(MetricsResult? metrics) =>
-        metrics is null
-            ? null
-            : new ProjectMetricsSnapshot
-            {
-                TotalClasses = metrics.TotalClasses,
-                TotalMethods = metrics.TotalMethods,
-                TotalNamespaces = metrics.TotalNamespaces,
-                TotalRelationships = metrics.TotalRelationships,
-            };
-
     private bool EnsureScanResultsForExport(string title)
     {
         if (_hasScanResults && _lastScanResults.Count > 0 && !string.IsNullOrEmpty(_lastScannedFolder))
@@ -1091,7 +1080,6 @@ public partial class MainWindow : Window
         var folder = _lastScannedFolder!;
         var service = _explanationService;
         var useAi = includeAi;
-        var metrics = ToMetricsSnapshot(_lastMetrics);
 
         await RunExportAsync(
             "Save project documentation",
@@ -1106,7 +1094,6 @@ public partial class MainWindow : Window
                 service,
                 useAi,
                 msg => Dispatcher.BeginInvoke(() => StatusBarText.Text = msg),
-                metrics,
                 token));
     }
 

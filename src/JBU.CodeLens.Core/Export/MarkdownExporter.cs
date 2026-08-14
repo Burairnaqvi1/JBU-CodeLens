@@ -25,8 +25,10 @@ public static class MarkdownExporter
         sb.AppendLine(CultureInfo.InvariantCulture, $"| Classes | {m?.TotalClasses ?? 0} |");
         sb.AppendLine(CultureInfo.InvariantCulture, $"| Methods | {m?.TotalMethods ?? 0} |");
         sb.AppendLine(CultureInfo.InvariantCulture, $"| Properties | {m?.TotalProperties ?? 0} |");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"| Namespaces | {m?.TotalNamespaces ?? 0} |");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"| Relationships | {m?.TotalRelationships ?? 0} |");
+
+        // Namespaces and relationships are deliberately absent: the application stopped counting
+        // them on screen, and an export that states more than the tool does invites the reader to
+        // trust a number they cannot go and check.
 
         sb.AppendLine();
 

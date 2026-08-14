@@ -154,8 +154,7 @@ public sealed class EndToEndPipelineTests : IDisposable
             result.ParseResults,
             explanationService: null,
             includeAi: false,
-            onProgress: null,
-            metrics: null);
+            onProgress: null);
         using var document = DocX.Load(docxPath);
         Assert.Contains(document.Paragraphs, p => p.Text.Contains("Circle", StringComparison.Ordinal));
     }

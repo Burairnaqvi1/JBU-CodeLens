@@ -70,14 +70,13 @@ public static class WordExporter
         IExplanationService? explanationService = null,
         bool includeAi = false,
         Action<string>? onProgress = null,
-        ProjectMetricsSnapshot? metrics = null,
         CancellationToken cancellationToken = default)
     {
         // Generation (especially with AI) can take minutes and fail midway; writing to a temp
         // file and moving on success guarantees the chosen path never holds a corrupt .docx —
         // including on cancellation, which propagates out of ExportCore before the final move.
         AtomicFileWriter.Write(outputPath, tempPath =>
-            ExportCore(tempPath, projectFolderPath, parseResults, explanationService, includeAi, onProgress, metrics, cancellationToken));
+            ExportCore(tempPath, projectFolderPath, parseResults, explanationService, includeAi, onProgress, cancellationToken));
     }
 
     private static void ExportCore(
@@ -87,7 +86,6 @@ public static class WordExporter
         IExplanationService? explanationService,
         bool includeAi,
         Action<string>? onProgress,
-        ProjectMetricsSnapshot? metrics,
         CancellationToken cancellationToken)
     {
         var projectName = Path.GetFileName(
@@ -99,7 +97,7 @@ public static class WordExporter
         document.Footers.Odd.PageNumbers = true;
 
         onProgress?.Invoke("Writing cover page…");
-        WriteCoverPage(document, projectName, parseResults, includeAi, metrics);
+        WriteCoverPage(document, projectName, parseResults, includeAi);
         document.InsertParagraph().InsertPageBreakAfterSelf();
 
         onProgress?.Invoke("Writing table of contents…");
@@ -137,8 +135,7 @@ public static class WordExporter
         DocX document,
         string projectName,
         List<ParseResult> parseResults,
-        bool includeAi,
-        ProjectMetricsSnapshot? metrics)
+        bool includeAi)
     {
         InsertLogo(document);
 
@@ -197,17 +194,10 @@ public static class WordExporter
         document.InsertParagraph($"Functions found: {stats.MethodCount}")
             .SpacingAfter(16d);
 
-        if (metrics is not null)
-        {
-            document.InsertParagraph("Project Metrics")
-                .Heading(HeadingType.Heading2)
-                .SpacingAfter(8d);
-
-            document.InsertParagraph($"Namespaces: {metrics.TotalNamespaces}")
-                .SpacingAfter(4d);
-            document.InsertParagraph($"Relationships: {metrics.TotalRelationships}")
-                .SpacingAfter(16d);
-        }
+        // No "Project Metrics" section. It reported namespace and relationship counts, which the
+        // application no longer shows, so a reader comparing the document against the tool found
+        // the document asserting things the tool did not. The counts are still in the JSON export
+        // for anything that consumes them programmatically.
 
         document.InsertParagraph("Class Breakdown by Category")
             .Heading(HeadingType.Heading2)
