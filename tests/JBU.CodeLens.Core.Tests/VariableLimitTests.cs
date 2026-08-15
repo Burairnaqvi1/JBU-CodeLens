@@ -1,4 +1,4 @@
-using JBU.CodeLens.Core.Analysis;
+﻿using JBU.CodeLens.Core.Analysis;
 using JBU.CodeLens.Shared.Models;
 
 namespace JBU.CodeLens.Core.Tests;
@@ -155,7 +155,7 @@ public class VariableLimitTests
     public void ASingleComparisonInABranch_IsNotTreatedAsALimit()
     {
         // Passing 0 here is perfectly legal; the method simply does nothing with it. Found in
-        // this project's own source, where "if (angle > 0)" tests the result of IndexOf — a
+        // this project's own source, where "if (angle > 0)" tests the result of IndexOf, a
         // value that is routinely -1, so "greater than 0" would have been a plain falsehood.
         var limits = Analyze(Context(
             """
@@ -268,7 +268,7 @@ public class VariableLimitTests
     public void AGuardAndAPlainComparisonAreReadOppositeWaysRound()
     {
         // A guard names what it refuses, so refusing "< 18" permits 18 and above. Read at face
-        // value, as a comparison is, it would come out as "less than 18" — the exact inverse.
+        // value, as a comparison is, it would come out as "less than 18", the exact inverse.
         var guarded = Analyze(Context(
             """
             public void Operate(int age)
@@ -644,7 +644,7 @@ public class VariableLimitTests
     {
         // It is initialised to a literal but does not stand for one, so quoting 5 would state a
         // bound the method never applies. The initial value has to be set for this to exercise
-        // the reassignment check at all — without it, resolution never starts and the test would
+        // the reassignment check at all, without it, resolution never starts and the test would
         // pass for the wrong reason.
         var parentClass = new ClassInfo { Name = "Sample", SourceFilePath = @"C:\proj\Sample.cs" };
         var method = new MethodInfo { Name = "Operate", ParentClass = parentClass };
@@ -838,7 +838,7 @@ public class VariableLimitTests
     [Fact]
     public void AValueTheMethodSubstitutesRatherThanRefuses_IsNotRestricted()
     {
-        // clampValue from the project's own C++ fixture. Passing -500 is perfectly legal — the
+        // clampValue from the project's own C++ fixture. Passing -500 is perfectly legal, the
         // method returns low instead. Reading the early return as a refusal would advertise a
         // restriction callers do not have to obey.
         var limits = Analyze(Context(

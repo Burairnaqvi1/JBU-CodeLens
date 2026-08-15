@@ -1,10 +1,10 @@
-using JBU.CodeLens.Core.Parsing.CSharp;
+﻿using JBU.CodeLens.Core.Parsing.CSharp;
 using JBU.CodeLens.Shared.Models;
 
 namespace JBU.CodeLens.Core.Tests;
 
 /// <summary>
-/// Tests for the Roslyn-backed C# parser, focused on XML documentation extraction — the
+/// Tests for the Roslyn-backed C# parser, focused on XML documentation extraction, the
 /// summaries are shown verbatim in the UI and exports, so dropped inline tags leave visible
 /// holes mid-sentence.
 /// </summary>
@@ -185,7 +185,7 @@ public sealed class CSharpParserTests : IDisposable
     public void NestedType_IsReportedUnderAQualifiedName()
     {
         // A nested type used to be missing from the tree, the exports and every measurement,
-        // with nothing said about it — silence that reads as "there is nothing there".
+        // with nothing said about it, silence that reads as "there is nothing there".
         var result = Parse("""
             namespace Demo
             {

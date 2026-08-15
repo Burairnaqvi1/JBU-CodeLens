@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using JBU.CodeLens.Core.Analysis;
 using JBU.CodeLens.Core.Parsing.CSharp;
@@ -171,8 +171,8 @@ public sealed class StressTests : IDisposable
     }
 
     /// <summary>
-    /// Real projects nest deeply — node_modules-style trees, generated output, vendored
-    /// dependencies — and the scanner walks whatever it is pointed at. A recursive walk that
+    /// Real projects nest deeply, node_modules-style trees, generated output, vendored
+    /// dependencies, and the scanner walks whatever it is pointed at. A recursive walk that
     /// works on three levels can still overflow the stack on sixty.
     /// </summary>
     [Fact]
@@ -198,7 +198,7 @@ public sealed class StressTests : IDisposable
 
     /// <summary>
     /// Paths past 260 characters are ordinary on Windows once a project sits a few folders down
-    /// inside a user profile. The scan must either read them or record them as failed files —
+    /// inside a user profile. The scan must either read them or record them as failed files, 
     /// what it must never do is abort the whole scan.
     /// </summary>
     [Fact]

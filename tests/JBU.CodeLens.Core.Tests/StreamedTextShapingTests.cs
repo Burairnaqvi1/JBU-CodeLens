@@ -1,4 +1,4 @@
-using JBU.CodeLens.Core.AI;
+﻿using JBU.CodeLens.Core.AI;
 
 namespace JBU.CodeLens.Core.Tests;
 
@@ -38,7 +38,7 @@ public class StreamedTextShapingTests
             .Select(partial => ExplanationService.TruncateProse(partial, maxSentences: 1, maxWords: 35))
             .Last();
 
-        // If these differ, the display changes at the moment generation ends — which is exactly the
+        // If these differ, the display changes at the moment generation ends, which is exactly the
         // shrink this shaping exists to prevent.
         Assert.Equal(final, lastPreview);
     }

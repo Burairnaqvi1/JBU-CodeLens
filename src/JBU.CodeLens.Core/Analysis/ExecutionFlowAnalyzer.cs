@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 using Microsoft.CodeAnalysis;
@@ -56,7 +56,7 @@ public sealed class ExecutionFlowAnalyzer
                         "(PreconditionAnalyzer, PostconditionAnalyzer, VariableAnalyzer, and so on) " +
                         "and invoked through a uniform _analyzer.Analyze(context) call. Making only " +
                         "this one static because it currently happens to hold no state would break " +
-                        "that symmetry for no measurable gain — it runs once per method, not in a " +
+                        "that symmetry for no measurable gain; it runs once per method, not in a " +
                         "hot loop.")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage(
         "Minor Code Smell",
@@ -336,7 +336,7 @@ public sealed class ExecutionFlowAnalyzer
             steps.Add(new RawStep(
                 0,
                 ExecutionStepKind.Validation,
-                $"Validate the input preconditions — throws {method.ThrownExceptions[0]} if violated"));
+                $"Validate the input preconditions; throws {method.ThrownExceptions[0]} if violated"));
         }
 
         if (issues.Any(i => i.Contains("null", StringComparison.OrdinalIgnoreCase)))

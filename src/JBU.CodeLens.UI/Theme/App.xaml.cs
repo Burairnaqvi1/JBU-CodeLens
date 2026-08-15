@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Windows;
@@ -23,7 +23,7 @@ public partial class App : Application
     {
         // An unhandled exception on the dispatcher ends the process immediately, with the
         // operating system's own crash box and nothing written down. That is the worst way for
-        // this application to fail — mid-demonstration, with no record of what happened. These
+        // this application to fail, mid-demonstration, with no record of what happened. These
         // three cover the places a fault can surface: the UI thread, a background thread, and a
         // Task whose result nobody awaited.
         DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -58,7 +58,7 @@ public partial class App : Application
 
     private static void OnDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
-        // Cannot be cancelled — the runtime is already tearing down — so this only records what
+        // Cannot be cancelled, the runtime is already tearing down. co this only records what
         // happened, which is the difference between a diagnosable failure and a mystery.
         Log(e.ExceptionObject as Exception, "background thread");
     }
@@ -117,7 +117,7 @@ public partial class App : Application
             var message = new TextBlock
             {
                 Text = "Something went wrong inside the application. The project you have open "
-                    + "is still loaded, so you can carry on — if the same thing keeps happening, "
+                    + "is still loaded, so you can carry on; if the same thing keeps happening, "
                     + "rescanning usually clears it.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 14),
@@ -180,7 +180,7 @@ public partial class App : Application
         }
         catch (Exception dialogFailure)
         {
-            // The themed dialog could not be shown — say it with the one mechanism that cannot
+            // The themed dialog could not be shown. cay it with the one mechanism that cannot
             // itself depend on the application's resources.
             Debug.WriteLine($"[JBU CodeLens] Could not show the failure dialog: {dialogFailure.Message}");
             MessageBox.Show(

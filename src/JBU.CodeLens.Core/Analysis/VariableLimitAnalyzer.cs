@@ -1,12 +1,12 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
-/// Works out the range of values each variable is allowed to hold inside a method — its
-/// operation limit — by reading the checks the method performs on it.
+/// Works out the range of values each variable is allowed to hold inside a method, its
+/// operation limit, by reading the checks the method performs on it.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -28,7 +28,7 @@ namespace JBU.CodeLens.Core.Analysis;
 /// <para>
 /// Every rule reports the line it read the limit from. Where two rules make rival claims about
 /// the same aspect of a variable, the better-evidenced one wins; where they describe different
-/// aspects — being present, and being short — both are true and are joined into one statement.
+/// aspects, being present, and being short, both are true and are joined into one statement.
 /// </para>
 /// <para>
 /// Comments and string literals are blanked out before any of this. A limit read from a
@@ -64,7 +64,7 @@ public sealed class VariableLimitAnalyzer
     /// </summary>
     /// <remarks>
     /// Two findings of the same kind are rival claims about one thing, so only the
-    /// better-evidenced survives — rules run strongest-first, so that is simply the first seen.
+    /// better-evidenced survives, rules run strongest-first, so that is simply the first seen.
     /// Findings of different kinds are complementary and are joined: a string required to be
     /// present and no longer than fifty characters reads "must not be null, at most 50
     /// characters", rather than the reader being shown half of what the code enforces.
@@ -179,7 +179,7 @@ public sealed class VariableLimitAnalyzer
     /// <remarks>
     /// Accumulated rather than reported one at a time. Writing the two ends as separate
     /// statements is at least as common as joining them with "or", and emitting them separately
-    /// meant only the first survived the merge — a value guarded at both ends was reported as
+    /// meant only the first survived the merge, a value guarded at both ends was reported as
     /// bounded at one, which understates what the method enforces.
     /// </remarks>
     private static IEnumerable<VariableLimit> RuleSingleBoundGuard(MethodAnalysisContext context)
@@ -246,7 +246,7 @@ public sealed class VariableLimitAnalyzer
 
             if (hasLow && hasHigh)
             {
-                // With both ends known the range reads better as whole numbers — "1 to 4" rather
+                // With both ends known the range reads better as whole numbers, "1 to 4" rather
                 // than "greater than 0, less than 5". Exclude leaves a floating-point bound
                 // exclusive, where stepping to the next whole number would forbid legal values.
                 var lowBound = low.Bound.Inclusive
@@ -297,7 +297,7 @@ public sealed class VariableLimitAnalyzer
                 var unit = UnitFor(declared.Type);
 
                 // Rejecting "> 50" permits up to 50; rejecting ">= 50" permits up to 49. The
-                // equality forms are how a fixed size is written — an account number refused
+                // equality forms are how a fixed size is written, an account number refused
                 // unless it is exactly twenty-two characters, or a batch refused when empty.
                 var text = match.Groups[2].Value switch
                 {
@@ -369,14 +369,14 @@ public sealed class VariableLimitAnalyzer
         foreach (var (name, declared) in known)
         {
             // The name must be the whole divisor. In "total / ir.Classes.Count" what must not be
-            // zero is the count, not ir — so anything followed by a member access, an index or a
+            // zero is the count, not ir. co anything followed by a member access, an index or a
             // call is a different expression that merely starts with this name.
             if (!SafeRegex.IsMatch(
                 CodeOnly(context),
                 $@"[/%]\s*{Regex.Escape(name)}\b(?!\s*[.\[(])")) continue;
 
             // A method that tests for zero and leaves without dividing has handled the case, so
-            // the caller may pass one. Only an unhandled division is a restriction — the same
+            // the caller may pass one. Only an unhandled division is a restriction, the same
             // distinction between refusing a value and coping with it that the guard rules draw.
             if (HandlesZeroBeforeDividing(context, name)) continue;
 
@@ -398,7 +398,7 @@ public sealed class VariableLimitAnalyzer
         var upper = new Dictionary<string, (string Bound, string Evidence)>(StringComparer.Ordinal);
 
         // Accumulated across guard lines rather than matched on one, because the two ends are
-        // often written as separate statements — "if (v < low) return low;" on one line and
+        // often written as separate statements, "if (v < low) return low;" on one line and
         // "if (v > high) return high;" on the next is the same restriction as the pair joined
         // by "||", and a one-line pattern would see neither.
         foreach (var line in RejectionLineList(context))
@@ -514,7 +514,7 @@ public sealed class VariableLimitAnalyzer
     {
         var known = DeclaredVariables(context);
 
-        // The span can be written either way round: as the values accepted, or — inside a guard —
+        // The span can be written either way round: as the values accepted, or, inside a guard, 
         // as the values refused. Both describe the same range, so both are read.
         foreach (Match match in SafeRegex.Matches(
             CodeOnly(context), @"\b([A-Za-z_]\w*)\s*>=\s*'(.)'\s*&&\s*\1\s*<=\s*'(.)'"))
@@ -587,7 +587,7 @@ public sealed class VariableLimitAnalyzer
 
         // Both ends, or nothing. A lone comparison is almost always a branch rather than a
         // restriction: "if (angle > 0)" on the result of IndexOf does not mean angle is positive,
-        // it means the code does something different when the character was found — angle is
+        // it means the code does something different when the character was found, angle is
         // routinely -1. Reported as a limit that would be a plain falsehood. Two ends bracketing
         // a value are far more often a range the method genuinely works within, and a value the
         // method truly refuses is caught by the guard rules, which read a throw rather than a
@@ -696,7 +696,7 @@ public sealed class VariableLimitAnalyzer
     /// The variables the method declares or receives, worked out once per method.
     /// </summary>
     /// <remarks>
-    /// Twelve rules each need this map, and each was rebuilding it — splitting every parameter
+    /// Twelve rules each need this map, and each was rebuilding it. cplitting every parameter
     /// string and re-scanning the body for field mentions twelve times for every method in a
     /// scan. Caching it against the context, as the cleaned source already is, removes eleven
     /// twelfths of that work from the busiest path in the application.
@@ -726,7 +726,7 @@ public sealed class VariableLimitAnalyzer
     /// Only a throw counts. An early <c>return</c> looks similar but means something different:
     /// <c>if (value &lt; low) return low;</c> does not forbid a low value, it substitutes one, so
     /// the caller may pass anything. Treating that as a refusal would state a restriction the
-    /// method does not impose — and <c>if (x is null) return;</c> would be read as "must not be
+    /// method does not impose, and <c>if (x is null) return;</c> would be read as "must not be
     /// null" when it means the exact opposite, that null is handled.
     /// </para>
     /// <para>
@@ -786,7 +786,7 @@ public sealed class VariableLimitAnalyzer
 
             // The condition opened a block. Only its first statement can be the refusal; anything
             // else means this is an ordinary branch. The opening brace may sit at the end of the
-            // condition or on a line of its own — the second is the usual C# convention, and
+            // condition or on a line of its own, the second is the usual C# convention, and
             // handling only the first missed most real guards.
             var first = FirstStatementOfBlock(lines, conditionEnd, line);
             if (first is not null && SafeRegex.IsMatch(first, @"^throw\b"))
@@ -879,7 +879,7 @@ public sealed class VariableLimitAnalyzer
 
         // The search stops at the statement the division belongs to. Without that boundary the
         // "return" of "return total / divisor;" is itself found, and every guarded division would
-        // look handled — including one guarded by a throw, where the restriction is real.
+        // look handled, including one guarded by a throw, where the restriction is real.
         var statementStart = code.LastIndexOfAny([';', '{', '}'], division.Index);
         if (statementStart < 0) return false;
 
@@ -947,7 +947,7 @@ public sealed class VariableLimitAnalyzer
 
     /// <summary>
     /// What the declared type permits, in words. Exact ranges for the narrow numeric types, and a
-    /// plain description for the wide ones — quoting the full span of an <c>int</c> tells the
+    /// plain description for the wide ones, quoting the full span of an <c>int</c> tells the
     /// reader nothing and crowds out the variables that carry a real restriction.
     /// </summary>
     private static string DescribeTypeRange(string type)
@@ -1040,7 +1040,7 @@ public sealed class VariableLimitAnalyzer
     private readonly record struct Bound(decimal Value, bool Inclusive);
 
     /// <summary>
-    /// The number in a literal, ignoring any type suffix C# or C++ may attach — <c>0m</c>,
+    /// The number in a literal, ignoring any type suffix C# or C++ may attach, <c>0m</c>,
     /// <c>1.5f</c>, <c>10L</c>.
     /// </summary>
     private const string NumberPattern = @"(-?\d+(?:\.\d+)?)(?:[fFdDmMlLuU]{1,2})?";
@@ -1052,12 +1052,12 @@ public sealed class VariableLimitAnalyzer
 
     /// <summary>
     /// Turns a bound into a number, following a name to its value where the name stands for a
-    /// fixed one — so <c>if (count &gt; MaxItems)</c> reports "100 or less" rather than falling
+    /// fixed one. co <c>if (count &gt; MaxItems)</c> reports "100 or less" rather than falling
     /// back to the range of the type.
     /// </summary>
     private static bool TryResolve(string token, MethodAnalysisContext context, out decimal value)
     {
-        // The token now arrives whole, so any type suffix C# or C++ attached — the "m" of 0m —
+        // The token now arrives whole, so any type suffix C# or C++ attached, the "m" of 0m, 
         // comes with it and has to come off before the number will parse.
         var literal = token.TrimEnd('f', 'F', 'd', 'D', 'm', 'M', 'l', 'L', 'u', 'U');
         if (literal.Length > 0 && char.IsAsciiDigit(literal[^1]) && TryParse(literal, out value))
@@ -1120,7 +1120,7 @@ public sealed class VariableLimitAnalyzer
     {
         // Stepping to the neighbouring whole number is only sound for a variable that counts in
         // whole numbers. On a floating-point variable "factor <= 0.0" refuses zero and everything
-        // below it, and 0.5 stays perfectly legal — reporting "1 or more" would forbid a value
+        // below it, and 0.5 stays perfectly legal, reporting "1 or more" would forbid a value
         // the method accepts, which is a rule the caller does not have to obey.
         if (decimal.Truncate(value) != value || IsFractionalType(declaredType))
         {
@@ -1193,7 +1193,7 @@ public sealed class VariableLimitAnalyzer
     /// <c>if (right &gt; 0 &amp;&amp; left &gt; max - right) throw</c> rejects no particular value
     /// of <c>right</c>: a caller may pass any <c>right</c> at all and stay inside the contract by
     /// choosing <c>left</c>. Read as two independent bounds, the two guards of a checked addition
-    /// combine into "right must be exactly 0" — a rule the method does not impose and the caller
+    /// combine into "right must be exactly 0", a rule the method does not impose and the caller
     /// does not have to obey. Saying nothing is the correct answer.
     /// </para>
     /// <para>

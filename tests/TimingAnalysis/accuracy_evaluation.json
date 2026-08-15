@@ -1,11 +1,11 @@
-[
+﻿[
   {
     "MethodName": "ValidateOrder",
     "H1": { "Verdict": "PASS", "Reason": "Correctly named the single parameter (Order order) and return type (bool)." },
     "H2": { "Verdict": "PARTIAL", "Reason": "Accurate but still restates the XML summary; does not name the null/Id/items/email/positive-amount checks." },
     "H3": { "Verdict": "PASS", "Reason": "Captured both key locals (hasValidCustomer, hasPositiveAmounts) with initializers." },
     "H4": { "Verdict": "PASS", "Reason": "Lists every real guard: order != null, Id > 0, Items non-empty, CustomerEmail non-blank, positive quantity/price. Previous run missed all of them." },
-    "H5": { "Verdict": "PARTIAL", "Reason": "Boolean-flag and return-false bullets are right, but one bullet invents 'uses recursion to check each item' — the method is not recursive." },
+    "H5": { "Verdict": "PARTIAL", "Reason": "Boolean-flag and return-false bullets are right, but one bullet invents 'uses recursion to check each item', the method is not recursive." },
     "H6": { "Verdict": "PASS", "Reason": "Correct: no exceptions in code and the AI agrees." },
     "Commentary": "H4 is the standout improvement: the guard-clause extraction now names all five real checks instead of paraphrasing the signature. The one blemish is an invented 'recursion' bullet in H5, likely echoed from the construct list in the prompt."
   },
@@ -15,8 +15,8 @@
     "H2": { "Verdict": "PARTIAL", "Reason": "Restates the XML summary plus the word 'iteratively'; the previous run described the actual loop and discount logic more concretely." },
     "H3": { "Verdict": "PASS", "Reason": "Captured subtotal = 0, itemTotal and totalTax with initializers." },
     "H4": { "Verdict": "PARTIAL", "Reason": "Still invents checks the code never makes ('ensures the Order object is not null', non-negative taxRate) and misses the Math.Round postcondition." },
-    "H5": { "Verdict": "PASS", "Reason": "Loop, per-item total, 10% discount at quantity >= 5, subtotal accumulation — all correct." },
-    "H6": { "Verdict": "PARTIAL", "Reason": "'Does not throw' is correct, but a second bullet claims the method 'handles exceptions internally', which it does not — there is no try/catch." },
+    "H5": { "Verdict": "PASS", "Reason": "Loop, per-item total, 10% discount at quantity >= 5, subtotal accumulation, all correct." },
+    "H6": { "Verdict": "PARTIAL", "Reason": "'Does not throw' is correct, but a second bullet claims the method 'handles exceptions internally', which it does not, there is no try/catch." },
     "Commentary": "The core loop pattern is still captured well, but this function collected the run's small regressions: a thinner brief and a phantom exception-handling bullet."
   },
   {
@@ -26,7 +26,7 @@
     "H3": { "Verdict": "PASS", "Reason": "Correctly reports no locals for the single LINQ expression body." },
     "H4": { "Verdict": "PARTIAL", "Reason": "Correctly refuses to invent preconditions (the code has no guards) but states no postcondition about the descending completed-orders map." },
     "H5": { "Verdict": "PASS", "Reason": "Clean decomposition of the chain: GroupBy(email) -> Sum -> Where(>= min) -> OrderByDescending." },
-    "H6": { "Verdict": "PASS", "Reason": "No throws and no internal handling — both statements are true of this body." },
+    "H6": { "Verdict": "PASS", "Reason": "No throws and no internal handling, both statements are true of this body." },
     "Commentary": "The LINQ chain remains one of the best-read patterns. The anti-invention instruction visibly changed H4 behaviour: instead of fabricating constraints it now says none are enforced, which is accurate but leaves the postcondition unstated."
   },
   {
@@ -35,7 +35,7 @@
     "H2": { "Verdict": "PARTIAL", "Reason": "Still a near-verbatim restatement of the XML summary." },
     "H3": { "Verdict": "PASS", "Reason": "Correctly reports no locals." },
     "H4": { "Verdict": "PASS", "Reason": "Captures the endpoint guard and, new this run, the true/false return semantics that reflect the internal catch." },
-    "H5": { "Verdict": "PASS", "Reason": "Names await, Task.Delay and try-catch as constructs and correctly states the _inventory mutation — the contradictory 'no side effects' bullet is gone." },
+    "H5": { "Verdict": "PASS", "Reason": "Names await, Task.Delay and try-catch as constructs and correctly states the _inventory mutation, the contradictory 'no side effects' bullet is gone." },
     "H6": { "Verdict": "PASS", "Reason": "AI text now names ArgumentException and its trigger, agreeing with the deterministic list instead of saying 'None'." },
     "Commentary": "The biggest per-function turnaround after IsSubcategoryOf: async/await is now called out, the state mutation is attributed to _inventory, and the AI error text agrees with the parser. Fixed by the verified-facts block (async, catch-without-rethrow, and Modifies-class-state facts)."
   },
@@ -45,7 +45,7 @@
     "H2": { "Verdict": "PASS", "Reason": "Describes the real return semantics: a list naming the products short on stock." },
     "H3": { "Verdict": "PASS", "Reason": "Captured missingItemsReport and the stockItem lookup." },
     "H4": { "Verdict": "PARTIAL", "Reason": "Generic assumptions again, including a garbled thread-safety claim; the returned-report postcondition is not stated." },
-    "H5": { "Verdict": "PASS", "Reason": "Lock for thread safety, foreach, FirstOrDefault lookup and the stock branch — the structural pattern is fully captured." },
+    "H5": { "Verdict": "PASS", "Reason": "Lock for thread safety, foreach, FirstOrDefault lookup and the stock branch, the structural pattern is fully captured." },
     "H6": { "Verdict": "PASS", "Reason": "No throws is correct; the graceful short-stock handling is noted, if loosely worded as 'exceptions'." },
     "Commentary": "The lock statement is again detected and explained. H4 remains the generic weak spot for this function."
   },
@@ -54,9 +54,9 @@
     "H1": { "Verdict": "PASS", "Reason": "Both parameters and the string return are correct." },
     "H2": { "Verdict": "PASS", "Reason": "Correctly frames threshold- and location-based risk evaluation." },
     "H3": { "Verdict": "PASS", "Reason": "Captured the riskScore = 0 accumulator." },
-    "H4": { "Verdict": "PARTIAL", "Reason": "Now names the three REAL return strings (HIGH/MEDIUM/LOW — the fabricated 'UNKNOWN RISK' is gone), but the trigger attribution is imprecise and bullets truncate." },
-    "H5": { "Verdict": "PASS", "Reason": "Conditional scoring captured; correctly states the method uses no recursion, locks, async or LINQ — grounded negative claims, not hallucinated ones." },
-    "H6": { "Verdict": "PASS", "Reason": "No exceptions — correct, and stated without the markdown artifacts of the previous run." },
+    "H4": { "Verdict": "PARTIAL", "Reason": "Now names the three REAL return strings (HIGH/MEDIUM/LOW, the fabricated 'UNKNOWN RISK' is gone), but the trigger attribution is imprecise and bullets truncate." },
+    "H5": { "Verdict": "PASS", "Reason": "Conditional scoring captured; correctly states the method uses no recursion, locks, async or LINQ, grounded negative claims, not hallucinated ones." },
+    "H6": { "Verdict": "PASS", "Reason": "No exceptions, correct, and stated without the markdown artifacts of the previous run." },
     "Commentary": "The fabricated 'UNKNOWN RISK' return value is eliminated: the verified Return-statements fact pinned the model to the three real strings. The stray 'State**:' markdown labels are also gone."
   },
   {
@@ -66,7 +66,7 @@
     "H3": { "Verdict": "PASS", "Reason": "Correctly reports no locals for the switch-expression body." },
     "H4": { "Verdict": "PARTIAL", "Reason": "Accurate but truncated; unlike the previous run it no longer enumerates the three formats or the default-arm exception in this section (H6 covers them)." },
     "H5": { "Verdict": "PASS", "Reason": "Pattern matching named; 'modifies no state / no side effects' correctly echoes the verified fact." },
-    "H6": { "Verdict": "PASS", "Reason": "The AI text now names NotSupportedException with its trigger and the three supported formats — the previous run's direct contradiction with the deterministic list is fixed." },
+    "H6": { "Verdict": "PASS", "Reason": "The AI text now names NotSupportedException with its trigger and the three supported formats, the previous run's direct contradiction with the deterministic list is fixed." },
     "Commentary": "The H6 self-contradiction (deterministic 'NotSupportedException' vs AI 'no errors can be thrown') is resolved; both halves now agree. H4 traded its format enumeration for more generic wording."
   },
   {
@@ -76,17 +76,17 @@
     "H3": { "Verdict": "PASS", "Reason": "Correctly reports no locals for the recursive body." },
     "H4": { "Verdict": "PARTIAL", "Reason": "Still says current is expected non-null although the method explicitly tolerates null; the true/false postcondition is now stated." },
     "H5": { "Verdict": "PASS", "Reason": "Recursion is now explicitly identified ('uses recursion to traverse the category tree') and the invented state mutation is replaced by a correct 'modifies no state'." },
-    "H6": { "Verdict": "PASS", "Reason": "No throws — correct; the null base case is handled." },
+    "H6": { "Verdict": "PASS", "Reason": "No throws, correct; the null base case is handled." },
     "Commentary": "The previous run's only FAIL is fixed. The 'Recursive: the method calls itself' and 'Modifies no state' verified facts produced exactly the two corrections needed: recursion detected, fabricated side effect gone."
   },
   {
     "MethodName": "GenerateNotificationEmail",
     "H1": { "Verdict": "PASS", "Reason": "All three parameters and string return are correct." },
-    "H2": { "Verdict": "PARTIAL", "Reason": "The single-sentence brief only lists the inputs and never says what the method does — the one-sentence cap cut the description short this run." },
+    "H2": { "Verdict": "PARTIAL", "Reason": "The single-sentence brief only lists the inputs and never says what the method does, the one-sentence cap cut the description short this run." },
     "H3": { "Verdict": "PASS", "Reason": "Captured emailBody with the full chained .Replace(...) initializer." },
     "H4": { "Verdict": "PASS", "Reason": "Grounded in the real returns: string.Empty for a blank template, the trimmed formatted body otherwise, no throws." },
     "H5": { "Verdict": "PASS", "Reason": "Replace-based token substitution and Trim captured; 'concatenation' is a minor mislabel of chaining." },
-    "H6": { "Verdict": "PASS", "Reason": "'None' is correct — no throw statements and guarded input." },
+    "H6": { "Verdict": "PASS", "Reason": "'None' is correct, no throw statements and guarded input." },
     "Commentary": "Five of six headings hold; the brief regressed to an inputs-only sentence, the run's only H2 downgrade against the baseline."
   },
   {
@@ -96,7 +96,7 @@
     "H3": { "Verdict": "PASS", "Reason": "Captured executionSuccess = false." },
     "H4": { "Verdict": "PASS", "Reason": "Preconditions (batch non-null, at least one order) and postconditions (true on success, false on exception) both correct and clearly separated." },
     "H5": { "Verdict": "PASS", "Reason": "foreach, try-catch and the finally cleanup all named; the previous 'does not return any value' contradiction is gone." },
-    "H6": { "Verdict": "PASS", "Reason": "Names InvalidOperationException with its trigger and — new this run — the catch-without-rethrow behaviour, echoing the verified fact verbatim." },
+    "H6": { "Verdict": "PASS", "Reason": "Names InvalidOperationException with its trigger and, new this run, the catch-without-rethrow behaviour, echoing the verified fact verbatim." },
     "Commentary": "A clean 6/6. The exception lifecycle is now fully documented: the guard throw, the internal catches, the finally block, and the boolean result instead of a propagated exception."
   }
 ]

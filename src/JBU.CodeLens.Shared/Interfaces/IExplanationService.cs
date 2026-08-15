@@ -1,9 +1,9 @@
-namespace JBU.CodeLens.Shared.Interfaces;
+﻿namespace JBU.CodeLens.Shared.Interfaces;
 
 /// <summary>
 /// AI documentation service backed by a local LLM. Implemented by Core's
 /// <c>ExplanationService</c>; the UI consumes only this interface.
-/// All generation methods are synchronous and potentially slow (seconds) — callers must invoke
+/// All generation methods are synchronous and potentially slow (seconds), callers must invoke
 /// them from a worker thread. Results for unchanged methods are served from a session cache.
 /// </summary>
 public interface IExplanationService : IDisposable
@@ -26,7 +26,7 @@ public interface IExplanationService : IDisposable
     /// <summary>
     /// 2-3 sentence explanation of what the method does and returns. When
     /// <paramref name="onPartial"/> is supplied it receives the accumulated raw text as the
-    /// model streams tokens (from the inference thread — marshal to the UI thread before
+    /// model streams tokens (from the inference thread, marshal to the UI thread before
     /// touching controls); the returned string is the final post-processed text and may differ
     /// slightly from the last partial.
     /// </summary>

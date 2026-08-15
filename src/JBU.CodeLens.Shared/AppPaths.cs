@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 namespace JBU.CodeLens.Shared;
 
 /// <summary>
@@ -40,7 +40,7 @@ public static class AppPaths
     /// process. Deliberately a copy rather than a move: an older build pointed at the legacy
     /// folder keeps working, so downgrading does not lose data. Runs at most once per process and
     /// only when the new folder does not yet exist, so it can never overwrite newer state.
-    /// Best-effort throughout — a failed migration costs regenerated cache, never a broken launch.
+    /// Best-effort throughout, a failed migration costs regenerated cache, never a broken launch.
     /// </summary>
     private static void MigrateLegacyFolderOnce(string currentDirectory)
     {

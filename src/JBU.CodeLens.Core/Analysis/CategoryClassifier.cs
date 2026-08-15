@@ -1,4 +1,4 @@
-namespace JBU.CodeLens.Core.Analysis;
+﻿namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
 /// Assigns a <see cref="CodeCategory"/> to a class using simple, defensible heuristics based on
@@ -41,7 +41,7 @@ public static class CategoryClassifier
     /// <list type="number">
     /// <item>
     /// <description>
-    /// <b>GUI logic</b> — the class derives from a known UI base type (<c>Window</c>,
+    /// <b>GUI logic</b>, the class derives from a known UI base type (<c>Window</c>,
     /// <c>UserControl</c>, <c>Page</c>, <c>Control</c>, <c>ContentControl</c>) or its name ends
     /// with a UI suffix (<c>Window</c>, <c>View</c>, <c>Control</c>, <c>Dialog</c>, <c>Page</c>).
     /// UI is checked first because such a class is presentation code even if it also looks like a
@@ -50,7 +50,7 @@ public static class CategoryClassifier
     /// </item>
     /// <item>
     /// <description>
-    /// <b>Utility</b> — the class name ends with a utility suffix (<c>Helper</c>, <c>Utility</c>,
+    /// <b>Utility</b>, the class name ends with a utility suffix (<c>Helper</c>, <c>Utility</c>,
     /// <c>Utils</c>, <c>Extensions</c>), or the class is shaped like a stateless function bag:
     /// no dependencies, no properties (so it carries no state), but at least one method (so it
     /// does provide behavior).
@@ -58,7 +58,7 @@ public static class CategoryClassifier
     /// </item>
     /// <item>
     /// <description>
-    /// <b>Business logic</b> — the default when nothing above matches; assumed to model core
+    /// <b>Business logic</b>, the default when nothing above matches; assumed to model core
     /// domain behavior and data.
     /// </description>
     /// </item>

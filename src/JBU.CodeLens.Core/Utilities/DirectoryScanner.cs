@@ -1,4 +1,4 @@
-namespace JBU.CodeLens.Core.Utilities;
+﻿namespace JBU.CodeLens.Core.Utilities;
 
 /// <summary>
 /// Locates source files within a project directory tree, skipping folders that contain
@@ -70,7 +70,7 @@ public static class DirectoryScanner
                         continue;
                     }
 
-                    // Reading attributes can fail on its own — the folder may have been removed
+                    // Reading attributes can fail on its own, the folder may have been removed
                     // since it was enumerated, or be readable as a name but not as an entry. That
                     // must cost only this folder: handled by the outer catch it would abandon every
                     // sibling still to come in this directory, quietly under-scanning the project

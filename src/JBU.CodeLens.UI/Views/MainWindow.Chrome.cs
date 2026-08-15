@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -12,7 +12,7 @@ namespace JBU.CodeLens.UI.Views;
 /// </summary>
 /// <remarks>
 /// Split out of MainWindow.xaml.cs, which had grown past 1900 lines. None of this touches
-/// scanning, parsing, or the detail panel — it is the chrome the rest of the window sits in,
+/// scanning, parsing, or the detail panel, it is the chrome the rest of the window sits in,
 /// and keeping it here makes the main file the story of the application rather than of its
 /// decoration.
 /// </remarks>

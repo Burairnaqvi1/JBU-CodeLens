@@ -1,10 +1,10 @@
-using JBU.CodeLens.Shared.Structural;
+﻿using JBU.CodeLens.Shared.Structural;
 
 namespace JBU.CodeLens.Shared.Interfaces;
 
 /// <summary>
 /// Documentation export in the supported formats. Implemented by Core's <c>ExportService</c>;
-/// the UI consumes only this interface. All methods are synchronous and I/O-bound — callers
+/// the UI consumes only this interface. All methods are synchronous and I/O-bound, callers
 /// invoke them from a worker thread.
 /// </summary>
 public interface IExportService

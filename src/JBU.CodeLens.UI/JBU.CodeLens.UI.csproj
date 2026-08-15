@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -39,7 +39,7 @@
     The Visual C++ runtime, shipped beside the executable.
 
     The llama/ggml native libraries are built with MSVC and import MSVCP140, VCRUNTIME140,
-    VCRUNTIME140_1 and VCOMP140. Those are NOT part of Windows — they arrive with the Visual C++
+    VCRUNTIME140_1 and VCOMP140. Those are NOT part of Windows, they arrive with the Visual C++
     Redistributable, which a developer machine has and a clean one does not. Without them the app
     starts and then fails to load the model, which is the worst possible shape for the failure:
     it looks like the AI is broken rather than like something is missing.

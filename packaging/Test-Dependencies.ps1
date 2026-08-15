@@ -1,9 +1,9 @@
-<#
+﻿<#
 .SYNOPSIS
     Checks that every DLL the published application imports will be present on a clean Windows.
 
 .DESCRIPTION
-    Reads the real PE import tables — both the normal and the delay-load directory — of every
+    Reads the real PE import tables, both the normal and the delay-load directory, of every
     executable and DLL in a published folder, and sorts what they import into three groups:
 
       shipped   the file sits in the package itself

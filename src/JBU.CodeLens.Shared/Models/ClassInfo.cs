@@ -1,4 +1,4 @@
-namespace JBU.CodeLens.Shared.Models;
+﻿namespace JBU.CodeLens.Shared.Models;
 /// <summary>
 /// Describes a single class discovered in a source file, including its documentation summary
 /// and the members (methods and properties) declared directly inside it.
@@ -81,7 +81,7 @@ public class ClassInfo
 }
 
 /// <summary>
-/// A variable discovered in source — either a class field or a method-local declaration.
+/// A variable discovered in source, either a class field or a method-local declaration.
 /// </summary>
 public class VariableInfo
 {

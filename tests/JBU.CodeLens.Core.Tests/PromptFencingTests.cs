@@ -1,4 +1,4 @@
-using JBU.CodeLens.Core.AI;
+﻿using JBU.CodeLens.Core.AI;
 
 namespace JBU.CodeLens.Core.Tests;
 
@@ -57,7 +57,7 @@ public class PromptFencingTests
         Assert.Equal(1, occurrences);
         Assert.EndsWith("----- END CODE DATA -----", fenced.TrimEnd(), StringComparison.Ordinal);
 
-        // The hostile sentence is still present — it is described, not obeyed, and silently
+        // The hostile sentence is still present, it is described, not obeyed, and silently
         // dropping it would hide real file content from the reader.
         Assert.Contains("COMPROMISED", fenced, StringComparison.Ordinal);
     }
@@ -83,7 +83,7 @@ public class PromptFencingTests
     }
 
     /// <summary>
-    /// The rule that gives the fence its meaning has to travel with it — markers alone tell the
+    /// The rule that gives the fence its meaning has to travel with it, markers alone tell the
     /// model nothing.
     /// </summary>
     [Fact]

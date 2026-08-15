@@ -1,4 +1,4 @@
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 
@@ -27,7 +27,7 @@ public static class MethodDescriptionBuilder
     /// </summary>
     /// <remarks>
     /// Held as a list because the distinction cannot be derived: "MergeSort" and "ComputeHash" have
-    /// the same shape — a verb followed by a word that is also a verb — yet only the first is the
+    /// the same shape, a verb followed by a word that is also a verb, yet only the first is the
     /// name of a thing. Anything absent from this list is treated as a verb phrase, which is the
     /// right default for the overwhelming majority of method names.
     /// </remarks>
@@ -45,7 +45,7 @@ public static class MethodDescriptionBuilder
     /// Not every method name begins with a verb. <c>LevenshteinDistance</c>, <c>ShortestPath</c> and
     /// <c>WordFrequency</c> name the thing produced rather than the act of producing it, and
     /// conjugating their first word yields "Levenshteins distance", "Shortests path" and "Words
-    /// frequency" — text that reads as broken English and undermines confidence in every other
+    /// frequency", text that reads as broken English and undermines confidence in every other
     /// heading on the page. A name whose first word is not in this set is described as the noun
     /// phrase it actually is.
     /// </remarks>
@@ -101,7 +101,7 @@ public static class MethodDescriptionBuilder
         // A templated type carries its parameter list in the cursor spelling, so a constructor
         // arrived as "MemoizingCache<Key, Value>": it no longer matched its own class name, so the
         // constructor was never recognised, and the argument list was split into words and read
-        // back as prose — "the memoizing cache< key, value>".
+        // back as prose, "the memoizing cache< key, value>".
         var name = StripTemplateArguments(method.Name ?? string.Empty);
         var parentName = StripTemplateArguments(method.ParentClass?.Name ?? string.Empty);
         if (parentName.Length == 0)
@@ -153,7 +153,7 @@ public static class MethodDescriptionBuilder
         // Boolean/query style: "Is", "Has", "Can", or bool return type.
         // Tested against the full verb set rather than the short action list: a bool-returning
         // method named with a plain verb ("Consume", "Matches") was forced down this path and
-        // described as "Determines whether text, position, and keyword" — a sentence about its
+        // described as "Determines whether text, position, and keyword", a sentence about its
         // parameters that says nothing about the method.
         if (BooleanPrefixes.Contains(verb) || (isBoolReturn && !IsVerbLike(verb)))
         {
@@ -186,7 +186,7 @@ public static class MethodDescriptionBuilder
         }
 
         // Named operations: "MergeSort", "QuickSort", "BinarySearch". Their first word is a genuine
-        // verb, so conjugating it is grammatical but wrong in substance — "Merges sort" reads as an
+        // verb, so conjugating it is grammatical but wrong in substance, "Merges sort" reads as an
         // instruction to merge a sort. These are compound nouns naming an algorithm, and nothing in
         // the identifier itself distinguishes them from a verb and its object ("ComputeHash"), so
         // they are recognised by name.
@@ -243,7 +243,7 @@ public static class MethodDescriptionBuilder
         {
             // A bare verb reads best with the parameter as its object ("Applies the given
             // theme"); a verb with an object keeps the parameters as instruments
-            // ("Saves file using path") — "from" wrongly implied extraction.
+            // ("Saves file using path"), "from" wrongly implied extraction.
             sb.Append(remainder.Length == 0 ? " the given " : " using ");
             sb.Append(JoinNames(paramNames));
         }
@@ -415,7 +415,7 @@ public static class MethodDescriptionBuilder
     /// Whether a word acts as a verb, including a form that is already third-person singular.
     /// </summary>
     /// <remarks>
-    /// A method may be named with the inflected form directly — <c>Matches</c>, <c>Consumes</c> —
+    /// A method may be named with the inflected form directly, <c>Matches</c>, <c>Consumes</c>, 
     /// and conjugating those again yields "Matcheses". Recognising the stem keeps them intact.
     /// </remarks>
     private static bool IsVerbLike(string word)

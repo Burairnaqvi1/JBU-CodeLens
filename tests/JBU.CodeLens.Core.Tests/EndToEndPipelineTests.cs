@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 using JBU.CodeLens.Core.Analysis;
 using JBU.CodeLens.Core.Export;
@@ -14,7 +14,7 @@ namespace JBU.CodeLens.Core.Tests;
 /// </summary>
 /// <remarks>
 /// The other suites cover components in isolation. This one exists because the seams between them
-/// were where a refactor could break the product without failing a single unit test — the exporters
+/// were where a refactor could break the product without failing a single unit test, the exporters
 /// becoming static classes, the analysers gaining argument guards, and every regex in the analysis
 /// engine moving behind a timeout are all changes that compile cleanly and only misbehave when the
 /// stages are run together on real input.

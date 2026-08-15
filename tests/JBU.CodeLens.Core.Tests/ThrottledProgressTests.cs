@@ -1,4 +1,4 @@
-using JBU.CodeLens.Shared.Utilities;
+﻿using JBU.CodeLens.Shared.Utilities;
 
 namespace JBU.CodeLens.Core.Tests;
 
@@ -66,7 +66,7 @@ public class ThrottledProgressTests
 
         throttle.Report(1);
         throttle.Report(2);   // dropped
-        throttle.Report(99);  // final — must get through
+        throttle.Report(99);  // final, must get through
 
         Assert.Equal([1, 99], collector.Values);
     }

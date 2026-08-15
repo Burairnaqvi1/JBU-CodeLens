@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 
 namespace JBU.CodeLens.UI.Views;
@@ -6,7 +6,7 @@ namespace JBU.CodeLens.UI.Views;
 /// <summary>
 /// In-app detail page opened from the project-tree visualization: shows the same
 /// file/class/method content that <see cref="DetailPanelRenderer"/> produces for the main
-/// window's detail panel. One instance lives inside MainWindow — each node click swaps the
+/// window's detail panel. One instance lives inside MainWindow, each node click swaps the
 /// content in place, and the Back button raises <see cref="BackRequested"/> so MainWindow
 /// can return to the tree. Content is rebuilt on theme switches (like the main detail
 /// panel) because the renderer resolves brushes with one-time <c>FindResource</c> lookups.

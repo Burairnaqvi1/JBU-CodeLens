@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace JBU.CodeLens.Core.Analysis;
 
@@ -127,7 +127,7 @@ public sealed class DesignConstraintAnalyzer
         }
 
         // The C++ parser records a function's declaration along with its body, so the signature
-        // itself matched "name(" and every C++ function was reported as recursive — the rule fired
+        // itself matched "name(" and every C++ function was reported as recursive, the rule fired
         // on the definition rather than on a call. Anything ahead of the opening brace is the
         // declaration, so it is dropped before looking for a call, but only when it really is the
         // signature; C# bodies arrive already brace-first and are left untouched.

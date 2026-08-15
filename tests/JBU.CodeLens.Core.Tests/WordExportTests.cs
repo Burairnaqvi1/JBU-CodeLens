@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 using JBU.CodeLens.Core.Export;
 using JBU.CodeLens.Shared.Models;
@@ -45,7 +45,7 @@ public sealed class WordExportTests : IDisposable
     [Fact]
     public void Export_AlwaysEmitsMandatoryHeadingsInOrder()
     {
-        // No XML docs, no AI service, no cached analysis — the weakest possible input.
+        // No XML docs, no AI service, no cached analysis, the weakest possible input.
         var outputPath = Path.Combine(_tempDir, "doc.docx");
 
         WordExporter.Export(outputPath, @"C:\proj", SampleParseResults());
@@ -82,7 +82,7 @@ public sealed class WordExportTests : IDisposable
         using var document = DocX.Load(outputPath);
 
         // The logo is embedded in the assembly and placed at the top of the cover. If the resource
-        // name or the embed drifts, the export silently loses its branding — the insert is
+        // name or the embed drifts, the export silently loses its branding, the insert is
         // best-effort by design so that a long AI export is never lost over a missing image.
         Assert.NotEmpty(document.Images);
 

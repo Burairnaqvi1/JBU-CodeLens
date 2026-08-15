@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace JBU.CodeLens.Core.Analysis;
 
@@ -40,8 +40,8 @@ public sealed class PreconditionAnalyzer
     /// </summary>
     /// <remarks>
     /// This is the single place duplicates are removed. Several rules match the same parameter more
-    /// than once — the range rule alone has five patterns, of which three fire on a typical bounds
-    /// check — and rules can also overlap with each other. Deduplicating here, keyed on subject and
+    /// than once, the range rule alone has five patterns, of which three fire on a typical bounds
+    /// check, and rules can also overlap with each other. Deduplicating here, keyed on subject and
     /// description, covers both cases; individual rules deliberately do not filter their own output.
     /// </remarks>
     public IReadOnlyList<MethodPrecondition> Analyze(MethodAnalysisContext context) =>
@@ -435,7 +435,7 @@ public sealed class PreconditionAnalyzer
                 var name = match.Groups[1].Value;
                 yield return CreatePrecondition(
                     name,
-                    $"Parameter {name} must not be empty — minimum length is required",
+                    $"Parameter {name} must not be empty; minimum length is required",
                     "guard-string-length");
             }
         }
@@ -511,7 +511,7 @@ public sealed class PreconditionAnalyzer
 
         yield return CreatePrecondition(
             null,
-            "This method handles exceptions internally — callers do not need to wrap it in try-catch",
+            "This method handles exceptions internally; callers do not need to wrap it in try-catch",
             "guard-try-pattern",
             AnalysisConfidence.Medium);
     }

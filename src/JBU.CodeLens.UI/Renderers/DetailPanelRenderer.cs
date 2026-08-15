@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -104,7 +104,7 @@ internal static class DetailPanelRenderer
 
         AddSection(host, "Inheritance & Relationships", resourceRoot);
         host.Children.Add(CreateLabeledRow("Extends",
-            string.IsNullOrEmpty(classInfo.BaseClassName) ? "No base class — this is a root class" : classInfo.BaseClassName,
+            string.IsNullOrEmpty(classInfo.BaseClassName) ? "No base class: this is a root class" : classInfo.BaseClassName,
             resourceRoot));
         host.Children.Add(CreateLabeledRow("Implements",
             classInfo.ImplementedInterfaces.Count > 0 ? string.Join(", ", classInfo.ImplementedInterfaces) : "None",
@@ -158,7 +158,7 @@ internal static class DetailPanelRenderer
     /// XML summary always wins; otherwise the deterministic inferred description shows
     /// immediately and an AI summary is generated lazily (once per class, session-cached) and
     /// added alongside it. The "add a /// summary" advice stays, but as a muted hint under
-    /// whichever description is shown — never as the only content.
+    /// whichever description is shown, never as the only content.
     /// </summary>
     private static void AddClassDescription(
         StackPanel host,
@@ -203,7 +203,7 @@ internal static class DetailPanelRenderer
                 {
                     aiText.Text = text;
 
-                    // Only cache real model output — bracketed strings are error/unavailable
+                    // Only cache real model output, bracketed strings are error/unavailable
                     // messages, and caching those would hide the AI once it becomes ready.
                     if (!text.StartsWith('['))
                     {
@@ -230,7 +230,7 @@ internal static class DetailPanelRenderer
     /// the list behind it.
     ///
     /// This was a dashboard of six large stat tiles. The counts are the least useful thing on
-    /// the page — the status bar and the project header already state them, and no count here
+    /// the page, the status bar and the project header already state them, and no count here
     /// has a threshold or a judgment attached, so none of them ever changed a decision. What
     /// people used the tiles for was the drill-down: this is the only place that lists every
     /// class or method in the project, since the explorer is per-file. So the navigation stays
@@ -256,7 +256,7 @@ internal static class DetailPanelRenderer
                     onCategoryClick is null ? null : () => onCategoryClick(category)),
                 resourceRoot);
 
-            // The plain-words explanation still has to be reachable — it moves to a hover hint
+            // The plain-words explanation still has to be reachable, it moves to a hover hint
             // now that there is no room for a caption under a label.
             row.ToolTip = DescribeMetric(category);
             rows.Children.Add(row);
@@ -272,7 +272,7 @@ internal static class DetailPanelRenderer
         host.Children.Add(WrapInCard(rows, resourceRoot));
     }
 
-    /// <summary>The row label for a kind of item — also the title of its drill-down list.</summary>
+    /// <summary>The row label for a kind of item, also the title of its drill-down list.</summary>
     public static string MetricLabel(MetricCategory category) => category switch
     {
         MetricCategory.Classes => "Classes",
@@ -289,9 +289,9 @@ internal static class DetailPanelRenderer
     public static string DescribeMetric(MetricCategory category) => category switch
     {
         MetricCategory.Classes =>
-            "A class is one type defined in the code — it groups related data and the operations on it.",
+            "A class is one type defined in the code; it groups related data and the operations on it.",
         MetricCategory.Methods =>
-            "A method is a named block of code inside a class — an action the program can carry out.",
+            "A method is a named block of code inside a class, an action the program can carry out.",
         _ =>
             "A property is a named value a class exposes to the outside, with controlled reading and writing.",
     };
@@ -478,7 +478,7 @@ internal static class DetailPanelRenderer
         host.Children.Add(new Border { Height = 1, Background = Brush(resourceRoot, "BorderBrush"), Margin = new Thickness(0, 16, 0, 16) });
 
         // The code itself, before everything that describes it. Every other section on this page
-        // is a claim — inferred, or generated — and until now none of them could be checked
+        // is a claim, inferred, or generated, and until now none of them could be checked
         // against the thing they describe without leaving the application.
         host.Children.Add(BuildSourceCard(method, resourceRoot));
 
@@ -565,7 +565,7 @@ internal static class DetailPanelRenderer
 
             // Once the button reads "Regenerate", pressing it asks for a different answer, so the
             // cached one has to go or the service replays it verbatim. Only this section's cache
-            // is dropped — the others are still on screen and still being read.
+            // is dropped, the others are still on screen and still being read.
             if (prePostBtn.Content is string label && label.StartsWith("Regenerate", StringComparison.Ordinal))
             {
                 explanationService.Forget(method, AiSection.PrePost);
@@ -745,7 +745,7 @@ internal static class DetailPanelRenderer
                 paramText.Inlines.Add(new Run($"  {name}") { Foreground = Brush(resourceRoot, "TextPrimaryBrush") });
                 stack.Children.Add(paramText);
 
-                // The permitted range belongs beside the parameter it constrains — that is where
+                // The permitted range belongs beside the parameter it constrains, that is where
                 // the reader is already looking when asking "what may I pass in here?". The card
                 // lower down repeats it with the originating code for anyone who wants to check.
                 var limit = context.Analysis.VariableLimits
@@ -769,7 +769,7 @@ internal static class DetailPanelRenderer
 
         if (string.Equals(returnType, "void", StringComparison.OrdinalIgnoreCase))
         {
-            stack.Children.Add(CreateMutedText("void — no value returned", resourceRoot, marginTop: 6));
+            stack.Children.Add(CreateMutedText("void: no value returned", resourceRoot, marginTop: 6));
         }
         else
         {
@@ -827,7 +827,7 @@ internal static class DetailPanelRenderer
             }
         }
 
-        // The AI description always runs — even when a developer XML summary exists — so the
+        // The AI description always runs, even when a developer XML summary exists. co the
         // model's independent read of the method is shown alongside the documentation. This lets
         // the reader cross-check the two and improves overall accuracy/confidence.
         stack.Children.Add(new Border { Height = 1, Background = Brush(resourceRoot, "BorderBrush"), Margin = new Thickness(0, 10, 0, 10) });
@@ -856,7 +856,7 @@ internal static class DetailPanelRenderer
                 // The partial callback streams the model's words onto the panel as they are
                 // produced. Both the partials and the returned text are shaped by the same
                 // function inside the service, so the last partial already equals the final
-                // assignment below — the line settles instead of visibly snapping shorter.
+                // assignment below, the line settles instead of visibly snapping shorter.
                 var text = svc is { IsReady: true }
                     ? svc.GenerateBriefDescription(m, partial =>
                         Application.Current.Dispatcher.BeginInvoke(() => briefTextBlock.Text = partial))
@@ -867,7 +867,7 @@ internal static class DetailPanelRenderer
                     briefTextBlock.Text = text;
                     if (regenerate is not null) regenerate.IsEnabled = true;
 
-                    // Only cache real model output — bracketed strings are error/unavailable
+                    // Only cache real model output, bracketed strings are error/unavailable
                     // messages, and caching those would hide the AI once it becomes ready.
                     if (svc is { IsReady: true } && !text.StartsWith('['))
                     {
@@ -882,7 +882,7 @@ internal static class DetailPanelRenderer
         regenerate = CreateSmallAction("Regenerate", "Ask the AI for a fresh description", resourceRoot, () =>
         {
             m.CachedAiBriefDescription = null;
-            // The panel's own copy is only half of it — the service caches per (method, file
+            // The panel's own copy is only half of it, the service caches per (method, file
             // timestamp) too, and would return the same text without calling the model.
             svc?.Forget(m);
             Generate();
@@ -900,7 +900,7 @@ internal static class DetailPanelRenderer
 
     /// <summary>
     /// The one-line form of a variable's operation limit, shown beneath the parameter it applies
-    /// to. Carries no evidence column — the reader wanting to check the claim has the full table
+    /// to. Carries no evidence column, the reader wanting to check the claim has the full table
     /// further down; here the answer itself is what matters.
     /// </summary>
     private static TextBlock CreateInlineLimit(VariableLimit limit, FrameworkElement resourceRoot)
@@ -932,7 +932,7 @@ internal static class DetailPanelRenderer
     /// </summary>
     /// <remarks>
     /// The evidence column is the point of this card. A stated range the reader cannot check is
-    /// worse than no range at all, because they have no way to tell a certainty from a guess —
+    /// worse than no range at all, because they have no way to tell a certainty from a guess, 
     /// so the confidence is named and the originating line is quoted beside every row.
     /// </remarks>
     /// <summary>
@@ -1007,7 +1007,7 @@ internal static class DetailPanelRenderer
 
         // The whole width of the header is the target, not just the arrow. WrapClickable's
         // template is a bare ContentPresenter, which paints nothing and so is only hit-testable
-        // where its content actually is — a transparent Border stretched across the row gives
+        // where its content actually is, a transparent Border stretched across the row gives
         // the click somewhere to land, the way a disclosure row behaves everywhere else.
         var titleTarget = new Border
         {
@@ -1016,7 +1016,7 @@ internal static class DetailPanelRenderer
             Child = titleRow,
         };
 
-        // Declared here, assigned below — the toggle needs to reach the code surface, and the
+        // Declared here, assigned below, the toggle needs to reach the code surface, and the
         // surface needs the source text that is built after this header.
         Border? codeSurface = null;
         headerRow.Children.Add(WrapClickable(
@@ -1032,7 +1032,7 @@ internal static class DetailPanelRenderer
                 codeSurface.Visibility = collapsing ? Visibility.Collapsed : Visibility.Visible;
                 chevron.Text = collapsing ? ChevronCollapsed : ChevronExpanded;
             },
-            "Source — show or hide the code"));
+            "Source. chow or hide the code"));
 
         stack.Children.Add(headerRow);
         stack.Children.Add(new Border
@@ -1101,7 +1101,7 @@ internal static class DetailPanelRenderer
     /// <remarks>
     /// The parser stores the body verbatim, which means every line after the opening brace still
     /// carries the file's indentation while the brace itself sits at column 0. Rendered as-is the
-    /// block looks broken — over-indented statements under a flush brace. Only whitespace common
+    /// block looks broken, over-indented statements under a flush brace. Only whitespace common
     /// to every non-blank line is removed, so relative indentation inside the method survives.
     /// </remarks>
     private static string Dedent(string text)
@@ -1686,7 +1686,7 @@ internal static class DetailPanelRenderer
         /// <summary>
         /// The generated explanation shown as the thread's opening message, or <c>null</c> when the
         /// user went straight to a question. In that case the session is seeded implicitly from the
-        /// brief description, which already appears in its own card — repeating it as a chat
+        /// brief description, which already appears in its own card, repeating it as a chat
         /// message would just be noise.
         /// </summary>
         public string? OpeningExplanation;
@@ -2002,15 +2002,15 @@ internal static class DetailPanelRenderer
             ShowStatus(string.Empty);
 
             // "Regenerate Explanation" means the reader wants a different explanation, so the
-            // service's cached one is dropped first — otherwise it hands back the same text and
+            // service's cached one is dropped first, otherwise it hands back the same text and
             // the transcript is cleared for nothing.
             if (generateBtn.Content is string label && label.StartsWith("Regenerate", StringComparison.Ordinal))
             {
                 explanationService.Forget(method);
             }
 
-            // A new explanation reseeds the conversation, so the existing thread — whose answers
-            // were produced against the previous seed — is cleared rather than left on screen
+            // A new explanation reseeds the conversation, so the existing thread, whose answers
+            // were produced against the previous seed, is cleared rather than left on screen
             // looking like it still applies. The transcript is visible, so the reset is too.
             state.Session = null;
             state.OpeningExplanation = null;
@@ -2053,7 +2053,7 @@ internal static class DetailPanelRenderer
                 // The token is cancelled so the model stops as soon as it reaches a point where
                 // it can, but the panel does not wait for that. The library that drives the
                 // model decides when to look at the token, and on a long answer it can be many
-                // seconds — long enough that a reader who pressed Stop would reasonably conclude
+                // seconds, long enough that a reader who pressed Stop would reasonably conclude
                 // nothing had happened. Releasing the panel now is what they asked for; the
                 // half-finished answer is discarded whenever the model gets round to stopping.
                 generation.Cancel();
@@ -2161,7 +2161,7 @@ internal static class DetailPanelRenderer
     }
 
     /// <summary>
-    /// Appends an AI sub-block — divider, caps label, bullet host — under an organic card section,
+    /// Appends an AI sub-block, divider, caps label, bullet host, under an organic card section,
     /// and returns the host the bullets belong in. <paramref name="label"/> names what the block
     /// contains ("AI DESIGN REQUIREMENTS", "AI PRECONDITIONS") so the bullets are never left for
     /// the reader to classify. The divider and label deliberately live in <paramref name="parent"/>
@@ -2246,7 +2246,7 @@ internal static class DetailPanelRenderer
 
     private static Border WrapInCard(UIElement content, FrameworkElement resourceRoot)
     {
-        // The border sits on its own brush so it can fade to the accent on hover — the card
+        // The border sits on its own brush so it can fade to the accent on hover, the card
         // "lights up" a little without moving. Colors are captured per theme; cards rebuild on
         // a theme switch, so the captured values stay correct.
         var restColor = ((SolidColorBrush)Brush(resourceRoot, "BorderBrush")).Color;
@@ -2286,7 +2286,7 @@ internal static class DetailPanelRenderer
     /// <remarks>
     /// The glow is a <see cref="DropShadowEffect"/> with no offset, so it reads as light coming
     /// off the dot rather than as a shadow under it. Both animations repeat forever and are
-    /// deliberately slow — a fast pulse beside every heading on the page would pull the eye away
+    /// deliberately slow, a fast pulse beside every heading on the page would pull the eye away
     /// from the text it is meant to mark.
     /// </remarks>
     private static Ellipse CreatePulsingHeaderDot(FrameworkElement resourceRoot)
@@ -2548,7 +2548,7 @@ internal static class DetailPanelRenderer
 
     /// <summary>
     /// Starts a shell action, ignoring the failures that are the user's environment rather than
-    /// a fault here — a file deleted since the scan, or no program associated with it.
+    /// a fault here, a file deleted since the scan, or no program associated with it.
     /// </summary>
     private static void Launch(ProcessStartInfo startInfo)
     {
@@ -2691,7 +2691,7 @@ internal static class DetailPanelRenderer
 
     /// <summary>
     /// Wraps a visual in a chromeless <see cref="Button"/> so it is clickable, keyboard-operable
-    /// (Enter/Space), and exposed to screen readers / UI Automation as invokable — while the
+    /// (Enter/Space), and exposed to screen readers / UI Automation as invokable, while the
     /// wrapped element keeps its own appearance and hover behavior.
     /// </summary>
     private static Button WrapClickable(FrameworkElement visual, Action onClick, string automationName)
@@ -2796,7 +2796,7 @@ internal static class DetailPanelRenderer
     /// <remarks>
     /// WPF's TextBlock cannot be selected at all, so every description and every line of source
     /// in this panel was unselectable: the only way to get any of it out of the application was
-    /// to retype it. A read-only TextBox is the standard way round that — it selects, it copies
+    /// to retype it. A read-only TextBox is the standard way round that, it selects, it copies
     /// with Ctrl+C and the context menu, and it shows an I-beam on hover.
     ///
     /// The explicit template matters: the window declares an implicit TextBox style for its
@@ -2848,7 +2848,7 @@ internal static class DetailPanelRenderer
 
 
     /// <summary>
-    /// Selectable text that keeps mixed formatting on one line — a bold label beside a plain
+    /// Selectable text that keeps mixed formatting on one line, a bold label beside a plain
     /// value, or a type in the secondary colour beside a name in the primary one.
     /// </summary>
     /// <remarks>

@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace JBU.CodeLens.Core.Utilities;
 
@@ -23,8 +23,8 @@ internal static class SourceText
     /// source, and offsets taken from the cleaned text stay valid against the original.
     /// </para>
     /// <para>
-    /// Three copies of this pattern existed before — one in the limit analyser and two in the C++
-    /// parser — differing only in whether character literals survived. That difference is a
+    /// Three copies of this pattern existed before, one in the limit analyser and two in the C++
+    /// parser, differing only in whether character literals survived. That difference is a
     /// genuine requirement, so it is a parameter here rather than a reason to keep them apart.
     /// </para>
     /// </remarks>

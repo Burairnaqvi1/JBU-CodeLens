@@ -1,4 +1,4 @@
-using LensClass = JBU.CodeLens.Shared.Models.ClassInfo;
+﻿using LensClass = JBU.CodeLens.Shared.Models.ClassInfo;
 
 using JBU.CodeLens.Shared.Structural;
 using MethodInfo = JBU.CodeLens.Shared.Structural.MethodInfo;
@@ -10,7 +10,7 @@ namespace JBU.CodeLens.Core.Analysis;
 /// Converts an already-parsed <see cref="ClassInfo"/> tree into the project-wide
 /// <see cref="TypeInfo"/> shape that <see cref="SymbolTable"/>, <see cref="RelationshipExtractor"/>,
 /// <see cref="MetricsCalculator"/>, and <see cref="KnowledgeGraph"/> operate on. This is the only
-/// place C#/C++ source ever gets parsed — <see cref="ScideEngine"/> reuses the same
+/// place C#/C++ source ever gets parsed, <see cref="ScideEngine"/> reuses the same
 /// <see cref="ClassInfo"/> trees the UI tree is built from instead of re-parsing.
 /// </summary>
 internal static class TypeInfoConverter

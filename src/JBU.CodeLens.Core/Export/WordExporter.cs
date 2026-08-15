@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 using Xceed.Document.NET;
 using Xceed.Words.NET;
@@ -29,7 +29,7 @@ public static class WordExporter
     /// </summary>
     /// <remarks>
     /// Best-effort: a document without its logo is still a perfectly usable document, so a failure
-    /// to read or place the image must not lose the user a long export — particularly one that has
+    /// to read or place the image must not lose the user a long export, particularly one that has
     /// just spent minutes running AI analysis.
     /// </remarks>
     private static void InsertLogo(DocX document)
@@ -73,7 +73,7 @@ public static class WordExporter
         CancellationToken cancellationToken = default)
     {
         // Generation (especially with AI) can take minutes and fail midway; writing to a temp
-        // file and moving on success guarantees the chosen path never holds a corrupt .docx —
+        // file and moving on success guarantees the chosen path never holds a corrupt .docx, 
         // including on cancellation, which propagates out of ExportCore before the final move.
         AtomicFileWriter.Write(outputPath, tempPath =>
             ExportCore(tempPath, projectFolderPath, parseResults, explanationService, includeAi, onProgress, cancellationToken));
@@ -122,7 +122,7 @@ public static class WordExporter
     }
 
     /// <summary>
-    /// Running method counter for export progress messages ("method k of n") — the count that
+    /// Running method counter for export progress messages ("method k of n"), the count that
     /// actually tracks elapsed time during AI exports, where each method costs an inference call.
     /// </summary>
     private sealed class MethodProgress
@@ -370,7 +370,7 @@ public static class WordExporter
     {
         methodProgress.Done++;
         onProgress?.Invoke(
-            $"Documenting method {methodProgress.Done}/{methodProgress.Total} — {method.ParentClass?.Name}.{method.Name}…");
+            $"Documenting method {methodProgress.Done}/{methodProgress.Total}: {method.ParentClass?.Name}.{method.Name}…");
 
         // One merged model call produces all five AI sections (instead of five sequential
         // round-trips). Null when AI is off or the model isn't ready.
@@ -551,7 +551,7 @@ public static class WordExporter
             // claim against the source rather than having to take it on trust.
             foreach (var limit in withLimits.VariableLimits)
             {
-                document.InsertParagraph($"{limit.Name} — {limit.Limit}  (from: {limit.Evidence})")
+                document.InsertParagraph($"{limit.Name}: {limit.Limit}  (from: {limit.Evidence})")
                     .SpacingAfter(2d);
             }
 
@@ -610,7 +610,7 @@ public static class WordExporter
 
     /// <summary>
     /// Writes one of the always-present documentation headings with its bullets, or the
-    /// placeholder text when no content is available — the heading itself is never omitted.
+    /// placeholder text when no content is available, the heading itself is never omitted.
     /// </summary>
     private static void WriteMandatoryBulletSection(
         DocX document,

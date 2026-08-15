@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
@@ -10,7 +10,7 @@ namespace JBU.CodeLens.UI.Helpers;
 /// <remarks>
 /// <para>
 /// WPF moves a fixed three lines per wheel notch and ignores the Windows mouse setting entirely.
-/// On a machine set to a higher number — or set to scroll a whole screen at a time — every other
+/// On a machine set to a higher number, or set to scroll a whole screen at a time, every other
 /// application obeys it and this one did not, which reads as the app being sluggish rather than
 /// as a setting being missed.
 /// </para>

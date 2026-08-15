@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 
 namespace JBU.CodeLens.Core.AI;
@@ -62,7 +62,7 @@ public sealed class MethodConversationSession : IMethodConversationSession
 
   /// <summary>
   /// Tidies raw model output for display. Answers are the only generated text with no truncation
-  /// pass — every other section runs through TruncateProse/TruncateBullets — so without this the
+  /// pass, every other section runs through TruncateProse/TruncateBullets. co without this the
   /// literal "**" of markdown emphasis, and the debris left when generation stops mid-list (a
   /// dangling "4", a lone "&gt;"), reach the transcript verbatim.
   /// </summary>
@@ -110,8 +110,8 @@ public sealed class MethodConversationSession : IMethodConversationSession
     if (_history.Count > 0)
     {
       // Only the most recent turns go into the prompt. The full history is unbounded, and the
-      // input-budget overflow handling trims from the END of the instruction — where the new
-      // question sits — so an oversized history would silently destroy the question itself.
+      // input-budget overflow handling trims from the END of the instruction, where the new
+      // question sits. co an oversized history would silently destroy the question itself.
       const int maxHistoryTurns = 4;
       builder.AppendLine("Conversation so far:");
       foreach (var turn in _history.Skip(Math.Max(0, _history.Count - maxHistoryTurns)))

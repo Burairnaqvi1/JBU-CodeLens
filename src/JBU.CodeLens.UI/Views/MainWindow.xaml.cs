@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -29,7 +29,7 @@ public partial class MainWindow : Window
 {
     // Structural analysis runs through a single ScideEngine parse pass, shared with the file/class
     // tree below (see ScanFolderAsync). AI runs exclusively through the single ExplanationService
-    // instance below — there's no second LLM to disable anymore, that path was removed entirely.
+    // instance below, there's no second LLM to disable anymore, that path was removed entirely.
     // CA1859 suggests retyping these three fields to their Core concrete types (ScideEngine,
     // ExportService, ExplanationService) to devirtualize the calls. That is deliberately not done:
     // this file is the composition root, and the layering rule stated at the top of the class is
@@ -61,7 +61,7 @@ public partial class MainWindow : Window
     private string? _lastEmptyScanFolder;
 
     // What the detail panel currently shows ("project", "metrics", a file path, ClassInfo, or
-    // LensMethod — mirroring tree Tag values). Used to re-render after a theme switch, because
+    // LensMethod, mirroring tree Tag values). Used to re-render after a theme switch, because
     // detail-panel elements are built in code and would otherwise keep the old theme's brushes.
     private object? _currentDetailContext;
     private int _classCount;
@@ -132,7 +132,7 @@ public partial class MainWindow : Window
         var modelPath = ModelPathResolver.Resolve();
         if (modelPath is null)
         {
-            StatusBarText.Text = "Model not found — AI features disabled";
+            StatusBarText.Text = "Model not found: AI features disabled";
             // Startup model load: there is nothing to cancel it with, and it must complete before
             // the window is usable.
             _explanationService = await Task.Run(() => new ExplanationService(string.Empty), CancellationToken.None);
@@ -143,8 +143,8 @@ public partial class MainWindow : Window
         _explanationService = await Task.Run(() => new ExplanationService(modelPath), CancellationToken.None);
 
         StatusBarText.Text = _explanationService.IsReady
-            ? $"AI model ready — {Path.GetFileName(_explanationService.ModelPath)}"
-            : "Model not found — AI features disabled";
+            ? $"AI model ready: {Path.GetFileName(_explanationService.ModelPath)}"
+            : "Model not found: AI features disabled";
     }
 
     // ── Settings and about ───────────────────────────────────────────────────
@@ -180,7 +180,7 @@ public partial class MainWindow : Window
     /// </summary>
     /// <remarks>
     /// A model that was missing at startup previously left the explanation features off for the
-    /// rest of the session, however quickly the file was put in place — the only way back was to
+    /// rest of the session, however quickly the file was put in place, the only way back was to
     /// close and reopen the application, which nothing on screen said.
     /// </remarks>
     private async void ReloadModel_Click(object sender, RoutedEventArgs e)
@@ -205,8 +205,8 @@ public partial class MainWindow : Window
         AboutModelText.Text = DescribeModelState();
         ReloadModelButton.IsEnabled = true;
         StatusBarText.Text = _explanationService.IsReady
-            ? $"AI model ready — {Path.GetFileName(_explanationService.ModelPath)}"
-            : "Model not found — AI features disabled";
+            ? $"AI model ready: {Path.GetFileName(_explanationService.ModelPath)}"
+            : "Model not found: AI features disabled";
 
         ShowNotification(
             _explanationService.IsReady ? "Model loaded." : "Still no model file found.",
@@ -241,7 +241,7 @@ public partial class MainWindow : Window
         }
         catch (IOException)
         {
-            ShowNotification("Could not clear the saved results — a file was in use.", NotificationKind.Error);
+            ShowNotification("Could not clear the saved results: a file was in use.", NotificationKind.Error);
         }
         catch (UnauthorizedAccessException)
         {
@@ -359,7 +359,7 @@ public partial class MainWindow : Window
 
     // ── Drag & drop ──────────────────────────────────────────────────────────
 
-    // Status-bar text saved when a drag enters, restored if it leaves without dropping —
+    // Status-bar text saved when a drag enters, restored if it leaves without dropping, 
     // so a passing drag never overwrites a meaningful status (e.g. "Model not found").
     private string? _statusBeforeDrag;
 
@@ -421,7 +421,7 @@ public partial class MainWindow : Window
     private void ShowDropOverlay(string folderPath)
     {
         DropOverlayTitle.Text = IsBusy
-            ? "Busy — finish the current job first"
+            ? "Busy: finish the current job first"
             : "Drop to scan this folder";
         DropOverlaySubtitle.Text = folderPath;
         DropOverlay.Visibility = Visibility.Visible;
@@ -437,7 +437,7 @@ public partial class MainWindow : Window
         {
             if (IsBusy)
             {
-                StatusBarText.Text = "A scan or export is already running — drop the folder again when it finishes.";
+                StatusBarText.Text = "A scan or export is already running; drop the folder again when it finishes.";
             }
             else
             {
@@ -504,7 +504,7 @@ public partial class MainWindow : Window
             {
                 ScanProgressBar.Maximum = p.TotalFiles;
                 ScanProgressBar.Value = p.FilesParsed;
-                StatusBarText.Text = $"Scanning… {p.FilesParsed}/{p.TotalFiles} — {p.CurrentFile}";
+                StatusBarText.Text = $"Scanning… {p.FilesParsed}/{p.TotalFiles}: {p.CurrentFile}";
             });
 
             var progress = new ThrottledProgress<ScanProgress>(
@@ -546,7 +546,7 @@ public partial class MainWindow : Window
 
             if (scanResult.ParseResults.Count == 0)
             {
-                StatusBarText.Text = "Scan complete — no .cs, .cpp, .hpp, or .h source files found.";
+                StatusBarText.Text = "Scan complete: no .cs, .cpp, .hpp, or .h source files found.";
                 // Say so on the panel too, and stop offering to reopen the folder that just came
                 // up empty: the status bar sits at the bottom of a large window and the panel was
                 // still showing the generic "Open a project to get started" invitation.
@@ -602,7 +602,7 @@ public partial class MainWindow : Window
                 ? $", {Count(_lastProjectIr?.Namespaces.Count ?? 0, "namespace")}"
                 : string.Empty;
             StatusBarText.Text =
-                $"Scan complete — {Count(scanResult.ParseResults.Count, "file")}, " +
+                $"Scan complete: {Count(scanResult.ParseResults.Count, "file")}, " +
                 $"{Count(_classCount, "class", "classes")}, {Count(_methodCount, "method")}{metricsSuffix}";
 
             // Keep the tree page in sync with the new scan; a node-detail page would be
@@ -777,7 +777,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Opens the element behind a clicked visualization node in the in-app detail page,
-    /// rendered by the same <see cref="DetailPanelRenderer"/> the main detail panel uses —
+    /// rendered by the same <see cref="DetailPanelRenderer"/> the main detail panel uses, 
     /// full headings for methods, member/relationship info for classes, parse info for files.
     /// </summary>
     private void NavigateToVisualizedNode(object? sender, NodeClickedEventArgs e)
@@ -786,7 +786,7 @@ public partial class MainWindow : Window
         {
             case LensMethod method:
                 NodeDetailPage.ShowDetail(
-                    $"{method.Name}() — {method.ParentClass?.Name ?? "method"}",
+                    $"{method.Name}(): {method.ParentClass?.Name ?? "method"}",
                     host =>
                     {
                         var context = _projectAnalyzer.BuildMethodDetailContext(
@@ -796,7 +796,7 @@ public partial class MainWindow : Window
                 break;
             case ClassInfo classInfo:
                 NodeDetailPage.ShowDetail(
-                    $"{classInfo.Name} — class",
+                    $"{classInfo.Name}: class",
                     host => DetailPanelRenderer.RenderClass(
                         host, classInfo, NodeDetailPage, method => NavigateToVisualizedNode(this, new NodeClickedEventArgs(method)), _explanationService));
                 break;
@@ -882,7 +882,7 @@ public partial class MainWindow : Window
         };
 
         // A panel header carries no text of its own, so without this the node reports itself as
-        // "System.Windows.Controls.TreeViewItem Header: Items.Count:1" — the type name — to a
+        // "System.Windows.Controls.TreeViewItem Header: Items.Count:1", the type name, to a
         // screen reader and to any automation. The name is set explicitly wherever the header is
         // built from elements rather than from a plain string.
         AutomationProperties.SetName(fileItem, $"{fileName}, {(isCpp ? "C++" : "C#")} file");
@@ -1047,9 +1047,9 @@ public partial class MainWindow : Window
         var aiChoice = await AskChoiceAsync(
             "Export to Word",
             "Include AI-generated explanations?\n\n" +
-            "Include AI — fuller document with brief descriptions, pre/post conditions, design " +
+            "Include AI: fuller document with brief descriptions, pre/post conditions, design " +
             "constraints, and error analysis. This is slower.\n\n" +
-            "Metadata only — parser metadata and documentation from the source. This is fast.",
+            "Metadata only: parser metadata and documentation from the source. This is fast.",
             withAi, withoutAi, "Cancel");
 
         if (aiChoice is null or "Cancel")
@@ -1103,7 +1103,7 @@ public partial class MainWindow : Window
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The three export commands were separate copies of the same forty lines — deriving the
+    /// The three export commands were separate copies of the same forty lines, deriving the
     /// project name, configuring the dialog, saving and restoring the status text, toggling the
     /// busy state, catching, and offering to open the result. Sharing them removes the risk of a
     /// fix reaching one and not the others, which had already happened: Word could be cancelled
@@ -1160,13 +1160,13 @@ public partial class MainWindow : Window
         catch (OperationCanceledException)
         {
             StatusBarText.Text = previousStatus;
-            ShowNotification("Export canceled — no file was written.");
+            ShowNotification("Export canceled: no file was written.");
         }
         catch (IOException)
         {
             StatusBarText.Text = previousStatus;
             ShowNotification(
-                $"Could not write {Path.GetFileName(exportedPath)} — it looks like it is open in " +
+                $"Could not write {Path.GetFileName(exportedPath)}; it looks like it is open in " +
                 "another program. Close it and try again.",
                 NotificationKind.Error);
         }
@@ -1230,7 +1230,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// "1 class", "11 classes" — a count with its noun in the right number. The scan summary
+    /// "1 class", "11 classes", a count with its noun in the right number. The scan summary
     /// stated every total in the plural, so a single-file project reported "1 files, 1 classes".
     /// </summary>
     private static string Count(int value, string singular, string? plural = null) =>
@@ -1245,7 +1245,7 @@ public partial class MainWindow : Window
         _currentDetailContext = null;
 
         // Before a scan the placeholder is an onboarding call-to-action; after one it guides
-        // the user to the tree instead — the project is already open.
+        // the user to the tree instead, the project is already open.
         if (_hasScanResults)
         {
             PlaceholderTitle.Text = "Select a file, class, or method";
@@ -1262,7 +1262,7 @@ public partial class MainWindow : Window
             PlaceholderSubtitle.Text = "CodeLens reads .cs, .cpp, .hpp, and .h files. Try a folder that contains some.";
             PlaceholderOpenButton.Visibility = Visibility.Visible;
             PlaceholderShortcutHint.Visibility = Visibility.Visible;
-            // No "Reopen" here — it would point back at the folder that just came up empty.
+            // No "Reopen" here, it would point back at the folder that just came up empty.
             PlaceholderReopenButton.Visibility = Visibility.Collapsed;
         }
         else
@@ -1375,8 +1375,8 @@ public partial class MainWindow : Window
             });
         }
 
-        // The toolbar "Tree" button was being missed, so the project page — where a scan
-        // lands — offers the same thing in the place the user is already looking.
+        // The toolbar "Tree" button was being missed, so the project page, where a scan
+        // lands, offers the same thing in the place the user is already looking.
         var treeButton = new Button
         {
             Content = "Build the project tree diagram",
@@ -1508,8 +1508,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Shows the items behind a clicked metric tile — the actual classes, methods, properties,
-    /// etc. it counts — each navigable to its own detail. Relationships render as a breakdown by
+    /// Shows the items behind a clicked metric tile, the actual classes, methods, properties,
+    /// etc. it counts, each navigable to its own detail. Relationships render as a breakdown by
     /// kind rather than a raw list. <paramref name="onBack"/> returns to the dashboard the user
     /// came from (project or metrics).
     /// </summary>

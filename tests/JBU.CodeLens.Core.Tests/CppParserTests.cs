@@ -1,4 +1,4 @@
-using JBU.CodeLens.Core.Parsing.Cpp;
+﻿using JBU.CodeLens.Core.Parsing.Cpp;
 using JBU.CodeLens.Shared.Models;
 
 namespace JBU.CodeLens.Core.Tests;
@@ -122,7 +122,7 @@ public sealed class CppParserTests : IDisposable
         // The comment before the method contains multi-byte characters; if byte offsets from
         // libclang are applied to the UTF-16 string, the extracted method source is shifted.
         var result = Parse("unicode_body.cpp", """
-            // Überprüfung: größer, schöner, weiß — 日本語のコメント
+            // Überprüfung: größer, schöner, weiß, 日本語のコメント
             class Sample {
             public:
                 int GetValue() { return 7; }

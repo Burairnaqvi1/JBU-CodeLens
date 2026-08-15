@@ -1,4 +1,4 @@
-namespace JBU.CodeLens.Shared.Interfaces;
+﻿namespace JBU.CodeLens.Shared.Interfaces;
 
 /// <summary>
 /// A multi-turn Q&amp;A conversation about a single method, seeded with an initial explanation.
@@ -12,9 +12,9 @@ public interface IMethodConversationSession
     string InitialExplanation { get; }
 
     /// <summary>
-    /// Asks a follow-up question. Synchronous and potentially slow — call from a worker thread.
+    /// Asks a follow-up question. Synchronous and potentially slow, call from a worker thread.
     /// When <paramref name="onPartial"/> is supplied it receives the accumulated answer text as
-    /// the model streams tokens (from the inference thread — marshal to the UI thread before
+    /// the model streams tokens (from the inference thread, marshal to the UI thread before
     /// touching controls).
     /// </summary>
     string Ask(string question, Action<string>? onPartial = null, CancellationToken cancellationToken = default);

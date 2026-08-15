@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace JBU.CodeLens.Core.Analysis;
 
@@ -237,7 +237,7 @@ public sealed class PostconditionAnalyzer
         }
 
         yield return CreatePost(
-            "Executes asynchronously — the caller must await this method to observe the result",
+            "Executes asynchronously; the caller must await this method to observe the result",
             "post-async",
             AnalysisConfidence.Medium);
     }
@@ -314,7 +314,7 @@ public sealed class PostconditionAnalyzer
         }
 
         yield return CreatePost(
-            "Returns a mathematically computed numeric result — may return NaN for invalid inputs",
+            "Returns a mathematically computed numeric result; may return NaN for invalid inputs",
             "post-power-sqrt",
             AnalysisConfidence.High);
     }
@@ -527,7 +527,7 @@ public sealed class PostconditionAnalyzer
         yield return new StateChange
         {
             Kind = StateChangeKind.ObjectStateModified,
-            Description = "Catches exceptions internally — some error conditions may be silently handled",
+            Description = "Catches exceptions internally. come error conditions may be silently handled",
             Confidence = AnalysisConfidence.Medium,
             Reason = "Derived from catch block that does not rethrow.",
             RuleId = "exception-swallowed",

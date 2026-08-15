@@ -1,4 +1,4 @@
-using JBU.CodeLens.Shared.Structural;
+﻿using JBU.CodeLens.Shared.Structural;
 
 namespace JBU.CodeLens.Core.Models;
 
@@ -35,7 +35,7 @@ public class SymbolTable
     {
         ArgumentNullException.ThrowIfNull(ir);
 
-        // Rebuild from scratch each scan — without this, a long-lived table accumulates
+        // Rebuild from scratch each scan, without this, a long-lived table accumulates
         // symbols from every previous scan and grows unboundedly.
         Clear();
 

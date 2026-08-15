@@ -1,10 +1,10 @@
-using JBU.CodeLens.Core.AI;
+﻿using JBU.CodeLens.Core.AI;
 
 namespace JBU.CodeLens.Core.Tests;
 
 /// <summary>
 /// Tests for the persisted AI result cache. The store must round-trip results for the same
-/// model, refuse results from a different model or a corrupt file, and prune oldest-first —
+/// model, refuse results from a different model or a corrupt file, and prune oldest-first, 
 /// and never throw, because a broken cache file must not break the app.
 /// </summary>
 public sealed class AiResultStoreTests : IDisposable

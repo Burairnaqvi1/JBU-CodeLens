@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace JBU.CodeLens.Core.Utilities;
 
@@ -10,7 +10,7 @@ namespace JBU.CodeLens.Core.Utilities;
 /// <para>
 /// Every pattern in this assembly runs over source files the user did not write. .NET's regex
 /// engine backtracks, so a pathological or deliberately adversarial input can drive a match
-/// exponentially and hang the scan with no way out and no error — the analysis simply never
+/// exponentially and hang the scan with no way out and no error, the analysis simply never
 /// returns. That is the ReDoS class of failure, and an unbounded match is the whole exposure.
 /// </para>
 /// <para>

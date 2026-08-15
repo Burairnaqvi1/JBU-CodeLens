@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.Json;
 
 namespace JBU.CodeLens.Core.AI;
@@ -45,7 +45,7 @@ public sealed class AiResultStore
     public static string DefaultPath => AppPaths.InAppData("ai-cache.json");
 
     /// <summary>
-    /// Loads the persisted results. Returns an empty dictionary — never throws — when the file
+    /// Loads the persisted results. Returns an empty dictionary, never throws, when the file
     /// is missing, corrupt, from a different schema version, or from a different model.
     /// </summary>
     public IReadOnlyDictionary<string, string> Load()
@@ -88,7 +88,7 @@ public sealed class AiResultStore
 
     /// <summary>
     /// Saves the given results (typically the loaded entries plus this session's new ones),
-    /// pruning oldest-first past <see cref="MaxEntries"/>. Best-effort: failures are swallowed —
+    /// pruning oldest-first past <see cref="MaxEntries"/>. Best-effort: failures are swallowed, 
     /// losing the cache costs regeneration time, nothing more. The write goes through a temp
     /// file + atomic move so a crash mid-save cannot corrupt the previous cache.
     /// </summary>

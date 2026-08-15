@@ -1,4 +1,4 @@
-using JBU.CodeLens.Core.Analysis;
+﻿using JBU.CodeLens.Core.Analysis;
 using JBU.CodeLens.Shared.Models;
 
 namespace JBU.CodeLens.Core.Tests;
@@ -11,7 +11,7 @@ namespace JBU.CodeLens.Core.Tests;
 /// These analysers hold the densest logic in the codebase and had no direct tests, which made any
 /// refactor of them unverifiable. Assertions target the rule identifier and the subject rather than
 /// the generated wording, so a change to how a message reads does not break a test, but a change
-/// to which rule fires — or to which parameter it blames — does.
+/// to which rule fires, or to which parameter it blames, does.
 /// </remarks>
 public class AnalyzerRuleTests
 {
@@ -146,7 +146,7 @@ public class AnalyzerRuleTests
         //
         // Two layers currently guarantee that: the rule keeps a set of names it has already
         // reported, and Analyze runs a final deduplication keyed on subject and description. They
-        // are redundant — breaking either one alone leaves this test passing, and only breaking
+        // are redundant, breaking either one alone leaves this test passing, and only breaking
         // both makes it fail. The test deliberately pins the user-visible outcome rather than
         // either mechanism, so it stays valid if one of them is ever removed.
         var context = Context(

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -58,7 +58,7 @@ public sealed class ExplanationService : IExplanationService
 
     // Fence markers around every piece of scanned code that goes into a prompt. Nothing in the
     // application ever emits these, so their only source inside a payload would be a file trying
-    // to close the fence early — which is why FenceCodeData strips them from what it wraps.
+    // to close the fence early, which is why FenceCodeData strips them from what it wraps.
     private const string CodeDataOpen = "----- BEGIN CODE DATA -----";
     private const string CodeDataClose = "----- END CODE DATA -----";
 
@@ -71,7 +71,7 @@ public sealed class ExplanationService : IExplanationService
     /// of your prompt" is just text in a .cs file, and previously reached the model as part of
     /// the same undifferentiated block as the real instruction. Stripping special tokens
     /// (already done at inference time) stops the chat template being broken, but not plain
-    /// prose aimed at the model — that needs the fence and the matching rule in the system
+    /// prose aimed at the model, that needs the fence and the matching rule in the system
     /// prompt.
     /// </remarks>
     internal static string FenceCodeData(string payload)
@@ -106,7 +106,7 @@ public sealed class ExplanationService : IExplanationService
 
     // Session-scoped inference results keyed on a stable hash of
     // (operation, file path, file last-write time, method signature). Only clean model output
-    // is stored — bracketed error strings are never cached.
+    // is stored, bracketed error strings are never cached.
     private readonly ConcurrentDictionary<string, string> _resultCache = new();
     private readonly AiResultStore? _persistentStore;
 
@@ -537,7 +537,7 @@ public sealed class ExplanationService : IExplanationService
         var builder = new StringBuilder();
         builder.AppendLine("Document this method in five sections. Output exactly these '### ' headers in this order, each followed by its content:");
         builder.AppendLine("### BRIEF");
-        builder.AppendLine("One sentence describing what the method's code actually does — name its key logic; do not restate the Summary line.");
+        builder.AppendLine("One sentence describing what the method's code actually does; name its key logic; do not restate the Summary line.");
         builder.AppendLine("### CONDITIONS");
         builder.AppendLine("A line 'PRE:' followed by up to 3 '- ' bullets stating only requirements the code enforces via guard clauses, then a line 'POST:' followed by up to 3 '- ' bullets stating what the return value means, using the verified return statements. Emit both marker lines even when a section has no bullets. Never invent checks absent from the source.");
         builder.AppendLine("### DESIGN");
@@ -546,7 +546,7 @@ public sealed class ExplanationService : IExplanationService
         builder.AppendLine("Up to 4 '- ' bullets consistent with the verified Throws fact: name each thrown exception and its trigger, note exceptions handled internally, or say none only when the code truly cannot fail.");
         builder.AppendLine("### EXPLANATION");
         builder.AppendLine("2-3 sentences summarizing what the method does and what it returns.");
-        builder.AppendLine("Plain text only — no markdown bold, headings, or labels inside sections.");
+        builder.AppendLine("Plain text only: no markdown bold, headings, or labels inside sections.");
 
         var languageSuffix = GetLanguageSystemSuffix(methodInfo);
         if (!string.IsNullOrEmpty(languageSuffix))
@@ -653,14 +653,14 @@ public sealed class ExplanationService : IExplanationService
             // awaits with ConfigureAwait(false) throughout, so no continuation needs the calling
             // thread and blocking here cannot deadlock. The extra hop bought nothing: it did not
             // stop a caller on the interface thread from freezing, since that caller waits either
-            // way — it only spent a second thread per generation. Callers already run this from
+            // way, it only spent a second thread per generation. Callers already run this from
             // a background task, which is where the responsibility properly sits.
             return RunInstructionAsync(instruction, maxTokens, systemPrompt, cancellationToken, onPartial)
                 .GetAwaiter().GetResult();
         }
         catch (OperationCanceledException)
         {
-            // Cancellation is a caller decision, not an inference failure — let it propagate so
+            // Cancellation is a caller decision, not an inference failure, let it propagate so
             // bulk paths (Word export) stop instead of embedding an error string in the document.
             throw;
         }
@@ -698,7 +698,7 @@ public sealed class ExplanationService : IExplanationService
     /// <summary>
     /// Runs <paramref name="run"/> unless an identical request (same operation, same method,
     /// unchanged source file) already succeeded this session, in which case the cached result is
-    /// returned without touching the model. Only clean output is cached — bracketed
+    /// returned without touching the model. Only clean output is cached, bracketed
     /// error/unavailable strings are not, so the model gets retried once it becomes usable.
     /// </summary>
     private string RunCached(string operation, MethodInfo methodInfo, Func<string> run)
@@ -729,7 +729,7 @@ public sealed class ExplanationService : IExplanationService
     /// </summary>
     /// <remarks>
     /// The "Regenerate" buttons in the detail panel clear the copy the panel itself holds, but
-    /// that only forces a call back into this service — which would hand the identical text
+    /// that only forces a call back into this service, which would hand the identical text
     /// straight back out of <see cref="_resultCache"/>. Without this the buttons look like they
     /// work (the text flickers and returns) while the model is never actually asked again.
     /// </remarks>
@@ -869,7 +869,7 @@ public sealed class ExplanationService : IExplanationService
             {
                 // Checked here as well as handed to InferAsync: the executor does not act on the
                 // token itself, so without this a stop request was only noticed once the whole
-                // answer had been generated — up to a minute of waiting for something the reader
+                // answer had been generated, up to a minute of waiting for something the reader
                 // had already cancelled.
                 cancellationToken.ThrowIfCancellationRequested();
                 builder.Append(token);
@@ -885,7 +885,7 @@ public sealed class ExplanationService : IExplanationService
             {
                 // Checked here as well as handed to InferAsync: the executor does not act on the
                 // token itself, so without this a stop request was only noticed once the whole
-                // answer had been generated — up to a minute of waiting for something the reader
+                // answer had been generated, up to a minute of waiting for something the reader
                 // had already cancelled.
                 cancellationToken.ThrowIfCancellationRequested();
                 builder.Append(token);
@@ -901,7 +901,7 @@ public sealed class ExplanationService : IExplanationService
             {
                 // Checked here as well as handed to InferAsync: the executor does not act on the
                 // token itself, so without this a stop request was only noticed once the whole
-                // answer had been generated — up to a minute of waiting for something the reader
+                // answer had been generated, up to a minute of waiting for something the reader
                 // had already cancelled.
                 cancellationToken.ThrowIfCancellationRequested();
                 builder.Append(token);
@@ -1004,7 +1004,7 @@ public sealed class ExplanationService : IExplanationService
     }
 
     /// <summary>
-    /// Compact method metadata for prompts — keeps token count low for faster inference.
+    /// Compact method metadata for prompts, keeps token count low for faster inference.
     /// The verified-facts block sits before the source snippet because prompt overflow is
     /// trimmed from the end of the instruction: the snippet may be cut, the facts never are.
     /// </summary>
@@ -1032,7 +1032,7 @@ public sealed class ExplanationService : IExplanationService
     /// <summary>
     /// Deterministic facts derived from the parse tree and the full (untruncated) method body,
     /// injected into every prompt so the model can neither miss structural patterns (recursion,
-    /// locking, async, swallowed exceptions, state mutation) nor contradict the code — the two
+    /// locking, async, swallowed exceptions, state mutation) nor contradict the code, the two
     /// failure modes with the model-generated sections.
     /// </summary>
     internal static string BuildVerifiedFacts(MethodInfo methodInfo)
@@ -1043,7 +1043,7 @@ public sealed class ExplanationService : IExplanationService
         var facts = new List<string>();
 
         // The C++ parser only learns exceptions from doc comments, so an empty list there does
-        // not prove the body is throw-free — fall back to scanning the body text.
+        // not prove the body is throw-free, fall back to scanning the body text.
         if (methodInfo.ThrownExceptions.Count > 0)
         {
             facts.Add($"Throws: {string.Join(", ", methodInfo.ThrownExceptions)}.");
@@ -1102,7 +1102,7 @@ public sealed class ExplanationService : IExplanationService
         }
 
         var builder = new StringBuilder();
-        builder.AppendLine("Verified facts from code analysis (authoritative — never contradict them):");
+        builder.AppendLine("Verified facts from code analysis (authoritative: never contradict them):");
         foreach (var fact in facts)
         {
             builder.AppendLine(CultureInfo.InvariantCulture, $"- {fact}");
@@ -1141,7 +1141,7 @@ public sealed class ExplanationService : IExplanationService
     /// <summary>
     /// True when the body performs any assignment (plain or compound), increment/decrement, or
     /// mutating collection call. Local declarations count too, so this only clears genuinely
-    /// expression-shaped bodies (pure LINQ chains, switch expressions, recursion) — a
+    /// expression-shaped bodies (pure LINQ chains, switch expressions, recursion), a
     /// deliberately conservative bar for claiming "modifies no state".
     /// </summary>
     private static bool HasAnyMutation(string source) =>
@@ -1296,7 +1296,7 @@ public sealed class ExplanationService : IExplanationService
   /// which otherwise survives into the rendered documentation verbatim.
   /// </summary>
   /// <summary>
-  /// True for a line carrying no information — a bare quote marker, a dangling list number, or
+  /// True for a line carrying no information, a bare quote marker, a dangling list number, or
   /// stray punctuation. The model emits these when generation stops mid-item, and without this
   /// they reach the panel as an empty bullet.
   /// </summary>
@@ -1377,7 +1377,7 @@ public sealed class ExplanationService : IExplanationService
   /// <summary>
   /// Truncates pre/post-condition output while preserving its <c>PRE:</c>/<c>POST:</c> markers, so
   /// the UI and the Word export can present each group under its own label. Each section is capped
-  /// independently — a model that emits six preconditions and no postconditions loses the surplus
+  /// independently, a model that emits six preconditions and no postconditions loses the surplus
   /// preconditions rather than crowding out the postconditions.
   /// Falls back to a flat list when the model ignored the markers.
   /// </summary>
@@ -1451,7 +1451,7 @@ public sealed class ExplanationService : IExplanationService
 
         // An inference in flight owns the native context and the model weights. Releasing them
         // underneath it is a use-after-free inside native code, which terminates the process
-        // instead of raising a catchable exception — so wait for the current call to finish.
+        // instead of raising a catchable exception. co wait for the current call to finish.
         //
         // The wait is bounded: this runs while the window is closing, and hanging the shutdown
         // would be its own bug. If a long generation is still going, the native memory is left to

@@ -1,4 +1,4 @@
-namespace JBU.CodeLens.Shared.Utilities;
+﻿namespace JBU.CodeLens.Shared.Utilities;
 
 /// <summary>
 /// Writes to a temporary file in the destination directory, then atomically moves it over the
@@ -46,11 +46,11 @@ public static class AtomicFileWriter
                 }
                 catch (IOException)
                 {
-                    // Cleanup only — the export outcome was already decided above.
+                    // Cleanup only, the export outcome was already decided above.
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    // Cleanup only — the export outcome was already decided above.
+                    // Cleanup only, the export outcome was already decided above.
                 }
             }
         }

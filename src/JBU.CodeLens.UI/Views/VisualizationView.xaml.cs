@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Automation;
@@ -14,12 +14,12 @@ namespace JBU.CodeLens.UI.Views;
 /// In-app page that renders the scanned project as a zoomable, pannable left-to-right tree
 /// diagram (project → folders → files → classes → methods) with curved connectors. Hosted
 /// inside MainWindow; the Back button raises <see cref="BackRequested"/> and clicking a
-/// file/class/method node raises <see cref="NodeClicked"/> — MainWindow owns the navigation.
+/// file/class/method node raises <see cref="NodeClicked"/>, MainWindow owns the navigation.
 /// Every element is built in code, so brushes are attached with <c>SetResourceReference</c>
 /// and the page survives theme switches without a rebuild.
 /// </summary>
 /// <summary>
-/// Carries the clicked node's payload — a file path, <c>ClassInfo</c>, or <c>MethodInfo</c> —
+/// Carries the clicked node's payload, a file path, <c>ClassInfo</c>, or <c>MethodInfo</c>, 
 /// to <see cref="VisualizationView.NodeClicked"/> subscribers.
 /// </summary>
 public sealed class NodeClickedEventArgs(object payload) : EventArgs
@@ -117,7 +117,7 @@ public partial class VisualizationView : UserControl
         _rootPath = rootPath;
         _results = results;
 
-        HeaderTitle.Text = $"Project Tree — {projectName}";
+        HeaderTitle.Text = $"Project Tree: {projectName}";
 
         if (_depth == VizDepth.Methods && CountNodes(BuildTree(VizDepth.Methods)) > MaxRenderedNodes)
         {
@@ -166,7 +166,7 @@ public partial class VisualizationView : UserControl
         if (count > MaxRenderedNodes)
         {
             StatusText.Text =
-                $"The {target} view needs {count:N0} nodes (limit {MaxRenderedNodes:N0}) — keeping the {_depth} view.";
+                $"The {target} view needs {count:N0} nodes (limit {MaxRenderedNodes:N0}); keeping the {_depth} view.";
             return;
         }
 
@@ -211,7 +211,7 @@ public partial class VisualizationView : UserControl
     /// and of what happens to be scrolled into view.
     /// </summary>
     /// <remarks>
-    /// The diagram was previously trapped in the window — a report or slide could only get it
+    /// The diagram was previously trapped in the window, a report or slide could only get it
     /// through a screenshot, which captures the visible portion at screen resolution.
     /// </remarks>
     private void SaveImageButton_Click(object sender, RoutedEventArgs e)
@@ -262,7 +262,7 @@ public partial class VisualizationView : UserControl
     private byte[] RenderCanvasToPng()
     {
         // The live canvas carries the zoom transform, so it is rendered through a temporary
-        // visual at scale 1 — otherwise the file would come out at whatever zoom the reader
+        // visual at scale 1, otherwise the file would come out at whatever zoom the reader
         // happened to leave the view on.
         const double dpi = 96;
         const double exportScale = 2; // legible when dropped into a document at half size
@@ -315,7 +315,7 @@ public partial class VisualizationView : UserControl
         switch (e.Key)
         {
             // OemPlus/OemMinus are the main row; Add/Subtract are the numeric keypad. Both are
-            // accepted with and without Ctrl — nothing else on this page takes typed input, so
+            // accepted with and without Ctrl, nothing else on this page takes typed input, so
             // requiring the modifier would only be a rule to remember.
             case Key.OemPlus or Key.Add:
                 ZoomAtViewportCenter(ZoomStep);
@@ -378,7 +378,7 @@ public partial class VisualizationView : UserControl
             return;
         }
 
-        // Never enlarge past 100% — small projects should not blow up to fill the view — and
+        // Never enlarge past 100%. cmall projects should not blow up to fill the view, and
         // never shrink below a readable floor: fitting a big tree entirely renders labels as
         // unreadable specks, so past the floor the view fits-as-far-as-legible and pans.
         var scale = Math.Clamp(
@@ -532,7 +532,7 @@ public partial class VisualizationView : UserControl
                 Kind = NodeKind.Class,
                 NavTag = classInfo,
                 Tip = string.IsNullOrWhiteSpace(classInfo.XmlSummary)
-                    ? $"{classInfo.Name} — {classInfo.Methods.Count} methods, {classInfo.Properties.Count} properties"
+                    ? $"{classInfo.Name}: {classInfo.Methods.Count} methods, {classInfo.Properties.Count} properties"
                     : classInfo.XmlSummary.Trim(),
             };
 
@@ -577,7 +577,7 @@ public partial class VisualizationView : UserControl
         {
             TreeCanvas.Width = 0;
             TreeCanvas.Height = 0;
-            StatusText.Text = "Nothing to visualize — scan a project first.";
+            StatusText.Text = "Nothing to visualize. ccan a project first.";
             return;
         }
 

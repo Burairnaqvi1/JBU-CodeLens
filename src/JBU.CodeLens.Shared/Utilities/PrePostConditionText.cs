@@ -1,8 +1,8 @@
-namespace JBU.CodeLens.Shared.Utilities;
+﻿namespace JBU.CodeLens.Shared.Utilities;
 
 /// <summary>
 /// The model's pre/post-condition output, split into its two labeled groups.
-/// <paramref name="Ungrouped"/> carries bullets that appeared before any marker — non-empty only
+/// <paramref name="Ungrouped"/> carries bullets that appeared before any marker, non-empty only
 /// when the model ignored the requested format.
 /// </summary>
 public readonly record struct PrePostConditionGroups(
@@ -24,7 +24,7 @@ public readonly record struct PrePostConditionGroups(
 /// <para>
 /// A 1.5B local model does not honor an output format every time, so the parser is deliberately
 /// lenient (it accepts <c>Preconditions:</c>, <c>- POST:</c>, and similar) and reports failure
-/// through <see cref="PrePostConditionGroups.IsGrouped"/> rather than throwing or guessing —
+/// through <see cref="PrePostConditionGroups.IsGrouped"/> rather than throwing or guessing, 
 /// mislabeling a postcondition as a precondition is worse than showing one flat list.
 /// </para>
 /// </summary>
@@ -59,7 +59,7 @@ public static class PrePostConditionText
             {
                 current = marker == PreMarker ? pre : post;
 
-                // "POST: the method returns true" — the model put content on the marker line
+                // "POST: the method returns true", the model put content on the marker line
                 // itself instead of the line below, so keep the remainder as the first bullet.
                 var inline = line[(line.IndexOf(':', StringComparison.Ordinal) + 1)..].Trim();
                 if (inline.Length > 0) current.Add(inline);
@@ -83,7 +83,7 @@ public static class PrePostConditionText
 
         var head = line[..colon].Trim();
 
-        // "Preconditions" / "Post-conditions" — strip separators so one comparison covers each
+        // "Preconditions" / "Post-conditions". ctrip separators so one comparison covers each
         // spelling the model reaches for.
         head = head.Replace("-", string.Empty, StringComparison.Ordinal)
                    .Replace(" ", string.Empty, StringComparison.Ordinal);

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 
 using JBU.CodeLens.Shared.Structural;
 using MethodInfo = JBU.CodeLens.Shared.Models.MethodInfo;
@@ -10,7 +10,7 @@ namespace JBU.CodeLens.Core.Analysis;
 /// knowledge graph) layered on top of JBU.CodeLens's own parsers. Files are parsed in parallel
 /// (bounded to half the logical cores, leaving headroom for the UI and LLM threads) and each
 /// file's <see cref="ParseResult"/> is cached across scans keyed on its last-write time, so a
-/// rescan only re-parses files that actually changed — which also preserves their cached
+/// rescan only re-parses files that actually changed, which also preserves their cached
 /// deterministic analysis and AI descriptions.
 /// </summary>
 public sealed class ScideEngine : IProjectAnalyzer
@@ -152,7 +152,7 @@ public sealed class ScideEngine : IProjectAnalyzer
 
             var graph = KnowledgeGraph.BuildFrom(ir);
 
-            // Nothing reads the symbol table after analysis completes — release it now rather
+            // Nothing reads the symbol table after analysis completes, release it now rather
             // than holding the whole scan's symbols in memory until the next scan rebuilds it.
             _symbolTable.Clear();
 
@@ -188,8 +188,8 @@ public sealed class ScideEngine : IProjectAnalyzer
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is the most expensive step after parsing — measured at roughly a fifth of a cold scan
-    /// on this codebase — and it is independent per method, so running it on one thread while the
+    /// This is the most expensive step after parsing, measured at roughly a fifth of a cold scan
+    /// on this codebase, and it is independent per method, so running it on one thread while the
     /// rest sit idle wasted most of the machine. Measured over 640 real methods it takes about
     /// 1.9 s sequentially against 0.7 s across cores.
     /// </para>
@@ -291,7 +291,7 @@ public sealed class ScideEngine : IProjectAnalyzer
     }
 
     /// <summary>
-    /// Metrics-based project summary text. There is no LLM path here on purpose — SCIDE's own LLM
+    /// Metrics-based project summary text. There is no LLM path here on purpose. cCIDE's own LLM
     /// integration was removed because AI runs exclusively through the single
     /// <see cref="ExplanationService"/> instance owned by the UI; loading a second model would
     /// double memory usage and stall the first call.

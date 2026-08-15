@@ -1,4 +1,4 @@
-; Installer for JBU CodeLens.
+﻿; Installer for JBU CodeLens.
 ;
 ; Build with:
 ;   ISCC.exe packaging\JBU.CodeLens.iss /DSourceDir="<published folder>"
@@ -28,7 +28,7 @@ AppPublisher=Burair and Usaid
 VersionInfoVersion={#AppVersion}
 
 ; Per-user install: no administrator prompt, and it works when the person
-; running it is not an administrator on their own machine — which is the common
+; running it is not an administrator on their own machine, which is the common
 ; case on university and work laptops.
 PrivilegesRequired=lowest
 DefaultDirName={autopf}\JBU CodeLens
@@ -68,7 +68,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Messages]
 ; The page description renders as a single line and does not expand %n, so the
 ; expected format goes on the field label, right beside the box being typed into.
-; The names below must match Default.isl exactly — Inno accepts an unrecognised
+; The names below must match Default.isl exactly, Inno accepts an unrecognised
 ; entry here without complaining and simply keeps its own default text.
 UserInfoDesc=Please enter your details and the serial number supplied with JBU CodeLens.
 UserInfoSerial=&Serial Number (JBUC-XXXXX-XXXXX-XXXXX):
@@ -116,7 +116,7 @@ begin
   WizardForm.UserInfoSerialEdit.Top := WizardForm.UserInfoSerialEdit.Top - Shift;
 
   { Unattended installation. A silent install still runs the user information page, and a page it
-    cannot answer aborts setup during initialisation — exit code 1, nothing installed, and no
+    cannot answer aborts setup during initialisation, exit code 1, nothing installed, and no
     message, because silent mode has nowhere to show one. Supplying the answers on the command
     line is the only way that page can be satisfied without a person:
 

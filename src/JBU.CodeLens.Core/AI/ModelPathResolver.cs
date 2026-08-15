@@ -1,11 +1,11 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace JBU.CodeLens.Core.AI;
 
 /// <summary>
 /// Locates a local GGUF model file for <see cref="ExplanationService"/>.
-/// Resolution order: explicit configuration first — the <c>JBU_CODELENS_MODEL_PATH</c>
-/// environment variable, then <c>modelPath</c> in <c>%APPDATA%\JBU.CodeLens\settings.json</c> —
+/// Resolution order: explicit configuration first, the <c>JBU_CODELENS_MODEL_PATH</c>
+/// environment variable, then <c>modelPath</c> in <c>%APPDATA%\JBU.CodeLens\settings.json</c>, 
 /// and only then the automatic search of deployment/development locations. An explicit
 /// configuration is authoritative: when set but invalid, resolution fails rather than silently
 /// loading some other model found on disk.

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -29,7 +29,7 @@ public partial class MainWindow
     private void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         // The hint and clear button track the text itself, not the filter, so they stay
-        // immediate — a 150 ms lag on the placeholder would look like a dropped keystroke.
+        // immediate, a 150 ms lag on the placeholder would look like a dropped keystroke.
         var empty = string.IsNullOrEmpty(FilterBox.Text);
         FilterHint.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         FilterClearButton.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
@@ -59,7 +59,7 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Shows only the file nodes whose name — or whose classes/methods — match the query,
+    /// Shows only the file nodes whose name, or whose classes/methods, match the query,
     /// expanding files whose match is inside them. Matching consults the parse results rather
     /// than tree items, so lazily built children are only materialized for files that match.
     /// Clearing the filter restores every node (collapsed, matching the freshly scanned state).
@@ -230,7 +230,7 @@ public partial class MainWindow
 
     // Tree headers live across theme switches (the tree is not rebuilt like the detail panel is),
     // so brushes must be resource *references* (SetResourceReference), not one-time FindResource
-    // lookups — a held instance goes stale if the theme switch ends up replacing the brush.
+    // lookups, a held instance goes stale if the theme switch ends up replacing the brush.
     private static StackPanel CreateFileHeader(string fileName, bool isCpp)
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };

@@ -1,4 +1,4 @@
-{
+﻿{
   Serial number validation for JBU CodeLens.
 
   Included by JBU.CodeLens.iss, and by the test harness that exercises it. It
@@ -7,7 +7,7 @@
 
   A key looks like  JBUC-4K7P2-9WX3M-QT58R  and carries its own proof: the last
   character is a check character worked out from the fourteen before it. Setup
-  therefore holds no list of valid keys — there is nothing in this script to
+  therefore holds no list of valid keys, there is nothing in this script to
   read off and reuse, and keys can be issued without rebuilding the installer.
 
   The alphabet leaves out 0, O, 1, I and L, so a key read off a printed sheet
@@ -51,7 +51,7 @@ begin
   begin
     Index := AlphabetIndex(Body[I]);
     if Index < 0 then Exit;
-    { Weighted by position, so swapping two characters round breaks the sum —
+    { Weighted by position, so swapping two characters round breaks the sum, 
       a plain total would accept the transposition, which is the commonest
       mistake made copying a key by hand. }
     Weighted := Weighted + (Index * I);

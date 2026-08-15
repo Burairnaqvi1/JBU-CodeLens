@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using System.Windows.Documents;
 using System.Windows.Media;
 
@@ -10,14 +10,14 @@ namespace JBU.CodeLens.UI.Renderers;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The palette is Visual Studio Code's default pair — Dark+ and Light+ — because that is what a
+/// The palette is Visual Studio Code's default pair, Dark+ and Light+, because that is what a
 /// reader of this panel almost certainly has open on the other monitor, and a familiar colouring
 /// is read faster than a handsome one. Both are provided: the panel follows the application
 /// theme, and dark tokens on a light background would be unreadable.
 /// </para>
 /// <para>
-/// This is a lexical colouriser, not a parser. It classifies by token shape — a word from the
-/// keyword set, a run inside quotes, a comment to end of line — which is what an editor does for
+/// This is a lexical colouriser, not a parser. It classifies by token shape, a word from the
+/// keyword set, a run inside quotes, a comment to end of line, which is what an editor does for
 /// its own highlighting and is enough to make structure visible. It deliberately does not resolve
 /// types or bind identifiers: this panel exists to show what the file says, and a colouring that
 /// pretended to semantic knowledge would be another claim needing verification.

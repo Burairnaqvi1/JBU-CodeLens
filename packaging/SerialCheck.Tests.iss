@@ -1,4 +1,4 @@
-; Tests for the serial number validation.
+﻿; Tests for the serial number validation.
 ;
 ; Installs nothing. It runs CheckSerial over a set of known cases, writes the
 ; results to a file and aborts. It includes the real SerialCheck.iss, so what is
@@ -59,7 +59,7 @@ begin
   Log := '';
   Failures := 0;
 
-  { Keys issued by New-SerialKey.ps1 — all must be accepted. }
+  { Keys issued by New-SerialKey.ps1, all must be accepted. }
   Expect('JBUC-4NM9C-35SKX-VFG3X', True,  'issued key');
   Expect('JBUC-QZENK-N5GH8-BSEYG', True,  'issued key');
   Expect('JBUC-86ZHS-3K2PA-T26Q5', True,  'issued key');

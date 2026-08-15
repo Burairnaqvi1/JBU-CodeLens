@@ -1,11 +1,11 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
 namespace JBU.CodeLens.UI.Helpers;
 
 /// <summary>
-/// Small persisted UI preferences — the chosen theme and the last opened project — stored as
+/// Small persisted UI preferences, the chosen theme and the last opened project. ctored as
 /// JSON in <c>%APPDATA%\JBU.CodeLens\ui-settings.json</c>. Best-effort: <see cref="Load"/> returns
 /// defaults on any error and <see cref="Save"/> swallows failures, so a missing or corrupt file
 /// never disrupts the app.
@@ -61,7 +61,7 @@ public sealed class UiSettings
         catch (Exception ex)
         {
             Debug.WriteLine($"[JBU CodeLens] Could not read the settings: {ex.GetType().Name}: {ex.Message}");
-            // Corrupt or unreadable settings must never block startup — fall back to defaults.
+            // Corrupt or unreadable settings must never block startup, fall back to defaults.
         }
 
         return new UiSettings();

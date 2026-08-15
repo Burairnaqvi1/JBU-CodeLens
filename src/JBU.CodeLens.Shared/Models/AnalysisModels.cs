@@ -1,4 +1,4 @@
-namespace JBU.CodeLens.Shared.Models;
+﻿namespace JBU.CodeLens.Shared.Models;
 
 /// <summary>
 /// Confidence assigned to a deterministic inference.
@@ -238,7 +238,7 @@ public enum ExecutionStepKind
 
 /// <summary>
 /// The range of values a single variable is allowed to hold inside one method, as far as the
-/// method's own code reveals it — for example "0 to 100" from a guard clause, or "'a' to 'z'"
+/// method's own code reveals it, for example "0 to 100" from a guard clause, or "'a' to 'z'"
 /// from a character comparison.
 /// </summary>
 /// <remarks>
@@ -262,8 +262,8 @@ public sealed class VariableLimit
     public string Limit { get; set; } = string.Empty;
 
     /// <summary>
-    /// What the limit constrains. A variable can be subject to several at once — a string may
-    /// have to be present <em>and</em> short — and those are merged into one statement rather
+    /// What the limit constrains. A variable can be subject to several at once, a string may
+    /// have to be present <em>and</em> short, and those are merged into one statement rather
     /// than competing, since they are complementary facts rather than rival claims.
     /// </summary>
     public VariableLimitKind Kind { get; set; }

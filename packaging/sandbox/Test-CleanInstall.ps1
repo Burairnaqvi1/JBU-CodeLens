@@ -1,5 +1,5 @@
-<#
-    Runs INSIDE Windows Sandbox — a fresh Windows with no Visual Studio, no .NET runtime, no
+﻿<#
+    Runs INSIDE Windows Sandbox, a fresh Windows with no Visual Studio, no .NET runtime, no
     Visual C++ Redistributable, and no network connection at all.
 
     This is the situation the application is actually judged in: someone is handed a USB stick,
@@ -13,8 +13,8 @@
       2  setup completes unattended, with a serial, without an administrator
       3  the application launches
       4  every native library resolves from the application's own folder
-      5  it parses real C# — Roslyn
-      6  it parses real C++ — libclang, the 110 MB library that carries its own dependencies
+      5  it parses real C#, Roslyn
+      6  it parses real C++, libclang, the 110 MB library that carries its own dependencies
       7  the language model loads and answers, entirely offline
       8  nothing reached for the network at any point
 
@@ -33,16 +33,16 @@ function Say([string]$text) {
 
 function Check([string]$name, [bool]$passed, [string]$detail) {
     Say ("  [{0}] {1}{2}" -f $(if ($passed) { 'PASS' } else { 'FAIL' }), $name,
-        $(if ($detail) { " — $detail" } else { '' }))
+        $(if ($detail) { ", $detail" } else { '' }))
     if (-not $passed) { $failures.Add($name) }
 }
 
-Say "JBU CodeLens — clean machine acceptance test"
+Say "JBU CodeLens, clean machine acceptance test"
 Say "started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Say ""
 
 # ── 1. the environment ────────────────────────────────────────────────────────────────────────
-Say "1. ENVIRONMENT — is this machine really bare?"
+Say "1. ENVIRONMENT, is this machine really bare?"
 Say "  Windows: $((Get-CimInstance Win32_OperatingSystem).Caption) build $((Get-CimInstance Win32_OperatingSystem).BuildNumber)"
 
 $redistAbsent = $true
@@ -65,7 +65,7 @@ Check "No internet access" (-not $online) "outbound connection refused"
 Say ""
 
 # ── 2. installation ───────────────────────────────────────────────────────────────────────────
-Say "2. INSTALLATION — unattended, no administrator"
+Say "2. INSTALLATION, unattended, no administrator"
 
 $setup = 'C:\host-downloads\JBU-CodeLens-Setup.exe'
 if (-not (Test-Path $setup)) { Check "Installer present" $false "not found at $setup"; Say ""; Say "VERDICT: FAIL"; exit 1 }
@@ -92,7 +92,7 @@ if (-not $installed) {
         foreach ($line in (Get-Content $setupLog -Tail 20)) { Say "    $line" }
     }
     Say ""
-    Say "VERDICT: FAIL — nothing was installed, so nothing else could be tested."
+    Say "VERDICT: FAIL, nothing was installed, so nothing else could be tested."
     exit 1
 }
 
@@ -167,7 +167,7 @@ double average_of(const std::vector<double>& values) {
 '@
 
 # ── 4. launch and inspect ─────────────────────────────────────────────────────────────────────
-Say "3. LAUNCH — does it start on a machine with nothing installed?"
+Say "3. LAUNCH, does it start on a machine with nothing installed?"
 $run = Start-Process $app -PassThru
 Start-Sleep -Seconds 10
 
@@ -176,7 +176,7 @@ Check "Application process alive" ($null -ne $live) $(if ($live) { "pid $($run.I
 
 if (-not $live) {
     Say ""
-    Say "VERDICT: FAIL — the application did not stay running."
+    Say "VERDICT: FAIL, the application did not stay running."
     exit 1
 }
 
@@ -190,7 +190,7 @@ Check "Main window opened" (-not [string]::IsNullOrEmpty($live.MainWindowTitle))
 Say ""
 
 # ── 5. drive the interface, as a person would ─────────────────────────────────────────────────
-Say "4. USING IT — opening a project through the interface"
+Say "4. USING IT, opening a project through the interface"
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $auto = [System.Windows.Automation.AutomationElement]
 $descend = [System.Windows.Automation.TreeScope]::Descendants
@@ -262,7 +262,7 @@ else {
 Say ""
 
 # ── 6. what the work actually loaded ──────────────────────────────────────────────────────────
-Say "5. NATIVE LIBRARIES — where did each one come from?"
+Say "5. NATIVE LIBRARIES, where did each one come from?"
 
 # A scan reaches for libclang; asking the model reaches for llama. Both are given time.
 $libclangLoaded = $false
@@ -301,7 +301,7 @@ if ($live) {
 Say ""
 
 # ── 7. did it actually produce anything ───────────────────────────────────────────────────────
-Say "6. RESULTS — did the application produce real output?"
+Say "6. RESULTS, did the application produce real output?"
 
 $settings = Join-Path $env:APPDATA 'JBU.CodeLens'
 $wroteState = Test-Path $settings
@@ -324,7 +324,7 @@ if ($window) {
 Say ""
 
 # ── 8. nothing came from outside ──────────────────────────────────────────────────────────────
-Say "7. ISOLATION — did anything reach outside the machine?"
+Say "7. ISOLATION, did anything reach outside the machine?"
 $connections = @()
 try {
     $connections = @(Get-NetTCPConnection -OwningProcess $run.Id -ErrorAction SilentlyContinue |
@@ -339,13 +339,13 @@ if ($live) { $live | Stop-Process -Force -ErrorAction SilentlyContinue }
 
 Say "VERDICT"
 if ($failures.Count -eq 0) {
-    Say "  PASS — on a machine with no Visual C++ Redistributable, no .NET, no Visual Studio and"
+    Say "  PASS, on a machine with no Visual C++ Redistributable, no .NET, no Visual Studio and"
     Say "  no network, the setup installed without an administrator, the application ran, loaded"
     Say "  every native library from its own folder, parsed C# and C++, reached its language model,"
     Say "  and never contacted anything outside the machine."
 }
 else {
-    Say "  FAIL — $($failures.Count) check(s) did not pass:"
+    Say "  FAIL, $($failures.Count) check(s) did not pass:"
     foreach ($failure in $failures) { Say "    - $failure" }
 }
 

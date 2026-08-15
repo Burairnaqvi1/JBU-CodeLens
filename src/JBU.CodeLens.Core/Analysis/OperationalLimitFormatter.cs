@@ -1,4 +1,4 @@
-namespace JBU.CodeLens.Core.Analysis;
+﻿namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
 /// Converts parser operational-limit strings into readable English sentences.
@@ -28,7 +28,7 @@ public static class OperationalLimitFormatter
 
         // Limits arrive as "subject: condition". A C++ expression carries its own colons in the
         // scope operator, so splitting on the first one turned `std::fabs(x) < 1e-12` into a
-        // requirement about something called "std" — an entity that does not exist. Only a colon
+        // requirement about something called "std", an entity that does not exist. Only a colon
         // that is not part of "::" separates a subject.
         var colon = IndexOfSubjectColon(text);
         if (colon > 0)
@@ -67,10 +67,10 @@ public static class OperationalLimitFormatter
         {
             if (usedAsDivisor || condition.Contains("divisor", StringComparison.OrdinalIgnoreCase))
             {
-                return SubjectPrefix(subject, "must not be zero — used as a divisor in this method");
+                return SubjectPrefix(subject, "must not be zero; used as a divisor in this method");
             }
 
-            return SubjectPrefix(subject, "must not be zero — invalid values cause this method to throw");
+            return SubjectPrefix(subject, "must not be zero; invalid values cause this method to throw");
         }
 
         if (IsNullCheck(condition))
@@ -86,12 +86,12 @@ public static class OperationalLimitFormatter
         if (IsNegativeCheck(condition))
         {
             // A "< 0" guard permits zero, so "positive" overstates it.
-            return SubjectPrefix(subject, "must not be negative — negative values are rejected");
+            return SubjectPrefix(subject, "must not be negative; negative values are rejected");
         }
 
         if (IsNonPositiveCheck(condition))
         {
-            return SubjectPrefix(subject, "must be greater than zero — zero or negative values are rejected");
+            return SubjectPrefix(subject, "must be greater than zero; zero or negative values are rejected");
         }
 
         if (condition.Contains("index", StringComparison.OrdinalIgnoreCase) ||
@@ -106,7 +106,7 @@ public static class OperationalLimitFormatter
         if (condition.Contains("division by zero", StringComparison.OrdinalIgnoreCase))
         {
             var divisor = string.IsNullOrEmpty(subject) ? FindDivisorParameter(context) : subject;
-            return SubjectPrefix(divisor ?? string.Empty, "must not be zero — used as a divisor in this method");
+            return SubjectPrefix(divisor ?? string.Empty, "must not be zero; used as a divisor in this method");
         }
 
         if (condition.Contains("null pointer", StringComparison.OrdinalIgnoreCase))
@@ -250,7 +250,7 @@ public static class OperationalLimitFormatter
     /// <remarks>
     /// Only single-operator expressions and a leading logical NOT are handled. A compound joined by
     /// &amp;&amp; or || inverts to a form whose English reading is no longer obvious, so those are
-    /// reported as rejections rather than guessed at — a limit stated backwards is worse than one
+    /// reported as rejections rather than guessed at, a limit stated backwards is worse than one
     /// stated cautiously.
     /// </remarks>
     private static string? TryNegate(string text)

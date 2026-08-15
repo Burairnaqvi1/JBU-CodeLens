@@ -1,4 +1,4 @@
-using LensMethod = JBU.CodeLens.Shared.Models.MethodInfo;
+﻿using LensMethod = JBU.CodeLens.Shared.Models.MethodInfo;
 using LensClass = JBU.CodeLens.Shared.Models.ClassInfo;
 
 namespace JBU.CodeLens.Shared.Structural;
@@ -140,6 +140,6 @@ public static class ScideMethodIndex
     }
 
     // Note: context *construction* (which may run deterministic analysis as a fallback) lives
-    // in Core — IProjectAnalyzer.BuildMethodDetailContext — so this shared assembly stays free
+    // in Core, IProjectAnalyzer.BuildMethodDetailContext. co this shared assembly stays free
     // of analysis logic. Only pure index lookups live here.
 }

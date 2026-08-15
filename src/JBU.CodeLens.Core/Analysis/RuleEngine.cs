@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace JBU.CodeLens.Core.Analysis;
 
@@ -169,7 +169,7 @@ internal static class SourcePatternHelpers
     /// <remarks>
     /// The scalar tests below match on substrings, so <c>double[,]</c> satisfied "contains double"
     /// and <c>std::vector&lt;std::string&gt;</c> satisfied "contains string". A matrix parameter was
-    /// then told to "be a finite numeric value" and to "stay within valid index bounds" — statements
+    /// then told to "be a finite numeric value" and to "stay within valid index bounds". ctatements
     /// that are not merely unhelpful but untrue of the thing they name. An aggregate is excluded
     /// from every scalar classification so those rules cannot fire on it.
     /// </remarks>

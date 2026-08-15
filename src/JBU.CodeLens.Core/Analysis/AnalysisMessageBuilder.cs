@@ -1,9 +1,9 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace JBU.CodeLens.Core.Analysis;
 
 /// <summary>
-/// Human-readable sentence templates for inference findings (8–25 words, no trailing period).
+/// Human-readable sentence templates for inference findings (8 to 25 words, no trailing period).
 /// </summary>
 internal static class AnalysisMessageBuilder
 {
@@ -16,8 +16,8 @@ internal static class AnalysisMessageBuilder
     {
         var subject = isParameter ? $"Parameter {name}" : $"Value {name}, computed in this method,";
         return usedAsDivisor
-            ? $"{subject} must not be zero — division by zero will throw an exception"
-            : $"{subject} must not be zero — the method throws when it is zero";
+            ? $"{subject} must not be zero; division by zero will throw an exception"
+            : $"{subject} must not be zero; the method throws when it is zero";
     }
 
     internal static string GuardNull(string parameterName) =>
@@ -27,13 +27,13 @@ internal static class AnalysisMessageBuilder
         $"Parameter {parameterName} must not be null or empty before calling this method";
 
     internal static string GuardPositive(string parameterName) =>
-        $"Parameter {parameterName} must not be negative — negative values are rejected";
+        $"Parameter {parameterName} must not be negative; negative values are rejected";
 
     internal static string GuardNonPositive(string parameterName) =>
-        $"Parameter {parameterName} must be greater than zero — zero or negative values are rejected";
+        $"Parameter {parameterName} must be greater than zero; zero or negative values are rejected";
 
     internal static string NumericFinite(string parameterName) =>
-        $"Parameter {parameterName} should be a finite numeric value — NaN and Infinity may produce unexpected results";
+        $"Parameter {parameterName} should be a finite numeric value; NaN and Infinity may produce unexpected results";
 
     internal static string StringNotNullOrEmpty(string parameterName) =>
         $"Parameter {parameterName} should not be null or empty when passed into this method";
@@ -45,10 +45,10 @@ internal static class AnalysisMessageBuilder
         $"Parameter {parameterName} must not be null and should contain at least one element if iterated";
 
     internal static string SqrtNonNegative(string parameterName) =>
-        $"Parameter {parameterName} passed to square root should be non-negative — negative values produce NaN";
+        $"Parameter {parameterName} passed to square root should be non-negative; negative values produce NaN";
 
     internal static string FilePathAccessible() =>
-        "File path parameter must point to an accessible file — throws if file does not exist or access is denied";
+        "File path parameter must point to an accessible file; throws if file does not exist or access is denied";
 
     internal static string PostVoidAction() =>
         "This method performs an action and returns no value";
@@ -60,10 +60,10 @@ internal static class AnalysisMessageBuilder
         $"Returns a numeric result as {NormalizeTypeName(returnType)}";
 
     internal static string PostStringResult() =>
-        "Returns a text value — may return null if no value is found";
+        "Returns a text value; may return null if no value is found";
 
     internal static string PostCollectionResult() =>
-        "Returns a collection — may be empty but not null";
+        "Returns a collection; may be empty but not null";
 
     internal static string PostCountOrGetInt() =>
         "Returns a count or retrieved integer value";
@@ -72,7 +72,7 @@ internal static class AnalysisMessageBuilder
         $"Returns the result of dividing {first} by {second} as a {NormalizeTypeName(returnType)} value";
 
     internal static string PostDivideGeneric() =>
-        "Returns the quotient — result is undefined if divisor is zero";
+        "Returns the quotient; result is undefined if divisor is zero";
 
     internal static string PostMultiply() =>
         "Returns the product of the provided values";
@@ -84,10 +84,10 @@ internal static class AnalysisMessageBuilder
         "Returns the sum of the provided values";
 
     internal static string PostGet() =>
-        "Returns the requested value — does not modify state";
+        "Returns the requested value; does not modify state";
 
     internal static string PostSetOrUpdate() =>
-        "Modifies internal state — no return value or returns confirmation";
+        "Modifies internal state; no return value or returns confirmation";
 
     internal static string PostAddOrInsert() =>
         "Adds an element to the collection or data store";
@@ -96,10 +96,10 @@ internal static class AnalysisMessageBuilder
         "Removes the specified element if it exists";
 
     internal static string PostSaveOrWrite() =>
-        "Persists data — may throw if write fails";
+        "Persists data; may throw if write fails";
 
     internal static string PostLoadOrRead() =>
-        "Retrieves data from storage — may throw if source is unavailable";
+        "Retrieves data from storage; may throw if source is unavailable";
 
     internal static string PostCalculateOrCompute() =>
         "Returns a computed result based on the provided inputs";
@@ -108,10 +108,10 @@ internal static class AnalysisMessageBuilder
         "Returns a boolean indicating whether the condition holds";
 
     internal static string PostMayThrow() =>
-        "May throw an exception under certain input conditions — see Errors section for details";
+        "May throw an exception under certain input conditions. cee Errors section for details";
 
     internal static string PostStateMutation() =>
-        "Modifies internal object state — call GetX() methods after this to observe changes";
+        "Modifies internal object state; call GetX() methods after this to observe changes";
 
     internal static string NormalizeTypeName(string returnType)
     {
@@ -244,7 +244,7 @@ internal static class AnalysisMessageBuilder
     {
         if (text.Contains("Potential division by zero", StringComparison.OrdinalIgnoreCase))
         {
-            return "Divisor parameter must not be zero — division by zero will throw an exception";
+            return "Divisor parameter must not be zero; division by zero will throw an exception";
         }
 
         if (text.Contains("Potential null pointer", StringComparison.OrdinalIgnoreCase))

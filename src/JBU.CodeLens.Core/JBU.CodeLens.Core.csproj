@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -20,7 +20,7 @@
 
   <!--
     Lets the test project reach internal helpers. Some behaviour worth pinning is not reachable
-    through the public surface without a loaded language model — the shaping applied to streamed
+    through the public surface without a loaded language model, the shaping applied to streamed
     text, for instance, which has to match the shaping applied to the final result.
   -->
   <ItemGroup>

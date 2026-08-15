@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -79,15 +79,15 @@ public class CSharpParser : ILanguageParser
     }
 
     /// <summary>
-    /// Yields every type declaration in the file — classes, records (including record structs),
-    /// structs and interfaces — whether declared directly in the compilation unit, inside a
+    /// Yields every type declaration in the file, classes, records (including record structs),
+    /// structs and interfaces, whether declared directly in the compilation unit, inside a
     /// namespace in any of its forms, or nested within another type.
     /// </summary>
     /// <remarks>
     /// Nested types are reported under a qualified name such as <c>Outer.Inner</c>, so the tree
     /// shows where they live. They were previously skipped, which meant a type nested inside
     /// another was absent from the tree, the exported documents and every measurement, with
-    /// nothing to tell the reader anything had been left out — silence that reads as "there is
+    /// nothing to tell the reader anything had been left out. cilence that reads as "there is
     /// nothing there" rather than "this was not examined".
     /// </remarks>
     private static IEnumerable<(TypeDeclarationSyntax Type, string NamespaceName, string NamePrefix)> GetTopLevelTypes(
@@ -262,7 +262,7 @@ public class CSharpParser : ILanguageParser
     /// <remarks>
     /// Constructors were previously skipped altogether, so a long one with real branching
     /// never appeared in the tree, and had no
-    /// value limits worked out for its parameters — despite being the one member every caller of
+    /// value limits worked out for its parameters, despite being the one member every caller of
     /// the type has to get right. The return type is recorded as the type being built, which is
     /// what a constructor produces.
     /// </remarks>
@@ -291,7 +291,7 @@ public class CSharpParser : ILanguageParser
             var type = parameter.Type?.ToString() ?? "var";
 
             // Keep "out", "ref", "in" and "params". Dropping them made an output parameter read
-            // as an ordinary input everywhere the parameter list is shown — including a panel
+            // as an ordinary input everywhere the parameter list is shown, including a panel
             // headed "Inputs / Outputs", which then stated the opposite of what the code does.
             var modifiers = string.Join(" ", parameter.Modifiers.Select(m => m.Text));
             methodInfo.Parameters.Add(modifiers.Length > 0
@@ -312,7 +312,7 @@ public class CSharpParser : ILanguageParser
         }
 
         // The declaration exactly as written, minus the body. Everything above this point has
-        // already discarded part of it — Name drops generic parameters, AccessModifier keeps only
+        // already discarded part of it, Name drops generic parameters, AccessModifier keeps only
         // the access word (so "abstract", "static", "async" and "override" are gone), and
         // Parameters is rebuilt as "Type name" (so "out", "ref", "params", defaults and
         // attributes are gone). Anything displaying a signature had to reassemble it from those
@@ -324,7 +324,7 @@ public class CSharpParser : ILanguageParser
     }
 
     /// <summary>
-    /// The declaration as written in the file, with the body removed — modifiers, return type,
+    /// The declaration as written in the file, with the body removed, modifiers, return type,
     /// generic parameters, the full parameter list and any attributes, verbatim.
     /// </summary>
     /// <remarks>
@@ -451,13 +451,13 @@ public class CSharpParser : ILanguageParser
     }
 
     /// <summary>
-    /// Whether the statement is a guard body — one that throws directly rather than merely
+    /// Whether the statement is a guard body, one that throws directly rather than merely
     /// containing something that might.
     /// </summary>
     /// <remarks>
     /// Searching the whole subtree treated any branch holding a nested check as a guard, so an
-    /// ordinary branch such as <c>if (value.Contains(".."))</c> — which selects between two
-    /// readings before validating either — was recorded as a condition the caller must satisfy.
+    /// ordinary branch such as <c>if (value.Contains(".."))</c>, which selects between two
+    /// readings before validating either, was recorded as a condition the caller must satisfy.
     /// A guard rejects immediately; anything deeper belongs to the guard nested inside it, which is
     /// recorded separately when this method is reached for that statement.
     /// </remarks>
@@ -726,7 +726,7 @@ public class CSharpParser : ILanguageParser
     /// Renders XML documentation content to plain text, descending into nested formatting
     /// elements (<c>&lt;c&gt;</c>, <c>&lt;para&gt;</c>, …) and substituting reference elements
     /// (<c>&lt;see cref="X"/&gt;</c>, <c>&lt;paramref name="y"/&gt;</c>) with the referenced
-    /// name. Skipping these — as a text-only walk would — leaves holes mid-sentence in every
+    /// name. Skipping these, as a text-only walk would, leaves holes mid-sentence in every
     /// summary shown in the UI ("defined in ." instead of "defined in Theme/*.xaml.").
     /// </summary>
     private static void AppendXmlContentText(SyntaxList<XmlNodeSyntax> content, StringBuilder builder)

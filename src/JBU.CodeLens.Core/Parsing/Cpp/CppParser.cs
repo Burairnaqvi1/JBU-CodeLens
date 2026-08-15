@@ -1,16 +1,16 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
 // Constrains where the runtime may load native dependencies from when it falls back to the OS
 // loader. Without this, the default search order includes the current working directory, so a
 // libclang.dll planted in whatever folder the user happened to launch the app from would be loaded
-// in preference to the real one — arbitrary code execution in this process.
+// in preference to the real one, arbitrary code execution in this process.
 //
 // SafeDirectories (LOAD_LIBRARY_SEARCH_DEFAULT_DIRS) covers the application directory and System32,
 // which is where the genuine libclang.dll lives: the UI build copies it next to the executable (see
 // JBU.CodeLens.UI.csproj, CopyLibClangToAppRoot). AssemblyDirectory would also work but CA5393
-// rejects it as unsafe, and SafeDirectories is the stricter option that still resolves correctly —
+// rejects it as unsafe, and SafeDirectories is the stricter option that still resolves correctly, 
 // verified by the CppParserTests suite, which performs real native parses through these imports.
 // Applied assembly-wide because every P/Invoke in this assembly targets that app-local libclang.
 [assembly: DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
@@ -28,9 +28,9 @@ public class CppParser : ILanguageParser
     /// contains it.
     /// </summary>
     /// <remarks>
-    /// Every catch in this file is a deliberate resilience boundary — a malformed header must
+    /// Every catch in this file is a deliberate resilience boundary, a malformed header must
     /// not abort a scan, and an exception escaping a native callback would take the process
-    /// down — but they were also completely silent. A C++ file that came back with no classes
+    /// down, but they were also completely silent. A C++ file that came back with no classes
     /// gave no way to tell a genuinely empty file from twenty suppressed marshaling errors.
     /// This writes to the debug listener only, so a normal run is unchanged.
     /// </remarks>
@@ -205,7 +205,7 @@ public class CppParser : ILanguageParser
     /// <summary>
     /// Runs the native libclang parse on a dedicated background thread with a watchdog. A call
     /// into native code cannot be aborted, so on timeout (or cancellation mid-parse) the thread
-    /// is abandoned — it keeps running detached and its index/TU leak if it never returns — and
+    /// is abandoned, it keeps running detached and its index/TU leak if it never returns, and
     /// the file is reported as failed instead of hanging or stalling the whole scan. That leak
     /// is bounded to genuinely pathological files and is the price of keeping the app alive.
     /// </summary>
@@ -251,7 +251,7 @@ public class CppParser : ILanguageParser
 
         var result = new ParseResult { FilePath = filePath };
         result.Errors.Add(
-            $"C++ parse timed out after {NativeParseTimeout.TotalSeconds:F0} seconds — the file was skipped.");
+            $"C++ parse timed out after {NativeParseTimeout.TotalSeconds:F0} seconds; the file was skipped.");
         return result;
     }
 
@@ -470,7 +470,7 @@ public class CppParser : ILanguageParser
     private static List<MethodInfo> DeduplicateMethods(List<MethodInfo> methods) =>
         methods
             .GroupBy(
-                // Key on parameter *types* only — the declaration and definition of the same
+                // Key on parameter *types* only, the declaration and definition of the same
                 // method may name their parameters differently.
                 method => $"{method.Name}({string.Join(",", method.Parameters.Select(ExtractParameterType))})",
                 StringComparer.Ordinal)
@@ -542,7 +542,7 @@ public class CppParser : ILanguageParser
 
                 // FunctionTemplate is handled on the same path as a plain function: libclang
                 // reports a template definition under this kind instead, and everything the walk
-                // needs from it — spelling, arguments, return type, comment, extent — is available
+                // needs from it. cpelling, arguments, return type, comment, extent, is available
                 // exactly as it is for FunctionDecl.
                 case CXCursorKind.CXCursor_FunctionTemplate:
                 case CXCursorKind.CXCursor_FunctionDecl:
@@ -940,7 +940,7 @@ public class CppParser : ILanguageParser
 
         // clang_Cursor_getNumArguments answers -1 for a template, because a template has no
         // arguments until it is instantiated. Every templated function therefore arrived with an
-        // empty parameter list — reported to the reader as taking nothing at all, which is worse
+        // empty parameter list, reported to the reader as taking nothing at all, which is worse
         // than saying nothing. The parameters are still present as child declarations.
         if (argCount <= 0)
         {
@@ -958,7 +958,7 @@ public class CppParser : ILanguageParser
 
         methodInfo.LocalVariables = ExtractLocalVariables(cursor, sourceCode);
         // Merged, not replaced: the documented list comes from Doxygen @throws tags and the two
-        // do not necessarily agree — a method may document an exception it no longer throws, or
+        // do not necessarily agree, a method may document an exception it no longer throws, or
         // throw one nobody documented, and the reader is served by seeing both.
         foreach (var thrown in ExtractThrownExceptionsFromBody(sourceCode))
         {
@@ -972,8 +972,8 @@ public class CppParser : ILanguageParser
 
         // The C# parser records the condition of every `if (...) throw` as an operational limit,
         // which is where a method's real input requirements are stated. Without the same here, a
-        // C++ method's stated contract — the dimension agreement in a matrix multiply, the
-        // squareness check in a solver — never reached the reader at all.
+        // C++ method's stated contract, the dimension agreement in a matrix multiply, the
+        // squareness check in a solver, never reached the reader at all.
         foreach (var guard in ExtractGuardConditionsCpp(sourceCode))
         {
             AddOperationalLimit(methodInfo.OperationalLimits, guard);
@@ -1036,7 +1036,7 @@ public class CppParser : ILanguageParser
     /// </summary>
     /// <remarks>
     /// Scanned by hand rather than by regular expression because the conditions contain nested
-    /// calls — <c>std::fabs(m[best][pivot]) &lt; 1e-12</c> — and a pattern that stops at the first
+    /// calls, <c>std::fabs(m[best][pivot]) &lt; 1e-12</c>, and a pattern that stops at the first
     /// closing bracket truncates them into something that no longer means anything.
     /// </remarks>
     private static List<string> ExtractGuardConditionsCpp(string source)
@@ -1184,7 +1184,7 @@ public class CppParser : ILanguageParser
     /// <remarks>
     /// The value is read from the declaration text rather than the AST, because libclang exposes
     /// an initialiser as a child expression tree that would have to be walked and reassembled;
-    /// the source line already says what is wanted. Only a literal is kept — a constant computed
+    /// the source line already says what is wanted. Only a literal is kept, a constant computed
     /// from something else has no fixed value to quote, and quoting a guess would be worse than
     /// leaving the bound unresolved.
     /// </remarks>
@@ -1226,7 +1226,7 @@ public class CppParser : ILanguageParser
     /// <para>
     /// Without this the C# side listed a method's exceptions while the C++ side always reported
     /// none, so the "Errors / Exceptions" section told the reader that a function throwing three
-    /// different types threw nothing at all — worse than silence, because it reads as a checked
+    /// different types threw nothing at all, worse than silence, because it reads as a checked
     /// finding. Comments and strings are blanked first so the word "throw" inside a message does
     /// not register.
     /// </para>
@@ -1392,7 +1392,7 @@ public class CppParser : ILanguageParser
     /// <summary>
     /// Extracts the cursor's source text by slicing the raw file bytes. libclang reports
     /// <b>byte</b> offsets into the file it read from disk, so the slice must happen on the same
-    /// bytes — indexing a decoded .NET string shifts every offset after the first non-ASCII
+    /// bytes, indexing a decoded .NET string shifts every offset after the first non-ASCII
     /// character (or a UTF-8 BOM) and returns garbled snippets.
     /// </summary>
     private static string ExtractSourceText(CXCursor cursor, byte[] fileBytes)
@@ -1424,7 +1424,7 @@ public class CppParser : ILanguageParser
 
             // Returned whole. This text is what every deterministic analyser reads, so cutting it
             // short silently truncated the analysis rather than the display: any guard or division
-            // past the old 800-character cap was invisible — one function here divides by a count
+            // past the old 800-character cap was invisible, one function here divides by a count
             // on its last line and was never reported as needing it non-zero. The C# parser has
             // always stored the whole body, which is why only C++ was affected. The language model
             // path caps the snippet separately when building a prompt, so nothing downstream
@@ -1433,8 +1433,8 @@ public class CppParser : ILanguageParser
 
             // A const member function of a class template reports an extent that stops at the end
             // of its declaration, so its body never reached the analysers. The method then appeared
-            // to throw nothing and require nothing, and the recursion rule — finding the name in
-            // what was left, which is only the signature — reported it as calling itself. When the
+            // to throw nothing and require nothing, and the recursion rule, finding the name in
+            // what was left, which is only the signature, reported it as calling itself. When the
             // very next thing after the extent is an opening brace, that body belongs to this
             // cursor and is taken with it.
             if (!text.Contains('{', StringComparison.Ordinal))
@@ -2134,7 +2134,7 @@ public class CppParser : ILanguageParser
     private delegate CXChildVisitResult CXCursorVisitor(CXCursor cursor, CXCursor parent, IntPtr clientData);
 
     // Values must match clang-c/Index.h exactly. Namespace and LinkageSpec were previously
-    // wrong (33/36 — actually NamespaceAlias and TypeAliasDecl), which made the visitor treat
+    // wrong (33/36, actually NamespaceAlias and TypeAliasDecl), which made the visitor treat
     // real namespace cursors as unknown parents and silently drop every class declared inside
     // a namespace block.
     private enum CXCursorKind : uint

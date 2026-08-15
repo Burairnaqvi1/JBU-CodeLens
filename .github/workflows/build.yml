@@ -1,4 +1,4 @@
-name: Build and test
+﻿name: Build and test
 
 # The UI project targets net8.0-windows and the C++ parser loads libclang through
 # libclang.runtime.win-x64, so the whole solution only builds on a Windows runner.
@@ -25,7 +25,7 @@ jobs:
         run: dotnet restore JBU.CodeLens.sln
 
       # The projects build with AnalysisMode=All and TreatWarningsAsErrors, so this step is
-      # also the static analysis gate — a new analyser warning fails the build here exactly
+      # also the static analysis gate, a new analyser warning fails the build here exactly
       # as it does locally.
       - name: Build
         run: dotnet build JBU.CodeLens.sln --configuration Release --no-restore
@@ -36,7 +36,7 @@ jobs:
       # Publishes and then reads the import tables of everything produced, failing if anything
       # would have to be installed separately on the target machine. This exists because the
       # llama/ggml libraries import the Visual C++ runtime, which is present on any machine with
-      # Visual Studio and absent on a clean one — a difference that is invisible until the
+      # Visual Studio and absent on a clean one, a difference that is invisible until the
       # application is run somewhere else.
       - name: Publish
         run: dotnet publish src/JBU.CodeLens.UI/JBU.CodeLens.UI.csproj --configuration Release --runtime win-x64 --self-contained true --output publish

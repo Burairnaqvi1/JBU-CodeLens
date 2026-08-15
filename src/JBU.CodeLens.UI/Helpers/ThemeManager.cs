@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Media;
 
 namespace JBU.CodeLens.UI.Helpers;
@@ -18,11 +18,11 @@ public sealed class ThemeChangedEventArgs(AppTheme theme) : EventArgs
 /// <summary>
 /// Switches between the Dark/Light palettes defined in <c>Theme/*.xaml</c>. Every
 /// <c>*Color</c> resource in the selected dictionary is applied to the matching app-level
-/// <c>*Brush</c> — mutating the existing brush's <c>Color</c> in place where possible (so
+/// <c>*Brush</c>, mutating the existing brush's <c>Color</c> in place where possible (so
 /// code-built elements holding a brush instance update too) and replacing the resource when
 /// the brush is frozen (safe because all XAML consumers use <c>DynamicResource</c> and
 /// long-lived code-built elements use <c>SetResourceReference</c>).
-/// No color values live in code — they come exclusively from the theme dictionaries.
+/// No color values live in code, they come exclusively from the theme dictionaries.
 /// </summary>
 public static class ThemeManager
 {
