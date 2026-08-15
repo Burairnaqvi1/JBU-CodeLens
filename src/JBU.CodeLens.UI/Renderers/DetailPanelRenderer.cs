@@ -1502,12 +1502,9 @@ internal static class DetailPanelRenderer
         foreach (var constraint in analysis.DesignConstraints)
             host.Children.Add(CreateBulletItem(constraint.Description, resourceRoot));
 
-        if (analysis.Dependencies.Count > 0)
-        {
-            host.Children.Add(CreateMutedText("Dependencies:", resourceRoot, marginTop: 8));
-            foreach (var dep in analysis.Dependencies)
-                host.Children.Add(CreateBulletItem(dep.Name, resourceRoot));
-        }
+        // No dependency list. It was collected by name from the method body, so on C++ it filled
+        // with type and parameter words - "double", "size", "empty", "invalid_argument" - which
+        // are not dependencies of anything and told the reader nothing they could act on.
     }
 
     /// <param name="startGeneration">
